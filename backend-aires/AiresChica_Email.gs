@@ -37,16 +37,15 @@ function estadoCuentaHTML(est) {
   var _md = String(cfg.moraDesde).split('-');
   var moraDesdeTxt = (AC_MESES_LARGO[Number(_md[1]) - 1] || '') + ' ' + _md[0];
 
-  var filas = est.buckets.map(function (b) {
-    var saldoTxt = b.saldo > 0.009 ? _money(b.saldo) : '<span style="color:' + B.ok + '">Pagado</span>';
-    var moraTxt = b.mora > 0.009 ? _money(b.mora) : '—';
+  var filas = (est.mensual || []).map(function (b) {
+    var saldoColor = b.saldo > 0.009 ? B.red : (b.saldo < -0.009 ? B.ok : B.ink);
+    var pagadoTxt = b.pagado ? _money(b.pagado) : (b.cuota ? '<span style="color:' + B.coral + '">0.00</span>' : '—');
     var bg = b.saldo > 0.009 ? '#FFF7F4' : '#ffffff';
     return '<tr style="background:' + bg + '">' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + '">' + b.label + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + _money(b.monto) + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + _money(b.pagado) + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + saldoTxt + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right;color:' + B.coral + '">' + moraTxt + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + (b.cuota ? _money(b.cuota) : '—') + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + pagadoTxt + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right;color:' + saldoColor + '">' + _money(b.saldo) + '</td>' +
       '</tr>';
   }).join('');
 
@@ -92,11 +91,10 @@ function estadoCuentaHTML(est) {
   // Tabla de cuotas
   '<table style="width:100%;border-collapse:collapse;margin-top:20px;font-size:12.5px">' +
     '<thead><tr style="background:' + B.teal + ';color:#fff">' +
-      '<th style="padding:9px 10px;text-align:left">Concepto</th>' +
+      '<th style="padding:9px 10px;text-align:left">Mes</th>' +
       '<th style="padding:9px 10px;text-align:right">Cuota</th>' +
       '<th style="padding:9px 10px;text-align:right">Pagado</th>' +
-      '<th style="padding:9px 10px;text-align:right">Saldo</th>' +
-      '<th style="padding:9px 10px;text-align:right">Mora ' + cfg.moraPct + '%</th>' +
+      '<th style="padding:9px 10px;text-align:right">Saldo acum.</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table>' +
 
   // Totales

@@ -108,14 +108,14 @@ function draw(){const q=document.getElementById('q').value.toLowerCase();
     <div class="lote">${c.lote}</div><div class="nm"><b>${c.nombre}</b><span>${c.residencial}</span></div>
     <div class="sal"><b>${money(c.saldoConMora)}</b><div>${pill(c.estado)}</div></div></div>`).join('')||'<p class="muted">Sin resultados.</p>';}
 document.getElementById('q').oninput=draw;
-function openSheet(clave){const e=CUENTAS.find(c=>c.clave===clave);if(!e||!e.buckets)return;
+function openSheet(clave){const e=CUENTAS.find(c=>c.clave===clave);if(!e||!e.mensual)return;
   const color=e.saldoConMora>0.009?(e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)'):'var(--ac-ok)';
   document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${e.nombre}</div>
     <div style="font-size:.78rem;color:var(--ac-muted)">${e.residencial} · Lote ${e.lote} · Cuota ${money(e.cuota)}</div></div><button class="close" onclick="closeSheet()">×</button>`;
-  document.getElementById('sheetBd').innerHTML=`<table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Saldo</th><th class="n">Mora</th></tr></thead>
-    <tbody>${e.buckets.map(b=>`<tr><td>${b.label}</td><td class="n">${money(b.monto)}</td>
-      <td class="n">${b.saldo>0.009?money(b.saldo):'<span style="color:var(--ac-ok)">Pagado</span>'}</td>
-      <td class="n" style="color:var(--ac-coral)">${b.mora>0.009?money(b.mora):'—'}</td></tr>`).join('')}</tbody></table>
+  document.getElementById('sheetBd').innerHTML=`<table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Pagado</th><th class="n">Saldo</th></tr></thead>
+    <tbody>${e.mensual.map(b=>`<tr><td>${b.label}</td><td class="n">${b.cuota?money(b.cuota):'—'}</td>
+      <td class="n">${b.pagado?money(b.pagado):(b.cuota?'0.00':'—')}</td>
+      <td class="n" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`).join('')}</tbody></table>
     <div class="tot"><b>SALDO TOTAL</b><b style="color:${color}">${money(e.saldoConMora)}</b></div>
     <button style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--ac-teal);color:#fff;font:inherit;font-weight:600" onclick="mail('${e.clave}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>`;
   document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');}

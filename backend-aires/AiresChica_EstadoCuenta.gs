@@ -102,12 +102,27 @@ function calcEstado(prop, pagosArr, asOf) {
 
   var venceProx = _finDeMes(year, Math.min(12, mesActual)); // próximo vencimiento del mes en curso
 
+  // 4) desglose MENSUAL (caja real): cuota del mes + lo efectivamente pagado ese mes
+  //    calendario + saldo acumulado. Es la vista que coincide con el Excel del cliente.
+  var pagosMes = {};
+  (pagosArr || []).forEach(function (p) {
+    var d = new Date(p.fecha);
+    if (d.getFullYear() === year) pagosMes[d.getMonth() + 1] = _round2((pagosMes[d.getMonth() + 1] || 0) + (Number(p.monto) || 0));
+  });
+  var mensual = [], acum = _round2(Number(prop.saldo2025) || 0);
+  if (acum > 0) mensual.push({ label: 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum });
+  for (var mm = 1; mm <= mesActual; mm++) {
+    var pg = _round2(pagosMes[mm] || 0);
+    acum = _round2(acum + cuota - pg);
+    mensual.push({ label: AC_MESES_LARGO[mm - 1], cuota: cuota, pagado: pg, saldo: acum });
+  }
+
   return {
     clave: prop.clave, lote: prop.lote, loteNum: prop.loteNum,
     residencial: prop.residencial, nombre: prop.nombre,
     email: prop.email, celular: prop.celular,
     cuota: cuota, lotes: prop.lotes, cabanas: prop.cabanas, airbnb: !!prop.airbnb,
-    buckets: buckets,
+    buckets: buckets, mensual: mensual,
     facturado: _round2(facturado),
     pagado: totalPagado,
     saldo: saldoTotal,
@@ -230,10 +245,8 @@ function buildDashboard(asOf) {
                saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
                fechaVencimiento: e.fechaVencimiento,
-               // detalle por mes incluido para que el modal abra al instante (sin otra llamada)
-               buckets: e.buckets.map(function (b) {
-                 return { label: b.label, monto: b.monto, pagado: b.pagado, saldo: b.saldo, mora: b.mora };
-               }) };
+               // desglose mensual (caja real) para que el modal abra al instante (sin otra llamada)
+               mensual: e.mensual };
     })
   };
 }
