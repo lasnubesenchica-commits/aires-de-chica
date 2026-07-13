@@ -166,7 +166,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
       <input type="search" id="pQ" placeholder="Buscar…"/></div>
       <div class="bd"><table id="tblProp"><thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
-        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num">Cuota/mes</th>
+        <th class="num">Lotes</th><th class="num">Cabañas</th><th style="text-align:center">AirBnB</th><th class="num">Cuota/mes</th>
       </tr></thead><tbody></tbody></table></div></div>
   </section>
 
@@ -324,7 +324,7 @@ function openEstado(clave){
 function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
-    <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}</div></div>`;
+    <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''}${e.airbnb?' · <span style="color:var(--ac-coral);font-weight:700">AirBnB</span>':''} · Cuota ${money(e.cuota)}</div></div>`;
   document.getElementById('modalBd').innerHTML=`
     <table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo</th><th class="num">Mora</th></tr></thead>
     <tbody>${e.buckets.map(b=>`<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
@@ -351,14 +351,26 @@ async function enviar(tipo){ document.getElementById('recorResult').textContent=
 }
 
 /* ───────── Propietarios ───────── */
+let PROPS=[];
 async function renderProp(){
-  let ps; try{ ps=await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
+  try{ PROPS=await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
   const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
-    document.querySelector('#tblProp tbody').innerHTML=ps.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
-      .map(p=>`<tr><td><b>${p.lote}</b></td><td>${p.residencial}</td><td>${p.nombre}</td>
+    document.querySelector('#tblProp tbody').innerHTML=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
+      .map(p=>`<tr${p.airbnb?' style="background:#fff8ef"':''}><td><b>${p.lote}</b></td><td>${p.residencial}</td><td>${p.nombre}</td>
       <td>${p.email||'<span class="muted">—</span>'}</td><td>${p.celular||''}</td>
-      <td class="num">${p.lotes}</td><td class="num">${p.cabanas||''}</td><td class="num">${money(p.cuota)}</td></tr>`).join(''); };
+      <td class="num">${p.lotes}</td><td class="num">${p.cabanas||''}</td>
+      <td style="text-align:center"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--ac-coral);cursor:pointer" ${p.airbnb?'checked':''} onchange="toggleAirbnb('${p.clave}',this)"></td>
+      <td class="num">${money(p.cuota)}${p.airbnb?' <span style="color:var(--ac-coral);font-size:.7rem;font-weight:700">AirBnB</span>':''}</td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
+}
+async function toggleAirbnb(clave,el){
+  el.disabled=true;
+  try{ const r=await post('setPropAirbnb',{clave,airbnb:el.checked});
+    const p=PROPS.find(x=>x.clave===clave); if(p){ p.airbnb=r.airbnb; p.cuota=r.cuota; }
+    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja
+    if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota en KPIs/tabla
+  }catch(e){ el.checked=!el.checked; if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ el.disabled=false; }
 }
 
 /* ───────── Conciliación ───────── */
@@ -431,6 +443,9 @@ async function renderOpts(){
         <div class="field"><label>La mora aplica desde</label>
           <div class="in"><input type="month" id="o_moradesde" value="${c.moraDesde}"></div>
           <div class="help">Las cuotas anteriores a este mes no generan recargo.</div></div>
+        <div class="field"><label>Incremento por AirBnB</label>
+          <div class="in"><input type="number" id="o_airbnb" step="1" min="0" value="${c.airbnbPct}"><span class="unit">% sobre la cuota</span></div>
+          <div class="help">Se aplica a los lotes marcados con AirBnB en la pestaña Propietarios.</div></div>
         <div class="help">Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
       </div></div>
 
@@ -466,6 +481,7 @@ async function guardarOpts(){
     cuotaBase:+document.getElementById('o_cuota').value,
     cabanaFee:+document.getElementById('o_cab').value,
     moraPct:+document.getElementById('o_mora').value,
+    airbnbPct:+document.getElementById('o_airbnb').value,
     moraDesde:document.getElementById('o_moradesde').value,
     enviosActivos:document.getElementById('o_maestro').checked,
     notifOnPago:document.getElementById('o_onpago').checked,

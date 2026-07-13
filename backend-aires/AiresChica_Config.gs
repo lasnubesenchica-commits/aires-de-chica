@@ -20,6 +20,7 @@ function _cfgDefaults() {
     cabanaFee:         CONFIG.CABANA_FEE,     // B/. por cabaña / mes
     moraPct:           CONFIG.MORA_PCT * 100, // porcentaje (10 = 10%)
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
+    airbnbPct:         30,                    // % de incremento sobre la cuota para lotes con AirBnB
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     notifOnPago:       true,
     notifRecordatorio: false,
@@ -41,9 +42,12 @@ function _cfg() {
 }
 
 // cuota mensual de una cuenta según la configuración vigente
+// (incluye recargo por cabañas y, si el lote opera AirBnB, el incremento configurado)
 function cuotaDe(prop) {
   var c = _cfg();
-  return _round2((Number(prop.lotes) || 1) * c.cuotaBase + (Number(prop.cabanas) || 0) * c.cabanaFee);
+  var base = (Number(prop.lotes) || 1) * c.cuotaBase + (Number(prop.cabanas) || 0) * c.cabanaFee;
+  if (prop.airbnb) base = base * (1 + (Number(c.airbnbPct) || 0) / 100);
+  return _round2(base);
 }
 
 /* ─────────────── endpoints ─────────────── */
@@ -65,6 +69,7 @@ function guardarConfig(nueva) {
   clean.cuotaBase = Math.max(0, Number(clean.cuotaBase) || 0);
   clean.cabanaFee = Math.max(0, Number(clean.cabanaFee) || 0);
   clean.moraPct = Math.max(0, Number(clean.moraPct) || 0);
+  clean.airbnbPct = Math.max(0, Number(clean.airbnbPct) || 0);
   clean.moraDesde = /^\d{4}-\d{2}$/.test(String(clean.moraDesde)) ? clean.moraDesde : d.moraDesde;
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));

@@ -106,7 +106,7 @@ function calcEstado(prop, pagosArr, asOf) {
     clave: prop.clave, lote: prop.lote, loteNum: prop.loteNum,
     residencial: prop.residencial, nombre: prop.nombre,
     email: prop.email, celular: prop.celular,
-    cuota: cuota, lotes: prop.lotes, cabanas: prop.cabanas,
+    cuota: cuota, lotes: prop.lotes, cabanas: prop.cabanas, airbnb: !!prop.airbnb,
     buckets: buckets,
     facturado: _round2(facturado),
     pagado: totalPagado,
@@ -225,7 +225,7 @@ function buildDashboard(asOf) {
     porResidencial: Object.keys(porResidencial).map(function (k) { return porResidencial[k]; }),
     cuentas: cuentas.map(function (e) {
       return { clave: e.clave, lote: e.lote, loteNum: e.loteNum, residencial: e.residencial, nombre: e.nombre, email: e.email,
-               celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas,
+               celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas, airbnb: e.airbnb,
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,

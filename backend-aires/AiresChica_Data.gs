@@ -18,7 +18,7 @@ var SH = {
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
-                 'lotes','cabanas','cuota','saldo2025','activo','notas'];
+                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
                  'mesAplicado','notas','creado'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
@@ -43,6 +43,8 @@ function ensureSheets() {
     var s = ss.getSheetByName(n);
     if (s && ss.getSheets().length > 1 && s.getLastRow() <= 1) { try { ss.deleteSheet(s); } catch (e) {} }
   });
+  // Migración: asegurar la columna 'airbnb' en Propietarios (sheets ya creados).
+  _ensureColumn(ss.getSheetByName(SH.PROP), 'airbnb');
   // Forzar formato TEXTO en columnas de lote/clave: evita que Sheets
   // convierta "6/7", "4/5", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum'], COL_PROP);
@@ -56,6 +58,18 @@ function _forceText(sh, names, cols) {
     var c = cols.indexOf(n);
     if (c >= 0) sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@');
   });
+}
+
+// Agrega una columna (por nombre) al final si no existe. Devuelve su índice 1-based.
+function _ensureColumn(sh, name) {
+  if (!sh) return -1;
+  var lastCol = sh.getLastColumn();
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  var idx = header.indexOf(name);
+  if (idx >= 0) return idx + 1;
+  var col = lastCol + 1;
+  sh.getRange(1, col).setValue(name).setFontWeight('bold').setBackground('#0E8FB0').setFontColor('#ffffff');
+  return col;
 }
 
 /**
@@ -120,7 +134,8 @@ function getPropietarios() {
     p.loteNum  = (p.loteNum instanceof Date) ? '' : String(p.loteNum || p.lote).trim().toUpperCase().replace(/\s/g, '');
     p.lotes    = Number(p.lotes) || 1;
     p.cabanas  = Number(p.cabanas) || 0;
-    p.cuota    = cuotaDe(p); // según la configuración vigente (cuota base + cabañas)
+    p.airbnb   = (p.airbnb === true || String(p.airbnb).toLowerCase() === 'si' || p.airbnb === 'x');
+    p.cuota    = cuotaDe(p); // según la configuración vigente (cuota base + cabañas + AirBnB)
     p.saldo2025 = Number(p.saldo2025) || 0;
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
@@ -148,6 +163,24 @@ function _findProp(clave) {
   var all = getPropietarios();
   for (var i = 0; i < all.length; i++) if (all[i].clave === clave) return all[i];
   return null;
+}
+
+// Habilita/deshabilita AirBnB en el perfil de un propietario (recalcula la cuota).
+function setPropAirbnb(clave, activar) {
+  var ss = _ss();
+  ensureSheets(); // garantiza la columna 'airbnb'
+  var sh = ss.getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), ai = header.indexOf('airbnb');
+  if (ci < 0 || ai < 0) throw new Error('No se encontró la columna clave/airbnb.');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, ai + 1).setValue(activar ? 'si' : '');
+      var prop = _findProp(clave);
+      return { ok: true, clave: clave, airbnb: !!activar, cuota: prop ? prop.cuota : null };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
 }
 
 /* ─────────────── escritura ─────────────── */
@@ -206,7 +239,7 @@ function seedInicial(force) {
 
   var filasProp = AC_SEED.map(function (s) {
     return [s.clave, s.residencial, s.lote, s.loteNum, s.nombre, s.email, s.celular,
-            s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || ''];
+            s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || '', ''];
   });
   shP.getRange(2, 1, filasProp.length, COL_PROP.length).setValues(filasProp);
 
