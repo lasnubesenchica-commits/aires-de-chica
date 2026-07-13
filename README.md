@@ -42,3 +42,5 @@ CNAME                 admin.airesdechica.org
 Cada push a `main` que toque `backend-aires/**` re-despliega el backend
 automáticamente (GitHub Actions). El frontend se publica con GitHub Pages.
 Ver `backend-aires/PROVISION.md` para la puesta en marcha.
+
+<!-- pages build trigger -->
