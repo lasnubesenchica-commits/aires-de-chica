@@ -145,6 +145,7 @@ function estadoCuentaPDF(estOrClave) {
 /* ─────────────── correos ─────────────── */
 
 function enviarEstadoCuenta(clave) {
+  if (!_cfg().enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
   var est = getEstadoCuentaByKey(clave);
   if (!est.email) return { enviado: false, motivo: 'Propietario sin correo', clave: clave, lote: est.lote };
   var pdf = estadoCuentaPDF(est);
@@ -173,6 +174,7 @@ function enviarEstadoCuenta(clave) {
 }
 
 function enviarRecordatorios(tipo, lotes) {
+  if (!_cfg().enviosActivos) return { enviados: 0, pausado: true, sinCorreo: [], motivo: 'Envíos pausados (interruptor maestro apagado).' };
   tipo = tipo || 'mensual'; // 'mensual' | 'mora'
   var dash = buildDashboard(null);
   var objetivo = dash.cuentas.filter(function (c) {

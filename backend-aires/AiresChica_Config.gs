@@ -20,6 +20,7 @@ function _cfgDefaults() {
     cabanaFee:         CONFIG.CABANA_FEE,     // B/. por cabaña / mes
     moraPct:           CONFIG.MORA_PCT * 100, // porcentaje (10 = 10%)
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
+    enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     notifOnPago:       true,
     notifRecordatorio: false,
     recordatorioDia:   1,
@@ -67,6 +68,7 @@ function guardarConfig(nueva) {
   clean.moraDesde = /^\d{4}-\d{2}$/.test(String(clean.moraDesde)) ? clean.moraDesde : d.moraDesde;
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
+  clean.enviosActivos = !!clean.enviosActivos;
   clean.notifOnPago = !!clean.notifOnPago;
   clean.notifRecordatorio = !!clean.notifRecordatorio;
   clean.notifMora = !!clean.notifMora;

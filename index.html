@@ -435,6 +435,11 @@ async function renderOpts(){
       </div></div>
 
       <div class="card"><div class="hd"><h2>Notificaciones</h2></div><div class="bd" style="padding:18px">
+        <div style="padding:11px 13px;border-radius:10px;margin-bottom:12px;background:${c.enviosActivos?'#e4f5ec':'#fbf0dc'};border:1px solid ${c.enviosActivos?'#bfe6cf':'#f4d9b0'}">
+          <label class="toggle" style="border:0;padding:0;cursor:pointer"><input type="checkbox" id="o_maestro" ${c.enviosActivos?'checked':''}>
+            <div class="t-body"><b>${c.enviosActivos?'✅ Envío de correos ACTIVADO':'⏸ Envío de correos PAUSADO (modo prueba)'}</b>
+              <div class="t-sub">Interruptor maestro. Con esto apagado <b>no sale ningún correo</b> por ninguna vía: ni botones, ni al consolidar, ni programados. Actívalo solo cuando estés seguro.</div></div></label>
+        </div>
         <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
           <div class="t-body"><b>Al registrar un pago</b>
             <div class="t-sub">Envía el estado de cuenta actualizado al propietario cuando se consolida su pago.</div></div></div>
@@ -462,6 +467,7 @@ async function guardarOpts(){
     cabanaFee:+document.getElementById('o_cab').value,
     moraPct:+document.getElementById('o_mora').value,
     moraDesde:document.getElementById('o_moradesde').value,
+    enviosActivos:document.getElementById('o_maestro').checked,
     notifOnPago:document.getElementById('o_onpago').checked,
     notifRecordatorio:document.getElementById('o_recor').checked,
     recordatorioDia:+document.getElementById('o_recordia').value,
@@ -470,7 +476,8 @@ async function guardarOpts(){
   };
   try{
     const r=await post('guardarConfig',{config:cfg});
-    msg.innerHTML = r.aviso ? '<span class="notice" style="display:inline-block;padding:4px 10px">'+r.aviso+'</span>' : '<span class="ok-msg">✓ Guardado</span>';
+    if(r.aviso){ msg.innerHTML='<span class="notice" style="display:inline-block;padding:4px 10px">'+r.aviso+'</span>'; }
+    else { msg.innerHTML='<span class="ok-msg">✓ Guardado</span>'; setTimeout(renderOpts,1400); }
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota/mora en los KPIs
   }catch(e){ if(!onAuthError(e)){ msg.textContent='Error: '+e; } }
 }
