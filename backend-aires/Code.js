@@ -85,6 +85,7 @@ function doPost(e) {
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'setPropAirbnb')    out = { ok: true, data: setPropAirbnb(data.clave, !!data.airbnb) };
+    else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err), stack: String(err && err.stack || '') };

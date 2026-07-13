@@ -41,11 +41,13 @@ function _cfg() {
   return out;
 }
 
-// cuota mensual de una cuenta según la configuración vigente
-// (incluye recargo por cabañas y, si el lote opera AirBnB, el incremento configurado)
+// cuota mensual de una cuenta:
+//   - si el propietario tiene una cuota fija (cuotaMensual > 0), esa manda;
+//   - si no, usa la cuota global de Opciones (cuotaBase);
+//   - luego, si el lote opera AirBnB, aplica el incremento configurado.
 function cuotaDe(prop) {
   var c = _cfg();
-  var base = (Number(prop.lotes) || 1) * c.cuotaBase + (Number(prop.cabanas) || 0) * c.cabanaFee;
+  var base = (Number(prop.cuotaMensual) > 0) ? Number(prop.cuotaMensual) : c.cuotaBase;
   if (prop.airbnb) base = base * (1 + (Number(c.airbnbPct) || 0) / 100);
   return _round2(base);
 }

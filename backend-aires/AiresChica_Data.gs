@@ -18,7 +18,7 @@ var SH = {
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
-                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb'];
+                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
                  'mesAplicado','notas','creado'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
@@ -43,8 +43,9 @@ function ensureSheets() {
     var s = ss.getSheetByName(n);
     if (s && ss.getSheets().length > 1 && s.getLastRow() <= 1) { try { ss.deleteSheet(s); } catch (e) {} }
   });
-  // Migración: asegurar la columna 'airbnb' en Propietarios (sheets ya creados).
+  // Migración: asegurar columnas nuevas en Propietarios (sheets ya creados).
   _ensureColumn(ss.getSheetByName(SH.PROP), 'airbnb');
+  _ensureColumn(ss.getSheetByName(SH.PROP), 'cuotaMensual');
   // Forzar formato TEXTO en columnas de lote/clave: evita que Sheets
   // convierta "6/7", "4/5", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum'], COL_PROP);
@@ -135,7 +136,9 @@ function getPropietarios() {
     p.lotes    = Number(p.lotes) || 1;
     p.cabanas  = Number(p.cabanas) || 0;
     p.airbnb   = (p.airbnb === true || String(p.airbnb).toLowerCase() === 'si' || p.airbnb === 'x');
-    p.cuota    = cuotaDe(p); // según la configuración vigente (cuota base + cabañas + AirBnB)
+    p.cuotaMensual = Number(p.cuotaMensual) || 0; // 0 = usa la cuota global
+    p.cuota    = cuotaDe(p); // cuota fija del propietario (o global) + AirBnB
+    p.cuotaGlobal = !(p.cuotaMensual > 0); // indicador: ¿está usando la cuota global?
     p.saldo2025 = Number(p.saldo2025) || 0;
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
@@ -181,6 +184,44 @@ function setPropAirbnb(clave, activar) {
     }
   }
   throw new Error('No existe la cuenta ' + clave);
+}
+
+// Fija (o limpia) la cuota mensual de un propietario. valor vacío/0 => usa la global.
+function setPropCuota(clave, valor) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), qi = header.indexOf('cuotaMensual');
+  if (ci < 0 || qi < 0) throw new Error('No se encontró la columna clave/cuotaMensual.');
+  var v = Number(valor) > 0 ? _round2(Number(valor)) : '';
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, qi + 1).setValue(v);
+      var prop = _findProp(clave);
+      return { ok: true, clave: clave, cuotaMensual: v || 0, cuota: prop ? prop.cuota : null, cuotaGlobal: !(v) };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
+// Carga inicial de las cuotas fijas inferidas del Excel (los propietarios con
+// cabaña). Corre una vez sobre el Sheet ya sembrado; no toca a los demás.
+function aplicarCuotasInferidas() {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var byClave = {};
+  AC_SEED.forEach(function (s) { if (Number(s.cuotaMensual) > 0) byClave[s.clave] = _round2(s.cuotaMensual); });
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), qi = header.indexOf('cuotaMensual');
+  var aplicadas = [];
+  for (var r = 1; r < vals.length; r++) {
+    var k = String(vals[r][ci]).trim();
+    if (byClave[k] !== undefined) {
+      sh.getRange(r + 1, qi + 1).setValue(byClave[k]);
+      aplicadas.push(k + '=' + byClave[k]);
+    }
+  }
+  return { aplicadas: aplicadas };
 }
 
 /* ─────────────── escritura ─────────────── */
@@ -239,7 +280,8 @@ function seedInicial(force) {
 
   var filasProp = AC_SEED.map(function (s) {
     return [s.clave, s.residencial, s.lote, s.loteNum, s.nombre, s.email, s.celular,
-            s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || '', ''];
+            s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || '', '',
+            (Number(s.cuotaMensual) > 0 ? _round2(s.cuotaMensual) : '')];
   });
   shP.getRange(2, 1, filasProp.length, COL_PROP.length).setValues(filasProp);
 

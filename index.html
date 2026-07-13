@@ -360,7 +360,8 @@ async function renderProp(){
       <td>${p.email||'<span class="muted">—</span>'}</td><td>${p.celular||''}</td>
       <td class="num">${p.lotes}</td><td class="num">${p.cabanas||''}</td>
       <td style="text-align:center"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--ac-coral);cursor:pointer" ${p.airbnb?'checked':''} onchange="toggleAirbnb('${p.clave}',this)"></td>
-      <td class="num">${money(p.cuota)}${p.airbnb?' <span style="color:var(--ac-coral);font-size:.7rem;font-weight:700">AirBnB</span>':''}</td></tr>`).join(''); };
+      <td class="num"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="global" title="Vacío = usa la cuota global de Opciones" onchange="setCuota('${p.clave}',this)" style="width:84px;text-align:right;padding:5px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+        <div style="font-size:.68rem;color:var(--ac-muted);margin-top:2px">= ${money(p.cuota)}${p.airbnb?' <span style="color:var(--ac-coral);font-weight:700">+AirBnB</span>':(p.cuotaGlobal?' (global)':'')}</div></td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
 }
 async function toggleAirbnb(clave,el){
@@ -370,6 +371,15 @@ async function toggleAirbnb(clave,el){
     document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota en KPIs/tabla
   }catch(e){ el.checked=!el.checked; if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ el.disabled=false; }
+}
+async function setCuota(clave,el){
+  el.disabled=true;
+  try{ const r=await post('setPropCuota',{clave,cuota:el.value});
+    const p=PROPS.find(x=>x.clave===clave); if(p){ p.cuotaMensual=r.cuotaMensual; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
+    document.getElementById('pQ').dispatchEvent(new Event('input'));
+    if(typeof renderDash==='function') renderDash();
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ el.disabled=false; }
 }
 
