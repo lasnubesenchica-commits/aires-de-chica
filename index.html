@@ -22,8 +22,16 @@ header.top { background: linear-gradient(120deg,#0B7A98,#0E8FB0 55%,#12A2C4); co
 nav.tabs { display:flex; gap:4px; border-bottom:1px solid var(--ac-border); margin:22px 0 20px; flex-wrap:wrap; }
 nav.tabs button { border:0; background:none; font:inherit; font-weight:600; color:var(--ac-muted); padding:10px 16px; cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; }
 nav.tabs button.active { color:var(--ac-teal-700); border-bottom-color:var(--ac-teal); background:var(--ac-teal-50); }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }
+.kpis-hero { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+.kpis-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+@media (max-width:820px){ .kpis-hero{grid-template-columns:1fr} .kpis-row{grid-template-columns:repeat(2,1fr)} }
 .kpi { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius); padding:16px 18px; position:relative; overflow:hidden; box-shadow:var(--ac-shadow); }
+.kpi.hero { padding:18px 22px; }
+.kpi.hero .val { font-size:2.3rem; }
+.hero-sub { display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:12px; padding-top:12px; border-top:1px solid var(--ac-border); font-size:.82rem; color:var(--ac-muted); }
+.hero-sub b { color:var(--ac-ink); font-weight:700; }
+.bar { height:7px; border-radius:6px; background:var(--ac-teal-50); overflow:hidden; margin-top:10px; }
+.bar > span { display:block; height:100%; border-radius:6px; background:var(--ac-green); }
 .kpi::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:var(--ac-teal); }
 .kpi.green::before{background:var(--ac-green);} .kpi.coral::before{background:var(--ac-coral);}
 .kpi.red::before{background:var(--ac-danger);} .kpi.warn::before{background:var(--ac-warn);}
@@ -231,14 +239,35 @@ const pillFor = e => e==='Al día'?'<span class="pill ok">Al día</span>':e==='P
 async function renderDash(){
   DASH = await jsonp('getDashboard');
   const k=DASH.kpis;
-  document.getElementById('kpis').innerHTML = [
-    ['Recaudación del mes', k.tasaRecaudacionMes+'%', money(k.pagadoMes)+' de '+money(k.facturadoMes),'green'],
-    ['Cartera vencida', money(k.carteraVencida), k.morosos+' cuentas morosas','coral'],
-    ['Mora acumulada', money(k.moraAcumulada), 'Recargo 10% mensual','warn'],
-    ['Saldo total por cobrar', money(k.saldoTotalConMora), 'Incluye mora','red'],
-    ['Morosidad', k.tasaMorosidad+'%', k.morosos+' morosos · '+(k.pendientes||0)+' al corriente · '+k.alDia+' al día',''],
-    ['Recaudación anual', k.tasaRecaudacionAnual+'%', money(k.totalPagado)+' de '+money(k.totalFacturado),'green'],
-  ].map(([l,v,h,c])=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`).join('');
+  const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
+  const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpis-hero">
+      <div class="kpi hero red">
+        <div class="label">Saldo total por cobrar</div>
+        <div class="val">${money(k.saldoTotalConMora)}</div>
+        <div class="hero-sub">
+          <span>Cartera vencida <b>${money(k.carteraVencida)}</b></span>
+          <span>Mora 10% <b style="color:var(--ac-coral)">${money(k.moraAcumulada)}</b></span>
+          <span><b>${k.morosos}</b> cuentas morosas</span>
+        </div>
+      </div>
+      <div class="kpi hero green">
+        <div class="label">Recaudación del mes · ${DASH.mesActual}</div>
+        <div class="val">${k.tasaRecaudacionMes}%</div>
+        <div class="bar"><span style="width:${barMes}%"></span></div>
+        <div class="hero-sub">
+          <span><b>${money(k.pagadoMes)}</b> de ${money(k.facturadoMes)} facturado</span>
+          <span>Acumulado anual <b>${k.tasaRecaudacionAnual}%</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="kpis-row">
+      ${card('Recaudación anual', k.tasaRecaudacionAnual+'%', money(k.totalPagado)+' de '+money(k.totalFacturado),'green')}
+      ${card('Morosidad', k.tasaMorosidad+'%', k.morosos+' cuentas con atraso','red')}
+      ${card('Al corriente', (k.pendientes||0), 'Mes en curso, sin vencidos','warn')}
+      ${card('Al día', k.alDia, 'Sin saldo pendiente','')}
+    </div>`;
   const rs=[...new Set(DASH.cuentas.map(c=>c.residencial))];
   document.getElementById('fRes').innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
   renderTabla();
@@ -252,19 +281,24 @@ function renderTabla(){
     if(q && !(c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q))) return false;
     return true;
   }).sort((a,b)=>b.saldoConMora-a.saldoConMora);
-  document.querySelector('#tblCuentas tbody').innerHTML = rows.map(c=>`<tr>
+  document.querySelector('#tblCuentas tbody').innerHTML = rows.map(c=>`<tr onclick="openEstado('${c.clave}')" style="cursor:pointer">
     <td><b>${c.lote}</b></td><td>${c.residencial}</td><td>${c.nombre}</td>
     <td class="num">${money(c.cuota)}</td><td class="num">${money(c.pagado)}</td>
     <td class="num">${money(c.saldo)}</td><td class="num" style="color:var(--ac-coral)">${c.mora>0?money(c.mora):'—'}</td>
     <td class="num"><b>${money(c.saldoConMora)}</b></td><td>${pillFor(c.estado)}</td>
     <td>${fmtDate(c.fechaVencimiento)}</td>
-    <td><button class="link-btn" onclick="openEstado('${c.clave}')">Ver →</button></td></tr>`).join('')
+    <td style="color:var(--ac-teal-600);font-weight:600">Ver →</td></tr>`).join('')
     || '<tr><td colspan="11" class="muted" style="padding:20px">Sin resultados.</td></tr>';
 }
 ['fQ','fRes','fEstado'].forEach(id=>document.getElementById(id).addEventListener('input',renderTabla));
 
-async function openEstado(clave){
-  let e; try{ e=await jsonp('getEstadoCuenta',{clave}); }catch(ex){ if(onAuthError(ex))return; return alert('Error: '+ex); }
+function openEstado(clave){
+  const e = ((DASH && DASH.cuentas) || []).find(c=>c.clave===clave);
+  if(e && e.buckets){ _renderEstado(e); return; }
+  // respaldo: si el detalle aún no vino en el dashboard, lo pide al backend
+  jsonp('getEstadoCuenta',{clave}).then(_renderEstado).catch(ex=>{ if(!onAuthError(ex)) alert('Error: '+ex); });
+}
+function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}</div></div>`;

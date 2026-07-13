@@ -223,10 +223,15 @@ function buildDashboard(asOf) {
     porResidencial: Object.keys(porResidencial).map(function (k) { return porResidencial[k]; }),
     cuentas: cuentas.map(function (e) {
       return { clave: e.clave, lote: e.lote, loteNum: e.loteNum, residencial: e.residencial, nombre: e.nombre, email: e.email,
-               celular: e.celular, cuota: e.cuota, facturado: e.facturado, pagado: e.pagado,
-               saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora,
+               celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas,
+               facturado: e.facturado, pagado: e.pagado,
+               saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
-               fechaVencimiento: e.fechaVencimiento };
+               fechaVencimiento: e.fechaVencimiento,
+               // detalle por mes incluido para que el modal abra al instante (sin otra llamada)
+               buckets: e.buckets.map(function (b) {
+                 return { label: b.label, monto: b.monto, pagado: b.pagado, saldo: b.saldo, mora: b.mora };
+               }) };
     })
   };
 }

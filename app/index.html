@@ -108,7 +108,7 @@ function draw(){const q=document.getElementById('q').value.toLowerCase();
     <div class="lote">${c.lote}</div><div class="nm"><b>${c.nombre}</b><span>${c.residencial}</span></div>
     <div class="sal"><b>${money(c.saldoConMora)}</b><div>${pill(c.estado)}</div></div></div>`).join('')||'<p class="muted">Sin resultados.</p>';}
 document.getElementById('q').oninput=draw;
-async function openSheet(clave){let e;try{e=await jsonp('getEstadoCuenta',{clave});}catch(ex){if(authErr(ex))return;return alert('Error: '+ex);}
+function openSheet(clave){const e=CUENTAS.find(c=>c.clave===clave);if(!e||!e.buckets)return;
   const color=e.saldoConMora>0.009?(e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)'):'var(--ac-ok)';
   document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${e.nombre}</div>
     <div style="font-size:.78rem;color:var(--ac-muted)">${e.residencial} · Lote ${e.lote} · Cuota ${money(e.cuota)}</div></div><button class="close" onclick="closeSheet()">×</button>`;
