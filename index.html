@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Aires de Chicá · Estados de cuenta y cobros</title>
+<link rel="icon" href="brand/favicon.svg"/>
+<link rel="stylesheet" href="brand/palette.css"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+* { box-sizing: border-box; }
+body { margin:0; font-family: var(--ac-font); color: var(--ac-ink); background: var(--ac-bg); }
+a { color: var(--ac-teal-600); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 18px 60px; }
+header.top { background: linear-gradient(120deg,#0B7A98,#0E8FB0 55%,#12A2C4); color:#fff; }
+.top-inner { max-width:1180px; margin:0 auto; padding:16px 18px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.top img { height:52px; background:#fff; border-radius:10px; padding:5px 8px; }
+.top h1 { font-size:1.15rem; margin:0; font-weight:700; }
+.top .sub { font-size:.78rem; opacity:.85; }
+.top .spacer { flex:1; }
+.logout { background:rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
+nav.tabs { display:flex; gap:4px; border-bottom:1px solid var(--ac-border); margin:22px 0 20px; flex-wrap:wrap; }
+nav.tabs button { border:0; background:none; font:inherit; font-weight:600; color:var(--ac-muted); padding:10px 16px; cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; }
+nav.tabs button.active { color:var(--ac-teal-700); border-bottom-color:var(--ac-teal); background:var(--ac-teal-50); }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }
+.kpi { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius); padding:16px 18px; position:relative; overflow:hidden; box-shadow:var(--ac-shadow); }
+.kpi::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:var(--ac-teal); }
+.kpi.green::before{background:var(--ac-green);} .kpi.coral::before{background:var(--ac-coral);}
+.kpi.red::before{background:var(--ac-danger);} .kpi.warn::before{background:var(--ac-warn);}
+.kpi .label { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ac-muted); font-weight:600; }
+.kpi .val { font-size:1.7rem; font-weight:700; margin-top:4px; }
+.kpi .hint { font-size:.75rem; color:var(--ac-muted); margin-top:2px; }
+.card { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius); box-shadow:var(--ac-shadow); }
+.card .hd { padding:14px 18px; border-bottom:1px solid var(--ac-border); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.card .hd h2 { margin:0; font-size:1.05rem; }
+.card .bd { padding:6px 6px 10px; overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:.86rem; }
+th,td { padding:9px 12px; text-align:left; white-space:nowrap; }
+thead th { color:var(--ac-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--ac-border); }
+tbody tr { border-bottom:1px solid #eef5f8; }
+tbody tr:hover { background:var(--ac-teal-50); }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
+.pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
+.link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
+.controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+input[type=search], input[type=password], select { font:inherit; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
+.btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
+.btn:hover { background:var(--ac-teal-600); } .btn.ghost { background:#fff; color:var(--ac-teal-700); border:1px solid var(--ac-border); }
+.btn.green { background:var(--ac-green-600); } .btn:disabled { opacity:.5; cursor:not-allowed; }
+.modal-bg { position:fixed; inset:0; background:rgba(16,48,57,.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:50; }
+.modal-bg.show { display:flex; }
+.modal { background:#fff; border-radius:14px; max-width:640px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.modal .mh { padding:18px 22px; border-bottom:1px solid var(--ac-border); display:flex; justify-content:space-between; align-items:flex-start; }
+.modal .mb { padding:18px 22px; }
+.close { border:0; background:none; font-size:1.4rem; cursor:pointer; color:var(--ac-muted); }
+.grad { height:4px; background:linear-gradient(90deg,var(--ac-teal),var(--ac-green) 60%,var(--ac-coral)); }
+.drop { border:2px dashed var(--ac-teal-300); border-radius:12px; padding:30px; text-align:center; color:var(--ac-muted); background:#fbfeff; cursor:pointer; }
+.drop.drag { background:var(--ac-teal-50); border-color:var(--ac-teal); }
+.muted { color:var(--ac-muted); }
+.notice { background:#fff8ef; border:1px solid #f4d9b0; color:#7a4a12; padding:10px 14px; border-radius:10px; font-size:.85rem; }
+/* Login */
+#gate { position:fixed; inset:0; background:var(--ac-bg); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+#gate.show { display:flex; }
+.login { background:#fff; border:1px solid var(--ac-border); border-radius:16px; box-shadow:var(--ac-shadow); width:100%; max-width:380px; overflow:hidden; }
+.login .lb { padding:26px 26px 30px; text-align:center; }
+.login img { height:66px; margin-bottom:6px; }
+.login h2 { margin:8px 0 2px; font-size:1.15rem; }
+.login p { color:var(--ac-muted); font-size:.85rem; margin:0 0 16px; }
+.login input { width:100%; margin-bottom:10px; padding:11px 14px; }
+.login .btn { width:100%; }
+.login .err { color:var(--ac-danger); font-size:.82rem; min-height:18px; margin-top:6px; }
+#app { display:none; }
+</style>
+</head>
+<body>
+
+<!-- Login gate -->
+<div id="gate">
+  <div class="login"><div class="grad"></div><div class="lb">
+    <img src="brand/logo.png" alt="Aires de Chicá"/>
+    <h2 id="gateTitle">Acceso</h2>
+    <p id="gateSub">Ingresa la contraseña de la administración.</p>
+    <form id="gateForm">
+      <input type="password" id="gatePwd" placeholder="Contraseña" autocomplete="current-password"/>
+      <input type="password" id="gatePwd2" placeholder="Repite la contraseña" style="display:none" autocomplete="new-password"/>
+      <button class="btn" type="submit" id="gateBtn">Entrar</button>
+      <div class="err" id="gateErr"></div>
+    </form>
+  </div></div>
+</div>
+
+<div id="app">
+<header class="top"><div class="top-inner">
+  <img src="brand/logo.png" alt="Aires de Chicá"/>
+  <div><h1>Aires de Chicá</h1><div class="sub">Estados de cuenta y cobros de mantenimiento · 2026</div></div>
+  <div class="spacer"></div>
+  <button class="logout" onclick="logout()">Salir</button>
+</div></header>
+<div class="grad"></div>
+
+<div class="wrap">
+  <nav class="tabs" id="tabs">
+    <button data-tab="dash" class="active">Estado de cuentas</button>
+    <button data-tab="conc">Conciliación bancaria</button>
+    <button data-tab="prop">Propietarios</button>
+    <button data-tab="recor">Recordatorios</button>
+  </nav>
+
+  <section id="tab-dash">
+    <div class="kpis" id="kpis"></div>
+    <div class="card">
+      <div class="hd"><h2>Cuentas</h2><div class="spacer" style="flex:1"></div>
+        <div class="controls">
+          <select id="fRes"><option value="">Todos los residenciales</option></select>
+          <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
+          <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
+        </div></div>
+      <div class="bd"><table id="tblCuentas"><thead><tr>
+        <th>Lote</th><th>Residencial</th><th>Propietario</th><th class="num">Cuota/mes</th>
+        <th class="num">Pagado</th><th class="num">Saldo</th><th class="num">Mora</th><th class="num">Total</th>
+        <th>Estado</th><th>Vence</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-conc" style="display:none">
+    <div class="card"><div class="hd"><h2>Subir estado de cuenta de Banco General</h2></div>
+      <div class="bd" style="padding:18px">
+        <div class="drop" id="drop"><div style="font-size:2rem">📄</div>
+          <div><b>Arrastra aquí el archivo .xlsx</b> del estado de cuenta<br>
+          <span class="muted">o haz clic para seleccionarlo (formato BGRExcelContReport)</span></div>
+          <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none"/></div>
+        <div id="concResult" style="margin-top:18px"></div>
+      </div></div>
+  </section>
+
+  <section id="tab-prop" style="display:none">
+    <div class="card"><div class="hd"><h2>Directorio de propietarios</h2><div class="spacer" style="flex:1"></div>
+      <input type="search" id="pQ" placeholder="Buscar…"/></div>
+      <div class="bd"><table id="tblProp"><thead><tr>
+        <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
+        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num">Cuota/mes</th>
+      </tr></thead><tbody></tbody></table></div></div>
+  </section>
+
+  <section id="tab-recor" style="display:none">
+    <div class="card"><div class="hd"><h2>Envío de recordatorios y estados de cuenta</h2></div>
+      <div class="bd" style="padding:18px">
+        <p class="muted">Envía a cada propietario su estado de cuenta en PDF por correo.</p>
+        <div class="controls">
+          <button class="btn" onclick="enviar('mensual')">Recordatorio a todos los que deben</button>
+          <button class="btn" style="background:var(--ac-coral)" onclick="enviar('mora')">Aviso de mora (solo morosos con recargo)</button>
+        </div>
+        <div id="recorResult" style="margin-top:14px"></div>
+      </div></div>
+  </section>
+</div>
+
+<div class="modal-bg" id="modal"><div class="modal"><div class="grad"></div>
+  <div class="mh"><div id="modalHd"></div><button class="close" onclick="closeModal()">×</button></div>
+  <div class="mb" id="modalBd"></div></div></div>
+</div><!-- /app -->
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
+let TOKEN = localStorage.getItem('ac_token') || '';
+const money = n => 'B/.' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate = d => { d=new Date(d); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); };
+
+function jsonp(action, params={}){
+  return new Promise((res,rej)=>{
+    const cb='__cb'+Math.random().toString(36).slice(2);
+    const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+    const s=document.createElement('script'); s.src=GAS_URL+'?'+qs;
+    window[cb]=d=>{ delete window[cb]; s.remove(); d.ok?res(d.data):rej(d.error); };
+    s.onerror=()=>{ s.remove(); rej('network'); }; document.body.appendChild(s);
+  });
+}
+async function post(action,data={}){
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,...data})});
+  const j=await r.json(); if(!j.ok) throw j.error; return j.data;
+}
+function onAuthError(e){ if(String(e)==='no-auth'){ TOKEN=''; localStorage.removeItem('ac_token'); showGate(); return true; } return false; }
+
+/* ───────── Login gate ───────── */
+let GATE_MODE='login';
+function showGate(){ document.getElementById('app').style.display='none'; document.getElementById('gate').classList.add('show'); }
+function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block'; }
+async function boot(){
+  let st; try{ st = await jsonp('getAuthState'); }catch(e){ st={hasPassword:false}; }
+  if(!st.hasPassword){ setupGate('setup'); return; }
+  if(!TOKEN){ setupGate('login'); return; }
+  try{ await renderDash(); showApp(); }
+  catch(e){ if(!onAuthError(e)){ setupGate('login'); } }
+}
+function setupGate(mode){
+  GATE_MODE=mode;
+  document.getElementById('gateTitle').textContent = mode==='setup' ? 'Crear contraseña' : 'Acceso';
+  document.getElementById('gateSub').textContent = mode==='setup'
+    ? 'Primera vez: define la contraseña de la administración.' : 'Ingresa la contraseña de la administración.';
+  document.getElementById('gatePwd2').style.display = mode==='setup' ? 'block' : 'none';
+  document.getElementById('gatePwd').value=''; document.getElementById('gatePwd2').value='';
+  document.getElementById('gateBtn').textContent = mode==='setup' ? 'Crear y entrar' : 'Entrar';
+  document.getElementById('gateErr').textContent='';
+  showGate();
+}
+document.getElementById('gateForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const err=document.getElementById('gateErr'); err.textContent='';
+  const pwd=document.getElementById('gatePwd').value;
+  try{
+    let r;
+    if(GATE_MODE==='setup'){
+      if(pwd !== document.getElementById('gatePwd2').value){ err.textContent='Las contraseñas no coinciden.'; return; }
+      r = await post('setPassword',{nueva:pwd});
+    } else {
+      r = await post('verifyPassword',{password:pwd});
+      if(!r.ok){ err.textContent='Contraseña incorrecta.'; return; }
+    }
+    TOKEN=r.token; localStorage.setItem('ac_token',TOKEN);
+    await renderDash(); showApp();
+  }catch(ex){ err.textContent='Error: '+ex; }
+});
+function logout(){ TOKEN=''; localStorage.removeItem('ac_token'); setupGate('login'); }
+
+/* ───────── Dashboard ───────── */
+let DASH=null;
+const pillFor = e => e==='Al día'?'<span class="pill ok">Al día</span>':e==='Pendiente'?'<span class="pill warn">Pendiente</span>':'<span class="pill red">Moroso</span>';
+async function renderDash(){
+  DASH = await jsonp('getDashboard');
+  const k=DASH.kpis;
+  document.getElementById('kpis').innerHTML = [
+    ['Recaudación del mes', k.tasaRecaudacionMes+'%', money(k.pagadoMes)+' de '+money(k.facturadoMes),'green'],
+    ['Cartera vencida', money(k.carteraVencida), k.morosos+' cuentas morosas','coral'],
+    ['Mora acumulada', money(k.moraAcumulada), 'Recargo 10% mensual','warn'],
+    ['Saldo total por cobrar', money(k.saldoTotalConMora), 'Incluye mora','red'],
+    ['Morosidad', k.tasaMorosidad+'%', k.morosos+' morosos · '+(k.pendientes||0)+' al corriente · '+k.alDia+' al día',''],
+    ['Recaudación anual', k.tasaRecaudacionAnual+'%', money(k.totalPagado)+' de '+money(k.totalFacturado),'green'],
+  ].map(([l,v,h,c])=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`).join('');
+  const rs=[...new Set(DASH.cuentas.map(c=>c.residencial))];
+  document.getElementById('fRes').innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
+  renderTabla();
+}
+function renderTabla(){
+  const q=document.getElementById('fQ').value.toLowerCase(), fr=document.getElementById('fRes').value, fe=document.getElementById('fEstado').value;
+  const rows=DASH.cuentas.filter(c=>{
+    if(fr && c.residencial!==fr) return false;
+    if(fe==='Moroso' && c.saldoConMora<=0.009) return false;
+    if(fe==='Al día' && c.saldoConMora>0.009) return false;
+    if(q && !(c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a,b)=>b.saldoConMora-a.saldoConMora);
+  document.querySelector('#tblCuentas tbody').innerHTML = rows.map(c=>`<tr>
+    <td><b>${c.lote}</b></td><td>${c.residencial}</td><td>${c.nombre}</td>
+    <td class="num">${money(c.cuota)}</td><td class="num">${money(c.pagado)}</td>
+    <td class="num">${money(c.saldo)}</td><td class="num" style="color:var(--ac-coral)">${c.mora>0?money(c.mora):'—'}</td>
+    <td class="num"><b>${money(c.saldoConMora)}</b></td><td>${pillFor(c.estado)}</td>
+    <td>${fmtDate(c.fechaVencimiento)}</td>
+    <td><button class="link-btn" onclick="openEstado('${c.clave}')">Ver →</button></td></tr>`).join('')
+    || '<tr><td colspan="11" class="muted" style="padding:20px">Sin resultados.</td></tr>';
+}
+['fQ','fRes','fEstado'].forEach(id=>document.getElementById(id).addEventListener('input',renderTabla));
+
+async function openEstado(clave){
+  let e; try{ e=await jsonp('getEstadoCuenta',{clave}); }catch(ex){ if(onAuthError(ex))return; return alert('Error: '+ex); }
+  const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
+  document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
+    <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo</th><th class="num">Mora</th></tr></thead>
+    <tbody>${e.buckets.map(b=>`<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
+      <td class="num">${money(b.monto)}</td><td class="num">${money(b.pagado)}</td>
+      <td class="num">${b.saldo>0.009?money(b.saldo):"<span style='color:var(--ac-ok)'>Pagado</span>"}</td>
+      <td class="num" style="color:var(--ac-coral)">${b.mora>0.009?money(b.mora):'—'}</td></tr>`).join('')}</tbody></table>
+    <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Saldo pendiente</span><b>${money(e.saldo)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Mora (10%)</span><b style="color:var(--ac-coral)">${money(e.mora)}</b></div>
+      ${e.creditoAFavor>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">-${money(e.creditoAFavor)}</b></div>`:''}
+      <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
+        <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoConMora)}</b></div>
+    </div></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="mailEstado('${e.clave}')" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal').classList.remove('show'); }
+async function mailEstado(clave){ try{ const r=await post('enviarEstado',{clave}); alert(r.enviado?'Enviado a '+r.email:'No enviado: '+(r.motivo||'')); }catch(e){ if(!onAuthError(e))alert('Error: '+e); } }
+async function enviar(tipo){ document.getElementById('recorResult').textContent='Enviando…';
+  try{ const r=await post('enviarRecordatorios',{tipo}); document.getElementById('recorResult').innerHTML=`<div class="notice">Enviados: ${r.enviados}. Sin correo: ${(r.sinCorreo||[]).length}.</div>`; }
+  catch(e){ if(!onAuthError(e)) document.getElementById('recorResult').innerHTML='<div class="notice">Error: '+e+'</div>'; }
+}
+
+/* ───────── Propietarios ───────── */
+async function renderProp(){
+  let ps; try{ ps=await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
+  const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
+    document.querySelector('#tblProp tbody').innerHTML=ps.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
+      .map(p=>`<tr><td><b>${p.lote}</b></td><td>${p.residencial}</td><td>${p.nombre}</td>
+      <td>${p.email||'<span class="muted">—</span>'}</td><td>${p.celular||''}</td>
+      <td class="num">${p.lotes}</td><td class="num">${p.cabanas||''}</td><td class="num">${money(p.cuota)}</td></tr>`).join(''); };
+  document.getElementById('pQ').oninput=draw; draw();
+}
+
+/* ───────── Conciliación ───────── */
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.onclick=()=>fileInput.click();
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+fileInput.onchange=e=>handleFile(e.target.files[0]);
+async function handleFile(f){
+  if(!f) return; const res=document.getElementById('concResult'); res.innerHTML='Leyendo archivo…';
+  const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'});
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false});
+  let data; try{ data=await post('conciliarBanco',{rows,filename:f.name}); }
+  catch(e){ if(onAuthError(e))return; res.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  renderConc(data);
+}
+function renderConc(d){
+  const res=document.getElementById('concResult');
+  const rowsHtml=d.pagos.map((p,i)=>{
+    const conf = p.confianza==='alta'?'ok':p.confianza==='media'?'warn':'red';
+    const sel = p.match && !p.variosLotes ? 'checked':'';
+    const cand = (p.candidatos&&p.candidatos.length)
+      ? `<select data-i="${i}" class="candSel">${p.candidatos.map(c=>`<option value="${c.clave}">${c.residencial} · L${c.lote} · ${c.nombre}</option>`).join('')}<option value="">— sin asignar —</option></select>`
+      : (p.match?`${p.residencial||''} · L${p.lote} · ${p.nombre}`:`<span class="muted">${p.pagador||'sin identificar'}</span>`);
+    return `<tr><td><input type="checkbox" class="cchk" data-i="${i}" ${sel}></td>
+      <td>${p.fecha}</td><td class="num">${money(p.monto)}</td><td>${cand}</td>
+      <td><span class="pill ${conf}">${p.confianza}</span></td>
+      <td class="muted" style="max-width:280px;white-space:normal;font-size:.78rem">${p.descripcion}</td></tr>`;
+  }).join('');
+  res.innerHTML=`
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="kpi green"><div class="label">Pagos detectados</div><div class="val">${d.pagosDetectados}</div><div class="hint">${money(d.totalCreditos)}</div></div>
+      <div class="kpi"><div class="label">Con match</div><div class="val">${d.conMatch}</div><div class="hint">listos para consolidar</div></div>
+      <div class="kpi warn"><div class="label">Requieren revisión</div><div class="val">${d.sinMatch}</div><div class="hint">asigna manualmente</div></div>
+      <div class="kpi coral"><div class="label">Duplicados omitidos</div><div class="val">${d.duplicados}</div><div class="hint">ya registrados</div></div>
+    </div>
+    <div class="card"><div class="hd"><h2>Revisar pagos entrantes</h2><div class="spacer" style="flex:1"></div>
+      <label class="muted" style="font-size:.85rem"><input type="checkbox" id="sendMails"> Enviar estado de cuenta al consolidar</label>
+      <button class="btn green" onclick="consolidar()">Consolidar seleccionados</button></div>
+      <div class="bd"><table><thead><tr><th></th><th>Fecha</th><th class="num">Monto</th><th>Cuenta</th><th>Confianza</th><th>Descripción del banco</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table></div></div>
+    ${d.gastos&&d.gastos.length?`<p class="muted" style="margin-top:12px">También ${d.gastos.length} egresos (débitos) por ${money(d.totalGastos)} y ${(d.ignorados||[]).length} créditos que no son cuotas (interés/devoluciones).</p>`:''}`;
+  window.__conc=d;
+}
+async function consolidar(){
+  const d=window.__conc; const sel=[];
+  document.querySelectorAll('.cchk').forEach(ch=>{ if(ch.checked){ const p={...d.pagos[+ch.dataset.i]};
+    const cs=document.querySelector('.candSel[data-i="'+ch.dataset.i+'"]'); if(cs) p.clave=cs.value; if(p.clave) sel.push(p); } });
+  if(!sel.length) return alert('Selecciona al menos un pago con cuenta asignada.');
+  try{ const r=await post('consolidarPagos',{pagos:sel,enviarCorreos:document.getElementById('sendMails').checked});
+    alert('Consolidados: '+r.insertados+' pagos.'); renderDash(); }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
+}
+
+/* Tabs + init */
+document.getElementById('tabs').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  const t=e.target.dataset.tab;
+  ['dash','conc','prop','recor'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  if(t==='prop')renderProp();
+});
+document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });
+boot();
+</script>
+</body>
+</html>

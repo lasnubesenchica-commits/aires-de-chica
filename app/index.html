@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>Aires de Chicá · App</title>
+<link rel="icon" href="../brand/favicon.svg"/>
+<link rel="stylesheet" href="../brand/palette.css"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:var(--ac-font);background:var(--ac-bg);color:var(--ac-ink)}
+header{background:linear-gradient(120deg,#0B7A98,#12A2C4);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
+header img{height:40px;background:#fff;border-radius:8px;padding:4px 6px}
+header h1{font-size:1rem;margin:0} header .sub{font-size:.72rem;opacity:.85}
+header .out{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px 10px;font:inherit}
+.grad{height:4px;background:linear-gradient(90deg,var(--ac-teal),var(--ac-green) 60%,var(--ac-coral))}
+.pad{padding:14px 16px 40px}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid var(--ac-border);border-radius:12px;padding:12px 14px;box-shadow:var(--ac-shadow)}
+.card .label{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ac-muted);font-weight:600}
+.card .val{font-size:1.35rem;font-weight:700;margin-top:2px}
+input{width:100%;padding:11px 14px;border:1px solid var(--ac-border);border-radius:10px;font:inherit;margin-bottom:12px}
+.row{background:#fff;border:1px solid var(--ac-border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;box-shadow:var(--ac-shadow)}
+.row .lote{font-weight:700;min-width:44px} .row .nm{flex:1;min-width:0}
+.row .nm b{display:block;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .row .nm span{font-size:.75rem;color:var(--ac-muted)}
+.row .sal{text-align:right} .row .sal b{font-size:.95rem}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700}
+.pill.ok{background:#e4f5ec;color:var(--ac-ok)} .pill.warn{background:#fbf0dc;color:var(--ac-warn)} .pill.red{background:#fbe6e3;color:var(--ac-danger)}
+.sheet-bg{position:fixed;inset:0;background:rgba(16,48,57,.45);display:none;z-index:40} .sheet-bg.show{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;max-height:86vh;overflow:auto;z-index:41;transform:translateY(100%);transition:.25s} .sheet.show{transform:translateY(0)}
+.sheet .sh{position:sticky;top:0;background:#fff;padding:16px;border-bottom:1px solid var(--ac-border);display:flex;justify-content:space-between;align-items:flex-start}
+.sheet .sb{padding:14px 16px 30px}
+table{width:100%;border-collapse:collapse;font-size:.85rem} td,th{padding:7px 6px;text-align:left}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68rem;color:var(--ac-muted);text-transform:uppercase} tr{border-bottom:1px solid #eef5f8}
+.close{border:0;background:none;font-size:1.5rem;color:var(--ac-muted)}
+.tot{display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:8px}
+/* gate */
+#gate{position:fixed;inset:0;background:var(--ac-bg);display:none;align-items:center;justify-content:center;padding:22px;z-index:100} #gate.show{display:flex}
+.login{background:#fff;border:1px solid var(--ac-border);border-radius:16px;box-shadow:var(--ac-shadow);width:100%;max-width:360px;overflow:hidden}
+.login .lb{padding:24px;text-align:center} .login img{height:60px;margin-bottom:4px} .login h2{margin:6px 0 2px;font-size:1.1rem} .login p{color:var(--ac-muted);font-size:.84rem;margin:0 0 14px}
+.login .btn{width:100%;border:0;border-radius:10px;padding:12px;background:var(--ac-teal);color:#fff;font:inherit;font-weight:600}
+.login .err{color:var(--ac-danger);font-size:.82rem;min-height:16px;margin-top:6px} #app{display:none}
+</style>
+</head>
+<body>
+<div id="gate"><div class="login"><div class="grad"></div><div class="lb">
+  <img src="../brand/logo.png" alt="Aires de Chicá"/>
+  <h2 id="gt">Acceso</h2><p id="gs">Ingresa la contraseña.</p>
+  <form id="gf"><input type="password" id="gp" placeholder="Contraseña"/>
+    <input type="password" id="gp2" placeholder="Repite la contraseña" style="display:none"/>
+    <button class="btn" id="gb" type="submit">Entrar</button><div class="err" id="ge"></div></form>
+</div></div></div>
+
+<div id="app">
+<header><img src="../brand/logo.png" alt="Aires de Chicá"/>
+  <div><h1>Aires de Chicá</h1><div class="sub">Estados de cuenta · 2026</div></div>
+  <button class="out" onclick="logout()">Salir</button></header>
+<div class="grad"></div>
+<div class="pad">
+  <div class="summary" id="summary"></div>
+  <input type="search" id="q" placeholder="Buscar lote o propietario…"/>
+  <div id="list"></div>
+</div>
+<div class="sheet-bg" id="sheetBg" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"><div class="grad"></div><div class="sh" id="sheetHd"></div><div class="sb" id="sheetBd"></div></div>
+</div>
+
+<script>
+const GAS_URL='https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
+let TOKEN=localStorage.getItem('ac_token')||'';
+const money=n=>'B/.'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+function jsonp(action,params={}){return new Promise((res,rej)=>{const cb='__cb'+Math.random().toString(36).slice(2);
+  const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+  const s=document.createElement('script');s.src=GAS_URL+'?'+qs;window[cb]=d=>{delete window[cb];s.remove();d.ok?res(d.data):rej(d.error)};s.onerror=()=>{s.remove();rej('network')};document.body.appendChild(s);});}
+async function post(action,data={}){const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,...data})});const j=await r.json();if(!j.ok)throw j.error;return j.data;}
+function authErr(e){if(String(e)==='no-auth'){TOKEN='';localStorage.removeItem('ac_token');gate('login');return true;}return false;}
+
+let MODE='login';
+function gate(m){MODE=m;document.getElementById('app').style.display='none';document.getElementById('gate').classList.add('show');
+  document.getElementById('gt').textContent=m==='setup'?'Crear contraseña':'Acceso';
+  document.getElementById('gs').textContent=m==='setup'?'Primera vez: define la contraseña.':'Ingresa la contraseña.';
+  document.getElementById('gp2').style.display=m==='setup'?'block':'none';document.getElementById('gb').textContent=m==='setup'?'Crear y entrar':'Entrar';
+  document.getElementById('gp').value='';document.getElementById('gp2').value='';document.getElementById('ge').textContent='';}
+function showApp(){document.getElementById('gate').classList.remove('show');document.getElementById('app').style.display='block';}
+async function boot(){let st;try{st=await jsonp('getAuthState');}catch(e){st={hasPassword:false};}
+  if(!st.hasPassword){gate('setup');return;} if(!TOKEN){gate('login');return;}
+  try{await load();showApp();}catch(e){if(!authErr(e))gate('login');}}
+document.getElementById('gf').addEventListener('submit',async e=>{e.preventDefault();const err=document.getElementById('ge');err.textContent='';
+  const pwd=document.getElementById('gp').value;
+  try{let r; if(MODE==='setup'){if(pwd!==document.getElementById('gp2').value){err.textContent='No coinciden.';return;} r=await post('setPassword',{nueva:pwd});}
+    else{r=await post('verifyPassword',{password:pwd}); if(!r.ok){err.textContent='Contraseña incorrecta.';return;}}
+    TOKEN=r.token;localStorage.setItem('ac_token',TOKEN);await load();showApp();}catch(ex){err.textContent='Error: '+ex;}});
+function logout(){TOKEN='';localStorage.removeItem('ac_token');gate('login');}
+
+let CUENTAS=[];
+const pill=e=>e==='Al día'?'<span class="pill ok">Al día</span>':e==='Pendiente'?'<span class="pill warn">Pendiente</span>':'<span class="pill red">Moroso</span>';
+async function load(){
+  const d=await jsonp('getDashboard'); CUENTAS=d.cuentas;
+  const con=CUENTAS.filter(c=>c.saldoConMora>0.009).length, cartera=CUENTAS.reduce((a,c)=>a+c.saldoConMora,0);
+  document.getElementById('summary').innerHTML=
+    `<div class="card"><div class="label">Por cobrar</div><div class="val" style="color:var(--ac-coral)">${money(cartera)}</div></div>
+     <div class="card"><div class="label">Cuentas con saldo</div><div class="val">${con} / ${CUENTAS.length}</div></div>`;
+  draw();
+}
+function draw(){const q=document.getElementById('q').value.toLowerCase();
+  const rows=CUENTAS.filter(c=>!q||c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q)).sort((a,b)=>b.saldoConMora-a.saldoConMora);
+  document.getElementById('list').innerHTML=rows.map(c=>`<div class="row" onclick="openSheet('${c.clave}')">
+    <div class="lote">${c.lote}</div><div class="nm"><b>${c.nombre}</b><span>${c.residencial}</span></div>
+    <div class="sal"><b>${money(c.saldoConMora)}</b><div>${pill(c.estado)}</div></div></div>`).join('')||'<p class="muted">Sin resultados.</p>';}
+document.getElementById('q').oninput=draw;
+async function openSheet(clave){let e;try{e=await jsonp('getEstadoCuenta',{clave});}catch(ex){if(authErr(ex))return;return alert('Error: '+ex);}
+  const color=e.saldoConMora>0.009?(e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)'):'var(--ac-ok)';
+  document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${e.nombre}</div>
+    <div style="font-size:.78rem;color:var(--ac-muted)">${e.residencial} · Lote ${e.lote} · Cuota ${money(e.cuota)}</div></div><button class="close" onclick="closeSheet()">×</button>`;
+  document.getElementById('sheetBd').innerHTML=`<table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Saldo</th><th class="n">Mora</th></tr></thead>
+    <tbody>${e.buckets.map(b=>`<tr><td>${b.label}</td><td class="n">${money(b.monto)}</td>
+      <td class="n">${b.saldo>0.009?money(b.saldo):'<span style="color:var(--ac-ok)">Pagado</span>'}</td>
+      <td class="n" style="color:var(--ac-coral)">${b.mora>0.009?money(b.mora):'—'}</td></tr>`).join('')}</tbody></table>
+    <div class="tot"><b>SALDO TOTAL</b><b style="color:${color}">${money(e.saldoConMora)}</b></div>
+    <button style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--ac-teal);color:#fff;font:inherit;font-weight:600" onclick="mail('${e.clave}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>`;
+  document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');}
+function closeSheet(){document.getElementById('sheetBg').classList.remove('show');document.getElementById('sheet').classList.remove('show');}
+async function mail(clave){try{const r=await post('enviarEstado',{clave});alert(r.enviado?'Enviado':'No enviado');}catch(e){if(!authErr(e))alert('Error: '+e);}}
+boot();
+</script>
+</body>
+</html>

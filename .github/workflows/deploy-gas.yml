@@ -1,0 +1,26 @@
+name: Deploy Apps Script (Aires de Chicá)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend-aires/**'
+      - 'deploy.config.json'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy GAS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - name: Deploy a Google Apps Script
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: node scripts/deploy-gas.js

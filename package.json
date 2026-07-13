@@ -1,0 +1,8 @@
+{
+  "name": "aires-de-chica",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de estados de cuenta y cobros de mantenimiento — Aires de Chicá",
+  "scripts": { "deploy": "node scripts/deploy-gas.js" },
+  "dependencies": { "googleapis": "^144.0.0" }
+}
