@@ -43,7 +43,54 @@ function ensureSheets() {
     var s = ss.getSheetByName(n);
     if (s && ss.getSheets().length > 1 && s.getLastRow() <= 1) { try { ss.deleteSheet(s); } catch (e) {} }
   });
+  // Forzar formato TEXTO en columnas de lote/clave: evita que Sheets
+  // convierta "6/7", "4/5", etc. en fechas.
+  _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum'], COL_PROP);
+  _forceText(ss.getSheetByName(SH.PAGOS), ['clave', 'lote'], COL_PAGOS);
   return { created: created, sheets: ss.getSheets().map(function (s) { return s.getName(); }) };
+}
+
+function _forceText(sh, names, cols) {
+  if (!sh) return;
+  names.forEach(function (n) {
+    var c = cols.indexOf(n);
+    if (c >= 0) sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+  });
+}
+
+/**
+ * Repara los lotes que Sheets convirtió en fecha (p.ej. "6/7").
+ * Reescribe clave/lote/loteNum como texto desde AC_SEED, sin tocar
+ * correos ni otros campos. Corre una sola vez tras la primera carga.
+ */
+function repararLotes() {
+  ensureSheets();
+  var ss = _ss();
+  var byClave = {};
+  AC_SEED.forEach(function (s) { byClave[s.clave] = s; });
+
+  var shP = ss.getSheetByName(SH.PROP);
+  var pv = shP.getDataRange().getValues(), ph = pv[0];
+  var ci = ph.indexOf('clave'), li = ph.indexOf('lote'), ni = ph.indexOf('loteNum');
+  var arreglados = 0;
+  for (var r = 1; r < pv.length; r++) {
+    var s = byClave[String(pv[r][ci]).trim()];
+    if (!s) continue;
+    if (li >= 0) shP.getRange(r + 1, li + 1).setValue(s.lote);
+    if (ni >= 0) shP.getRange(r + 1, ni + 1).setValue(s.loteNum);
+    arreglados++;
+  }
+
+  var shG = ss.getSheetByName(SH.PAGOS), pagos = 0;
+  if (shG && shG.getLastRow() > 1) {
+    var gv = shG.getDataRange().getValues(), gh = gv[0];
+    var gci = gh.indexOf('clave'), gli = gh.indexOf('lote');
+    for (var g = 1; g < gv.length; g++) {
+      var s2 = byClave[String(gv[g][gci]).trim()];
+      if (s2 && gli >= 0) { shG.getRange(g + 1, gli + 1).setValue(s2.lote); pagos++; }
+    }
+  }
+  return { propietarios: arreglados, pagos: pagos };
 }
 
 function _sheetRows(name) {
@@ -68,8 +115,9 @@ function _sheetRows(name) {
 function getPropietarios() {
   return _sheetRows(SH.PROP).map(function (p) {
     p.clave    = String(p.clave || '').trim();
-    p.lote     = String(p.lote).trim();
-    p.loteNum  = String(p.loteNum || p.lote).trim().toUpperCase().replace(/\s/g, '');
+    // si Sheets coervió el lote a fecha, cae al loteNum (defensa; repararLotes lo corrige de raíz)
+    p.lote     = (p.lote instanceof Date) ? String(p.loteNum || '').trim() : String(p.lote).trim();
+    p.loteNum  = (p.loteNum instanceof Date) ? '' : String(p.loteNum || p.lote).trim().toUpperCase().replace(/\s/g, '');
     p.lotes    = Number(p.lotes) || 1;
     p.cabanas  = Number(p.cabanas) || 0;
     p.cuota    = Number(p.cuota) || (p.lotes * CONFIG.CUOTA_BASE + p.cabanas * CONFIG.CABANA_FEE);
