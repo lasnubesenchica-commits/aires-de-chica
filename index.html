@@ -66,6 +66,23 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
 .drop { border:2px dashed var(--ac-teal-300); border-radius:12px; padding:30px; text-align:center; color:var(--ac-muted); background:#fbfeff; cursor:pointer; }
 .drop.drag { background:var(--ac-teal-50); border-color:var(--ac-teal); }
 .muted { color:var(--ac-muted); }
+/* Opciones */
+.opts-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width:820px){ .opts-grid{grid-template-columns:1fr} }
+.field { margin-bottom:14px; }
+.field label { display:block; font-size:.8rem; font-weight:600; color:var(--ac-muted); margin-bottom:5px; }
+.field .in { display:flex; align-items:center; gap:8px; }
+.field input[type=number], .field input[type=month] { width:100%; padding:9px 12px; border:1px solid var(--ac-border); border-radius:9px; font:inherit; }
+.field .unit { color:var(--ac-muted); font-size:.85rem; white-space:nowrap; }
+.field .help { font-size:.74rem; color:var(--ac-muted); margin-top:4px; }
+.toggle { display:flex; align-items:flex-start; gap:10px; padding:11px 0; border-bottom:1px solid #eef5f8; }
+.toggle:last-child { border-bottom:0; }
+.toggle input { width:18px; height:18px; margin-top:2px; accent-color:var(--ac-teal); }
+.toggle .t-body { flex:1; }
+.toggle .t-body b { font-weight:600; }
+.toggle .t-sub { font-size:.78rem; color:var(--ac-muted); margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.toggle .t-sub input { width:56px; height:auto; margin:0; padding:5px 8px; border:1px solid var(--ac-border); border-radius:7px; }
+.ok-msg { color:var(--ac-ok); font-weight:600; }
 .notice { background:#fff8ef; border:1px solid #f4d9b0; color:#7a4a12; padding:10px 14px; border-radius:10px; font-size:.85rem; }
 /* Login */
 #gate { position:fixed; inset:0; background:var(--ac-bg); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
@@ -113,6 +130,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
     <button data-tab="conc">Conciliación bancaria</button>
     <button data-tab="prop">Propietarios</button>
     <button data-tab="recor">Recordatorios</button>
+    <button data-tab="opts">⚙ Opciones</button>
   </nav>
 
   <section id="tab-dash">
@@ -162,6 +180,11 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         </div>
         <div id="recorResult" style="margin-top:14px"></div>
       </div></div>
+  </section>
+
+  <!-- OPCIONES / ADMIN -->
+  <section id="tab-opts" style="display:none">
+    <div id="optsBody" class="muted">Cargando…</div>
   </section>
 </div>
 
@@ -390,14 +413,77 @@ async function consolidar(){
     alert('Consolidados: '+r.insertados+' pagos.'); renderDash(); }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
 }
 
+/* ───────── Opciones / Admin ───────── */
+let OPTS=null;
+async function renderOpts(){
+  const body=document.getElementById('optsBody'); body.innerHTML='<div class="muted">Cargando…</div>';
+  let d; try{ d=await jsonp('getConfig'); }catch(e){ if(onAuthError(e))return; body.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  OPTS=d; const c=d.config, mon=d.moneda||'B/.';
+  body.innerHTML=`
+    <div class="opts-grid">
+      <div class="card"><div class="hd"><h2>Parámetros de cobro</h2></div><div class="bd" style="padding:18px">
+        <div class="field"><label>Cuota de mantenimiento</label>
+          <div class="in"><input type="number" id="o_cuota" step="0.01" min="0" value="${c.cuotaBase}"><span class="unit">${mon} / lote / mes</span></div></div>
+        <div class="field"><label>Recargo por cabaña</label>
+          <div class="in"><input type="number" id="o_cab" step="0.01" min="0" value="${c.cabanaFee}"><span class="unit">${mon} / cabaña / mes</span></div></div>
+        <div class="field"><label>Recargo por mora</label>
+          <div class="in"><input type="number" id="o_mora" step="0.5" min="0" value="${c.moraPct}"><span class="unit">% mensual</span></div></div>
+        <div class="field"><label>La mora aplica desde</label>
+          <div class="in"><input type="month" id="o_moradesde" value="${c.moraDesde}"></div>
+          <div class="help">Las cuotas anteriores a este mes no generan recargo.</div></div>
+        <div class="help">Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
+      </div></div>
+
+      <div class="card"><div class="hd"><h2>Notificaciones</h2></div><div class="bd" style="padding:18px">
+        <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
+          <div class="t-body"><b>Al registrar un pago</b>
+            <div class="t-sub">Envía el estado de cuenta actualizado al propietario cuando se consolida su pago.</div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_recor" ${c.notifRecordatorio?'checked':''}>
+          <div class="t-body"><b>Recordatorio mensual</b>
+            <div class="t-sub">A todos los que tienen saldo · el día <input type="number" id="o_recordia" min="1" max="28" value="${c.recordatorioDia}"> de cada mes.</div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_avmora" ${c.notifMora?'checked':''}>
+          <div class="t-body"><b>Aviso de mora</b>
+            <div class="t-sub">Solo a morosos con recargo · el día <input type="number" id="o_moradia" min="1" max="28" value="${c.moraDia}"> de cada mes.</div></div></div>
+        <div class="help" style="margin-top:10px">Envíos programados actualmente: <b>${(d.triggers||[]).length? d.triggers.map(t=>t.funcion==='recordatorioMensual'?'Recordatorio':'Aviso de mora').join(', ') : 'ninguno'}</b>.</div>
+      </div></div>
+    </div>
+
+    <div class="card" style="margin-top:16px"><div class="bd" style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <button class="btn green" onclick="guardarOpts()">Guardar cambios</button>
+      <span id="optsMsg" class="muted"></span>
+      <span class="spacer" style="flex:1"></span>
+      <span class="muted" style="font-size:.8rem">Pago a: ${d.banco.banco} · ${d.banco.tipo} Nº ${d.banco.numero} · ${d.banco.nombre}</span>
+    </div></div>`;
+}
+async function guardarOpts(){
+  const msg=document.getElementById('optsMsg'); msg.textContent='Guardando…'; msg.className='muted';
+  const cfg={
+    cuotaBase:+document.getElementById('o_cuota').value,
+    cabanaFee:+document.getElementById('o_cab').value,
+    moraPct:+document.getElementById('o_mora').value,
+    moraDesde:document.getElementById('o_moradesde').value,
+    notifOnPago:document.getElementById('o_onpago').checked,
+    notifRecordatorio:document.getElementById('o_recor').checked,
+    recordatorioDia:+document.getElementById('o_recordia').value,
+    notifMora:document.getElementById('o_avmora').checked,
+    moraDia:+document.getElementById('o_moradia').value
+  };
+  try{
+    const r=await post('guardarConfig',{config:cfg});
+    msg.innerHTML = r.aviso ? '<span class="notice" style="display:inline-block;padding:4px 10px">'+r.aviso+'</span>' : '<span class="ok-msg">✓ Guardado</span>';
+    if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota/mora en los KPIs
+  }catch(e){ if(!onAuthError(e)){ msg.textContent='Error: '+e; } }
+}
+
 /* Tabs + init */
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','prop','recor'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','prop','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
+  if(t==='opts')renderOpts();
 });
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });
 boot();

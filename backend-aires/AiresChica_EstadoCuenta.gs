@@ -16,7 +16,7 @@ function _asOfDate(asOf) {
 }
 
 function _moraDesdeIdx() {
-  var parts = CONFIG.MORA_DESDE.split('-');
+  var parts = String(_cfg().moraDesde).split('-');
   return Number(parts[0]) * 12 + Number(parts[1]); // año*12 + mes(1-12)
 }
 
@@ -36,7 +36,9 @@ function _finDeMes(year, month1) { return new Date(year, month1, 0); } // últim
  */
 function calcEstado(prop, pagosArr, asOf) {
   asOf = _asOfDate(asOf);
-  var cuota = _round2(Number(prop.cuota) || (prop.lotes * CONFIG.CUOTA_BASE + prop.cabanas * CONFIG.CABANA_FEE));
+  var cfg = _cfg();
+  var moraPct = cfg.moraPct / 100;
+  var cuota = cuotaDe(prop);
   var year = CONFIG.ANIO_ACTUAL;
   var mesActual = (asOf.getFullYear() > year) ? 12 : (asOf.getMonth() + 1);
   var moraDesde = _moraDesdeIdx();
@@ -69,7 +71,7 @@ function calcEstado(prop, pagosArr, asOf) {
     if (b.saldo > 0 && idxBucket >= moraDesde && b.tipo === 'cuota') {
       var ml = _mesesAtraso(b.year, b.month, asOf);
       b.mesesAtraso = ml;
-      b.mora = _round2(b.saldo * CONFIG.MORA_PCT * ml);
+      b.mora = _round2(b.saldo * moraPct * ml);
       moraTotal += b.mora;
     }
     if (b.saldo > 0) {

@@ -33,6 +33,9 @@ function estadoCuentaHTML(est) {
   var B = AC_BRAND;
   var color = est.saldoConMora > 0.009 ? (est.diasVencido > 0 ? B.red : B.amber) : B.ok;
   var badge = est.estado;
+  var cfg = _cfg();
+  var _md = String(cfg.moraDesde).split('-');
+  var moraDesdeTxt = (AC_MESES_LARGO[Number(_md[1]) - 1] || '') + ' ' + _md[0];
 
   var filas = est.buckets.map(function (b) {
     var saldoTxt = b.saldo > 0.009 ? _money(b.saldo) : '<span style="color:' + B.ok + '">Pagado</span>';
@@ -92,7 +95,7 @@ function estadoCuentaHTML(est) {
       '<th style="padding:9px 10px;text-align:right">Cuota</th>' +
       '<th style="padding:9px 10px;text-align:right">Pagado</th>' +
       '<th style="padding:9px 10px;text-align:right">Saldo</th>' +
-      '<th style="padding:9px 10px;text-align:right">Mora 10%</th>' +
+      '<th style="padding:9px 10px;text-align:right">Mora ' + cfg.moraPct + '%</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table>' +
 
   // Totales
@@ -100,7 +103,7 @@ function estadoCuentaHTML(est) {
     '<td style="width:55%"></td>' +
     '<td style="vertical-align:top">' +
       _totRow('Saldo pendiente', _money(est.saldo), B.ink, B) +
-      _totRow('Recargo por mora (10%)', _money(est.mora), B.coral, B) +
+      _totRow('Recargo por mora (' + cfg.moraPct + '%)', _money(est.mora), B.coral, B) +
       (est.creditoAFavor > 0.009 ? _totRow('Crédito a favor', '-' + _money(est.creditoAFavor), B.ok, B) : '') +
       '<div style="display:flex;justify-content:space-between;padding:11px 12px;background:' + B.teal50 + ';border-radius:8px;margin-top:6px">' +
         '<span style="font-weight:700">SALDO TOTAL</span>' +
@@ -114,7 +117,7 @@ function estadoCuentaHTML(est) {
     '<div style="font-weight:700;color:' + B.teal700 + ';margin-bottom:4px">Datos para el pago</div>' +
     '<div class="muted">' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO + ' Nº ' + CONFIG.CUENTA_NUM + '</div>' +
     '<div class="muted">A nombre de ' + CONFIG.CUENTA_NOMBRE + '</div>' +
-    '<div class="muted" style="margin-top:6px;font-size:11.5px">Nota: a partir de la cuota de abril 2026 se aplica un recargo del 10% mensual sobre el mes o meses morosos (Reglamento de copropietarios).</div>' +
+    '<div class="muted" style="margin-top:6px;font-size:11.5px">Nota: a partir de la cuota de ' + moraDesdeTxt + ' se aplica un recargo del ' + cfg.moraPct + '% mensual sobre el mes o meses morosos (Reglamento de copropietarios).</div>' +
   '</div>' +
 
   '<div class="muted" style="margin-top:22px;text-align:center;font-size:11px">' +

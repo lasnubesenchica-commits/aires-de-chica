@@ -120,7 +120,7 @@ function getPropietarios() {
     p.loteNum  = (p.loteNum instanceof Date) ? '' : String(p.loteNum || p.lote).trim().toUpperCase().replace(/\s/g, '');
     p.lotes    = Number(p.lotes) || 1;
     p.cabanas  = Number(p.cabanas) || 0;
-    p.cuota    = Number(p.cuota) || (p.lotes * CONFIG.CUOTA_BASE + p.cabanas * CONFIG.CABANA_FEE);
+    p.cuota    = cuotaDe(p); // según la configuración vigente (cuota base + cabañas)
     p.saldo2025 = Number(p.saldo2025) || 0;
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
