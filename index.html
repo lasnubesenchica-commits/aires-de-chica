@@ -58,6 +58,10 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp col.c-cab { width:6%; } #tblProp col.c-air { width:7%; } #tblProp col.c-cuota { width:14%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
+.legend { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
+.legend .pill { margin-left:6px; }
+.legend .pill:first-child { margin-left:0; }
+.legend-txt { color:var(--ac-muted); margin-right:8px; }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -152,6 +156,11 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
         </div></div>
+      <div class="legend">
+        <span class="pill ok">Al día</span><span class="legend-txt">no debe nada (o pagó todo / tiene saldo a favor).</span>
+        <span class="pill warn">Pendiente</span><span class="legend-txt">debe la cuota del mes en curso, aún dentro del plazo (vence a fin de mes) — sin recargo.</span>
+        <span class="pill red">Moroso</span><span class="legend-txt">tiene al menos una cuota vencida; genera mora del 10% desde abril 2026.</span>
+      </div>
       <div class="bd"><table id="tblCuentas"><thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th class="num">Cuota/mes</th>
         <th class="num">Pagado</th><th class="num">Saldo</th><th class="num">Mora</th><th class="num">Total</th>
