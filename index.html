@@ -48,6 +48,16 @@ thead th { color:var(--ac-muted); font-size:.72rem; text-transform:uppercase; le
 tbody tr { border-bottom:1px solid #eef5f8; }
 tbody tr:hover { background:var(--ac-teal-50); }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+/* Directorio de propietarios: compacto para que quepa completo sin scroll horizontal */
+#tblProp { font-size:.8rem; table-layout:fixed; width:100%; }
+#tblProp th, #tblProp td { padding:7px 8px; }
+#tblProp td.email { max-width:0; overflow:hidden; text-overflow:ellipsis; }
+#tblProp col.c-lote { width:7%; } #tblProp col.c-resid { width:11%; }
+#tblProp col.c-prop { width:19%; } #tblProp col.c-mail { width:18%; }
+#tblProp col.c-cel { width:9%; } #tblProp col.c-lotes { width:6%; }
+#tblProp col.c-cab { width:6%; } #tblProp col.c-air { width:7%; } #tblProp col.c-cuota { width:14%; }
+#tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
+#tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -164,7 +174,9 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
   <section id="tab-prop" style="display:none">
     <div class="card"><div class="hd"><h2>Directorio de propietarios</h2><div class="spacer" style="flex:1"></div>
       <input type="search" id="pQ" placeholder="Buscar…"/></div>
-      <div class="bd"><table id="tblProp"><thead><tr>
+      <div class="bd"><table id="tblProp">
+        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-air"><col class="c-cuota"></colgroup>
+        <thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
         <th class="num">Lotes</th><th class="num">Cabañas</th><th style="text-align:center">AirBnB</th><th class="num">Cuota/mes</th>
       </tr></thead><tbody></tbody></table></div></div>
@@ -358,11 +370,11 @@ async function renderProp(){
   const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
     document.querySelector('#tblProp tbody').innerHTML=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
       .map(p=>`<tr${p.airbnb?' style="background:#fff8ef"':''}><td><b>${p.lote}</b></td><td>${p.residencial}</td><td>${p.nombre}</td>
-      <td>${p.email||'<span class="muted">—</span>'}</td><td>${p.celular||''}</td>
+      <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num">${p.lotes}</td><td class="num">${p.cabanas||''}</td>
       <td style="text-align:center"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--ac-coral);cursor:pointer" ${p.airbnb?'checked':''} onchange="toggleAirbnb('${p.clave}',this)"></td>
-      <td class="num"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="global" title="Vacío = usa la cuota global de Opciones" onchange="setCuota('${p.clave}',this)" style="width:84px;text-align:right;padding:5px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-        <div style="font-size:.68rem;color:var(--ac-muted);margin-top:2px">= ${money(p.cuota)}${p.airbnb?' <span style="color:var(--ac-coral);font-weight:700">+AirBnB</span>':(p.cuotaGlobal?' (global)':'')}</div></td></tr>`).join(''); };
+      <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="global" title="Vacío = usa la cuota global de Opciones" onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+        <div class="sub">= ${money(p.cuota)}${p.airbnb?' <span style="color:var(--ac-coral);font-weight:700">+AirBnB</span>':(p.cuotaGlobal?' (global)':'')}</div></td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
 }
 async function toggleAirbnb(clave,el){
