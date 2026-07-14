@@ -151,6 +151,9 @@ function estadoCuentaPDF(estOrClave) {
 function autorizarCorreo() {
   var cfg = _cfg();
   var to = (cfg.modoPrueba && cfg.correoPrueba) ? cfg.correoPrueba : CONFIG.ADMIN_EMAIL;
+  Logger.log('modoPrueba=%s | correoPrueba="%s" | enviosActivos=%s', cfg.modoPrueba, cfg.correoPrueba, cfg.enviosActivos);
+  Logger.log('>>> Enviando correo de prueba a: %s', to);
+  Logger.log('Cuota diaria de correo restante: %s', MailApp.getRemainingDailyQuota());
   MailApp.sendEmail({
     to: to,
     name: CONFIG.NEGOCIO,
@@ -159,6 +162,7 @@ function autorizarCorreo() {
     htmlBody: _emailShell('<p>✅ El permiso de envío de correo quedó autorizado correctamente.</p>' +
       '<p>Ya puedes usar el botón <b>“Enviar por correo”</b> desde el panel.</p>')
   });
+  Logger.log('Enviado. Revisa la bandeja (y spam) de: %s', to);
   return 'Correo de prueba enviado a ' + to + '. Revisa la bandeja (y la carpeta de spam).';
 }
 
