@@ -143,25 +143,29 @@ function estadoCuentaPDF(estOrClave) {
 
 /**
  * Ejecuta esto UNA sola vez en el editor de Apps Script para autorizar el
- * permiso de envío de correo (MailApp). Google mostrará la pantalla de
- * consentimiento; acéptala. Después de eso el botón "Enviar por correo"
- * del panel ya funcionará. Envía un correo de prueba a tu correo de prueba
- * (o al ADMIN_EMAIL si no hay uno configurado).
+ * permiso de envío de correo. Google mostrará la pantalla de consentimiento
+ * (ahora pide acceso a Gmail porque usamos GmailApp); acéptala. Envía un
+ * correo de prueba a tu correo de prueba (o al ADMIN_EMAIL si no hay uno).
+ *
+ * IMPORTANTE: usamos GmailApp (no MailApp) porque el correo sale por el mismo
+ * camino que un correo enviado a mano desde Gmail. En cuentas de Workspace
+ * nuevas, Gmail RECHAZA el correo de MailApp (Apps Script) pero SÍ acepta el
+ * de GmailApp. Verificado con el Email Log Search.
  */
 function autorizarCorreo() {
   var cfg = _cfg();
   var to = (cfg.modoPrueba && cfg.correoPrueba) ? cfg.correoPrueba : CONFIG.ADMIN_EMAIL;
   Logger.log('modoPrueba=%s | correoPrueba="%s" | enviosActivos=%s', cfg.modoPrueba, cfg.correoPrueba, cfg.enviosActivos);
-  Logger.log('>>> Enviando correo de prueba a: %s', to);
+  Logger.log('>>> Enviando correo de prueba (GmailApp) a: %s', to);
   Logger.log('Cuota diaria de correo restante: %s', MailApp.getRemainingDailyQuota());
-  MailApp.sendEmail({
-    to: to,
-    name: CONFIG.NEGOCIO,
-    replyTo: CONFIG.REPLY_TO,
-    subject: 'Prueba de autorización — ' + CONFIG.NEGOCIO,
-    htmlBody: _emailShell('<p>✅ El permiso de envío de correo quedó autorizado correctamente.</p>' +
-      '<p>Ya puedes usar el botón <b>“Enviar por correo”</b> desde el panel.</p>')
-  });
+  GmailApp.sendEmail(to, 'Prueba de autorización — ' + CONFIG.NEGOCIO,
+    'El permiso de envío de correo quedó autorizado correctamente.',
+    {
+      name: CONFIG.NEGOCIO,
+      replyTo: CONFIG.REPLY_TO,
+      htmlBody: _emailShell('<p>✅ El permiso de envío de correo quedó autorizado correctamente.</p>' +
+        '<p>Ya puedes usar el botón <b>“Enviar por correo”</b> desde el panel.</p>')
+    });
   Logger.log('Enviado. Revisa la bandeja (y spam) de: %s', to);
   return 'Correo de prueba enviado a ' + to + '. Revisa la bandeja (y la carpeta de spam).';
 }
@@ -191,11 +195,11 @@ function enviarEstadoCuenta(clave) {
       '<p style="margin-top:14px">Puede realizar su pago a:<br>' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO +
       ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '')
   );
-  MailApp.sendEmail({
-    to: destino,
-    replyTo: CONFIG.REPLY_TO,
+  // GmailApp (no MailApp): sale por el camino normal de Gmail, que las cuentas
+  // nuevas de Workspace sí entregan (MailApp era rechazado por Gmail).
+  GmailApp.sendEmail(destino, asunto, 'Adjuntamos su estado de cuenta de mantenimiento. Ver la versión con formato en su cliente de correo.', {
     name: CONFIG.NEGOCIO,
-    subject: asunto,
+    replyTo: CONFIG.REPLY_TO,
     htmlBody: cuerpo,
     attachments: [pdf]
   });
