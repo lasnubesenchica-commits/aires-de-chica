@@ -141,6 +141,27 @@ function estadoCuentaPDF(estOrClave) {
   return blob.setName(nombre);
 }
 
+/**
+ * Ejecuta esto UNA sola vez en el editor de Apps Script para autorizar el
+ * permiso de envío de correo (MailApp). Google mostrará la pantalla de
+ * consentimiento; acéptala. Después de eso el botón "Enviar por correo"
+ * del panel ya funcionará. Envía un correo de prueba a tu correo de prueba
+ * (o al ADMIN_EMAIL si no hay uno configurado).
+ */
+function autorizarCorreo() {
+  var cfg = _cfg();
+  var to = (cfg.modoPrueba && cfg.correoPrueba) ? cfg.correoPrueba : CONFIG.ADMIN_EMAIL;
+  MailApp.sendEmail({
+    to: to,
+    name: CONFIG.NEGOCIO,
+    replyTo: CONFIG.REPLY_TO,
+    subject: 'Prueba de autorización — ' + CONFIG.NEGOCIO,
+    htmlBody: _emailShell('<p>✅ El permiso de envío de correo quedó autorizado correctamente.</p>' +
+      '<p>Ya puedes usar el botón <b>“Enviar por correo”</b> desde el panel.</p>')
+  });
+  return 'Correo de prueba enviado a ' + to + '. Revisa la bandeja (y la carpeta de spam).';
+}
+
 /* ─────────────── correos ─────────────── */
 
 function enviarEstadoCuenta(clave) {
