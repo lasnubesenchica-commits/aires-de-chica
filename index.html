@@ -383,7 +383,11 @@ async function renderProp(){
       <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num">${p.lotes}</td>
       <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-      <td class="num"><input type="number" step="0.01" value="${p.saldo2025||''}" placeholder="0" title="Saldo inicial 2025. Positivo = deuda arrastrada; negativo = crédito a favor." onchange="setSaldo('${p.clave}',this)" style="width:100%;max-width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}"></td>
+      <td class="num"><input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" title="Monto del saldo inicial 2025" onchange="setSaldo('${p.clave}',this)" style="width:100%;max-width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}">
+        <select onchange="setSaldo('${p.clave}',this)" title="¿Es deuda que arrastra, o crédito a favor?" style="width:100%;max-width:84px;margin-top:3px;padding:3px 4px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.7rem;${p.saldo2025<0?'color:var(--ac-ok)':'color:var(--ac-muted)'}">
+          <option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option>
+          <option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option>
+        </select></td>
       <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
         <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
@@ -398,13 +402,17 @@ async function setCabanas(clave,el){
   finally{ el.disabled=false; }
 }
 async function setSaldo(clave,el){
-  el.disabled=true;
-  try{ const r=await post('setPropSaldo2025',{clave,saldo2025:el.value});
+  const td=el.closest('td');
+  const amt=Math.abs(+(td.querySelector('input').value)||0);
+  const tipo=td.querySelector('select').value;      // 'debe' | 'favor'
+  const signed=tipo==='favor'?-amt:amt;             // el signo se guarda por dentro
+  td.querySelectorAll('input,select').forEach(x=>x.disabled=true);
+  try{ const r=await post('setPropSaldo2025',{clave,saldo2025:signed});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.saldo2025=r.saldo2025; }
-    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja (color)
+    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja (color/tipo)
     if(typeof renderDash==='function') renderDash(); // recalcula estados de cuenta
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ el.disabled=false; }
+  finally{ td.querySelectorAll('input,select').forEach(x=>x.disabled=false); }
 }
 async function setCuota(clave,el){
   el.disabled=true;
