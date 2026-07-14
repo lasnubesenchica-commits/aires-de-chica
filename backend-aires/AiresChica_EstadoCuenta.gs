@@ -43,21 +43,28 @@ function calcEstado(prop, pagosArr, asOf) {
   var mesActual = (asOf.getFullYear() > year) ? 12 : (asOf.getMonth() + 1);
   var moraDesde = _moraDesdeIdx();
 
+  // saldo inicial 2025: positivo = deuda arrastrada; negativo = crédito a favor.
+  var saldo2025 = _round2(Number(prop.saldo2025) || 0);
+  var deuda2025 = saldo2025 > 0 ? saldo2025 : 0;
+  var credito2025 = saldo2025 < 0 ? -saldo2025 : 0;
+
   // 1) buckets facturados, del más antiguo al más nuevo
   var buckets = [];
-  if (Number(prop.saldo2025) > 0) {
-    buckets.push({ label: 'Saldo 2025', year: 2025, month: 12, monto: _round2(prop.saldo2025), tipo: 'saldo2025' });
+  if (deuda2025 > 0) {
+    buckets.push({ label: 'Saldo 2025', year: 2025, month: 12, monto: deuda2025, tipo: 'saldo2025' });
   }
   for (var m = 1; m <= mesActual; m++) {
     buckets.push({ label: AC_MESES_LARGO[m - 1], year: year, month: m, monto: cuota, tipo: 'cuota' });
   }
 
-  // 2) total pagado y aplicación en cascada
+  // 2) total pagado y aplicación en cascada.
+  //    El crédito a favor de 2025 se suma al dinero disponible y cubre las
+  //    cuotas más antiguas primero (se va consumiendo mes a mes).
   var totalPagado = 0;
   (pagosArr || []).forEach(function (p) { totalPagado += Number(p.monto) || 0; });
   totalPagado = _round2(totalPagado);
 
-  var rem = totalPagado, facturado = 0, moraTotal = 0, saldoTotal = 0;
+  var rem = _round2(totalPagado + credito2025), facturado = 0, moraTotal = 0, saldoTotal = 0;
   var oldestUnpaid = null;
   buckets.forEach(function (b) {
     facturado += b.monto;
@@ -109,8 +116,8 @@ function calcEstado(prop, pagosArr, asOf) {
     var d = new Date(p.fecha);
     if (d.getFullYear() === year) pagosMes[d.getMonth() + 1] = _round2((pagosMes[d.getMonth() + 1] || 0) + (Number(p.monto) || 0));
   });
-  var mensual = [], acum = _round2(Number(prop.saldo2025) || 0);
-  if (acum > 0) mensual.push({ label: 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum });
+  var mensual = [], acum = saldo2025;
+  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum });
   for (var mm = 1; mm <= mesActual; mm++) {
     var pg = _round2(pagosMes[mm] || 0);
     acum = _round2(acum + cuota - pg);

@@ -186,6 +186,25 @@ function setPropCabanas(clave, n) {
   throw new Error('No existe la cuenta ' + clave);
 }
 
+// Fija el saldo inicial 2025 de un propietario. Positivo = deuda arrastrada;
+// negativo = crédito a favor (se irá aplicando a las cuotas mes a mes).
+function setPropSaldo2025(clave, valor) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), si = header.indexOf('saldo2025');
+  if (ci < 0 || si < 0) throw new Error('No se encontró la columna clave/saldo2025.');
+  var v = _round2(Number(valor) || 0); // puede ser negativo (crédito a favor)
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, si + 1).setValue(v);
+      var prop = _findProp(clave);
+      return { ok: true, clave: clave, saldo2025: v, cuota: prop ? prop.cuota : null };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
 /**
  * Migración: convierte las cuotas fijas que sólo codificaban el recargo por
  * cabaña en cuotas calculadas (base + 30%/cabaña). Limpia cuotaMensual cuando

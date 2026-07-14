@@ -52,10 +52,10 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp { font-size:.8rem; table-layout:fixed; width:100%; }
 #tblProp th, #tblProp td { padding:7px 8px; }
 #tblProp td.email { max-width:0; overflow:hidden; text-overflow:ellipsis; }
-#tblProp col.c-lote { width:8%; } #tblProp col.c-resid { width:13%; }
-#tblProp col.c-prop { width:21%; } #tblProp col.c-mail { width:20%; }
-#tblProp col.c-cel { width:10%; } #tblProp col.c-lotes { width:7%; }
-#tblProp col.c-cab { width:8%; } #tblProp col.c-cuota { width:13%; }
+#tblProp col.c-lote { width:7%; } #tblProp col.c-resid { width:10%; }
+#tblProp col.c-prop { width:16%; } #tblProp col.c-mail { width:15%; }
+#tblProp col.c-cel { width:9%; } #tblProp col.c-lotes { width:6%; }
+#tblProp col.c-cab { width:8%; } #tblProp col.c-saldo { width:13%; } #tblProp col.c-cuota { width:16%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -184,10 +184,10 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
     <div class="card"><div class="hd"><h2>Directorio de propietarios</h2><div class="spacer" style="flex:1"></div>
       <input type="search" id="pQ" placeholder="Buscar…"/></div>
       <div class="bd"><table id="tblProp">
-        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-cuota"></colgroup>
+        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-cuota"></colgroup>
         <thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
-        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num">Cuota/mes</th>
+        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Positivo = deuda arrastrada de 2025; negativo = crédito a favor">Saldo 2025</th><th class="num">Cuota/mes</th>
       </tr></thead><tbody></tbody></table></div></div>
   </section>
 
@@ -383,6 +383,7 @@ async function renderProp(){
       <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num">${p.lotes}</td>
       <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
+      <td class="num"><input type="number" step="0.01" value="${p.saldo2025||''}" placeholder="0" title="Saldo inicial 2025. Positivo = deuda arrastrada; negativo = crédito a favor." onchange="setSaldo('${p.clave}',this)" style="width:100%;max-width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}"></td>
       <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
         <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
@@ -393,6 +394,15 @@ async function setCabanas(clave,el){
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.cabanas=r.cabanas; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
     document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota en KPIs/tabla
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ el.disabled=false; }
+}
+async function setSaldo(clave,el){
+  el.disabled=true;
+  try{ const r=await post('setPropSaldo2025',{clave,saldo2025:el.value});
+    const p=PROPS.find(x=>x.clave===clave); if(p){ p.saldo2025=r.saldo2025; }
+    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja (color)
+    if(typeof renderDash==='function') renderDash(); // recalcula estados de cuenta
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ el.disabled=false; }
 }
