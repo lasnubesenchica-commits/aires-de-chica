@@ -144,11 +144,16 @@ function estadoCuentaPDF(estOrClave) {
 /* ─────────────── correos ─────────────── */
 
 function enviarEstadoCuenta(clave) {
-  if (!_cfg().enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
+  var cfg = _cfg();
+  if (!cfg.enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
   var est = getEstadoCuentaByKey(clave);
-  if (!est.email) return { enviado: false, motivo: 'Propietario sin correo', clave: clave, lote: est.lote };
+  // Modo prueba: todo correo se redirige a la dirección de prueba (sin avisar a los propietarios).
+  var prueba = !!(cfg.modoPrueba && cfg.correoPrueba);
+  var destino = prueba ? cfg.correoPrueba : est.email;
+  if (!destino) return { enviado: false, motivo: 'Propietario sin correo', clave: clave, lote: est.lote };
   var pdf = estadoCuentaPDF(est);
-  var asunto = 'Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  var asunto = (prueba ? '[PRUEBA→' + est.email + '] ' : '') +
+    'Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
   var saldoTxt = est.saldoConMora > 0.009
     ? 'Su saldo pendiente es <b style="color:' + AC_BRAND.coral + '">' + _money(est.saldoConMora) + '</b>' +
       (est.mora > 0.009 ? ' (incluye ' + _money(est.mora) + ' de mora)' : '') + '.'
@@ -162,14 +167,14 @@ function enviarEstadoCuenta(clave) {
       ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '')
   );
   MailApp.sendEmail({
-    to: est.email,
+    to: destino,
     replyTo: CONFIG.REPLY_TO,
     name: CONFIG.NEGOCIO,
     subject: asunto,
     htmlBody: cuerpo,
     attachments: [pdf]
   });
-  return { enviado: true, clave: clave, lote: est.lote, email: est.email, saldo: est.saldoConMora };
+  return { enviado: true, clave: clave, lote: est.lote, email: destino, prueba: prueba, destinatarioReal: est.email, saldo: est.saldoConMora };
 }
 
 function enviarRecordatorios(tipo, lotes) {

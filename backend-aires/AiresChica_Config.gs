@@ -22,6 +22,8 @@ function _cfgDefaults() {
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
     airbnbPct:         30,                    // % de incremento sobre la cuota para lotes con AirBnB
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
+    modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
+    correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
     notifOnPago:       true,
     notifRecordatorio: false,
     recordatorioDia:   1,
@@ -76,6 +78,9 @@ function guardarConfig(nueva) {
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
   clean.enviosActivos = !!clean.enviosActivos;
+  clean.modoPrueba = !!clean.modoPrueba;
+  clean.correoPrueba = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(clean.correoPrueba || '').trim())
+    ? String(clean.correoPrueba).trim() : '';
   clean.notifOnPago = !!clean.notifOnPago;
   clean.notifRecordatorio = !!clean.notifRecordatorio;
   clean.notifMora = !!clean.notifMora;

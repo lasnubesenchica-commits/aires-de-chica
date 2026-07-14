@@ -58,10 +58,10 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp col.c-cab { width:6%; } #tblProp col.c-air { width:7%; } #tblProp col.c-cuota { width:14%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
-.legend { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
-.legend .pill { margin-left:6px; }
-.legend .pill:first-child { margin-left:0; }
-.legend-txt { color:var(--ac-muted); margin-right:8px; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
+.legend-item { display:flex; align-items:baseline; gap:7px; }
+.legend-item .pill { flex:none; }
+.legend-txt { color:var(--ac-muted); }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -157,9 +157,9 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
         </div></div>
       <div class="legend">
-        <span class="pill ok">Al día</span><span class="legend-txt">no debe nada (o pagó todo / tiene saldo a favor).</span>
-        <span class="pill warn">Pendiente</span><span class="legend-txt">debe la cuota del mes en curso, aún dentro del plazo (vence a fin de mes) — sin recargo.</span>
-        <span class="pill red">Moroso</span><span class="legend-txt">tiene al menos una cuota vencida; genera mora del 10% desde abril 2026.</span>
+        <span class="legend-item"><span class="pill ok">Al día</span><span class="legend-txt">no debe nada (o pagó todo / tiene saldo a favor).</span></span>
+        <span class="legend-item"><span class="pill warn">Pendiente</span><span class="legend-txt">debe la cuota del mes en curso, aún dentro del plazo (vence a fin de mes) — sin recargo.</span></span>
+        <span class="legend-item"><span class="pill red">Moroso</span><span class="legend-txt">tiene al menos una cuota vencida; genera mora del 10% desde abril 2026.</span></span>
       </div>
       <div class="bd"><table id="tblCuentas"><thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th class="num">Cuota/mes</th>
@@ -366,7 +366,8 @@ function _renderEstado(e){
   document.getElementById('modal').classList.add('show');
 }
 function closeModal(){ document.getElementById('modal').classList.remove('show'); }
-async function mailEstado(clave){ try{ const r=await post('enviarEstado',{clave}); alert(r.enviado?'Enviado a '+r.email:'No enviado: '+(r.motivo||'')); }catch(e){ if(!onAuthError(e))alert('Error: '+e); } }
+async function mailEstado(clave){ try{ const r=await post('enviarEstado',{clave});
+  alert(r.enviado?(r.prueba?'🧪 Modo prueba: enviado a '+r.email+' (en real iría a '+(r.destinatarioReal||'—')+')':'Enviado a '+r.email):'No enviado: '+(r.motivo||'')); }catch(e){ if(!onAuthError(e))alert('Error: '+e); } }
 async function enviar(tipo){ document.getElementById('recorResult').textContent='Enviando…';
   try{ const r=await post('enviarRecordatorios',{tipo}); document.getElementById('recorResult').innerHTML=`<div class="notice">Enviados: ${r.enviados}. Sin correo: ${(r.sinCorreo||[]).length}.</div>`; }
   catch(e){ if(!onAuthError(e)) document.getElementById('recorResult').innerHTML='<div class="notice">Error: '+e+'</div>'; }
@@ -487,6 +488,13 @@ async function renderOpts(){
             <div class="t-body"><b>${c.enviosActivos?'✅ Envío de correos ACTIVADO':'⏸ Envío de correos PAUSADO (modo prueba)'}</b>
               <div class="t-sub">Interruptor maestro. Con esto apagado <b>no sale ningún correo</b> por ninguna vía: ni botones, ni al consolidar, ni programados. Actívalo solo cuando estés seguro.</div></div></label>
         </div>
+        <div style="padding:11px 13px;border-radius:10px;margin-bottom:12px;background:${c.modoPrueba?'#e8f6fa':'#f7fbfc'};border:1px solid var(--ac-border)">
+          <label class="toggle" style="border:0;padding:0;cursor:pointer"><input type="checkbox" id="o_prueba" ${c.modoPrueba?'checked':''}>
+            <div class="t-body"><b>🧪 Modo prueba</b>
+              <div class="t-sub">Mientras esté activo, <b>todos</b> los correos (incluido "Enviar por correo") se redirigen a la dirección de abajo. A los propietarios <b>no</b> les llega nada. Ideal para probarte a ti mismo.</div></div></label>
+          <div class="field" style="margin-top:10px"><label>Correo de prueba</label>
+            <div class="in"><input type="email" id="o_correoprueba" placeholder="tu-correo@ejemplo.com" value="${c.correoPrueba||''}" style="min-width:220px"></div></div>
+        </div>
         <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
           <div class="t-body"><b>Al registrar un pago</b>
             <div class="t-sub">Envía el estado de cuenta actualizado al propietario cuando se consolida su pago.</div></div></div>
@@ -516,6 +524,8 @@ async function guardarOpts(){
     airbnbPct:+document.getElementById('o_airbnb').value,
     moraDesde:document.getElementById('o_moradesde').value,
     enviosActivos:document.getElementById('o_maestro').checked,
+    modoPrueba:document.getElementById('o_prueba').checked,
+    correoPrueba:document.getElementById('o_correoprueba').value.trim(),
     notifOnPago:document.getElementById('o_onpago').checked,
     notifRecordatorio:document.getElementById('o_recor').checked,
     recordatorioDia:+document.getElementById('o_recordia').value,
