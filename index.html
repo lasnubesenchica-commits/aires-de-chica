@@ -52,10 +52,10 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp { font-size:.8rem; table-layout:fixed; width:100%; }
 #tblProp th, #tblProp td { padding:7px 8px; }
 #tblProp td.email { max-width:0; overflow:hidden; text-overflow:ellipsis; }
-#tblProp col.c-lote { width:7%; } #tblProp col.c-resid { width:10%; }
-#tblProp col.c-prop { width:16%; } #tblProp col.c-mail { width:15%; }
-#tblProp col.c-cel { width:9%; } #tblProp col.c-lotes { width:6%; }
-#tblProp col.c-cab { width:8%; } #tblProp col.c-saldo { width:13%; } #tblProp col.c-cuota { width:16%; }
+#tblProp col.c-lote { width:6%; } #tblProp col.c-resid { width:9%; }
+#tblProp col.c-prop { width:14%; } #tblProp col.c-mail { width:13%; }
+#tblProp col.c-cel { width:8%; } #tblProp col.c-lotes { width:5%; }
+#tblProp col.c-cab { width:7%; } #tblProp col.c-saldo { width:13%; } #tblProp col.c-ingreso { width:10%; } #tblProp col.c-cuota { width:15%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -184,10 +184,10 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
     <div class="card"><div class="hd"><h2>Directorio de propietarios</h2><div class="spacer" style="flex:1"></div>
       <input type="search" id="pQ" placeholder="Buscar…"/></div>
       <div class="bd"><table id="tblProp">
-        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-cuota"></colgroup>
+        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-ingreso"><col class="c-cuota"></colgroup>
         <thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
-        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Positivo = deuda arrastrada de 2025; negativo = crédito a favor">Saldo 2025</th><th class="num">Cuota/mes</th>
+        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Deuda arrastrada o crédito a favor de 2025">Saldo 2025</th><th title="Mes en que el propietario empieza a pagar cuota (si compró este año)">Ingreso</th><th class="num">Cuota/mes</th>
       </tr></thead><tbody></tbody></table></div></div>
   </section>
 
@@ -345,7 +345,7 @@ function openEstado(clave){
 function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
-    <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}</div></div>`;
+    <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   document.getElementById('modalBd').innerHTML=`
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo acum.</th></tr></thead>
     <tbody>${e.mensual.map(b=>`<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
@@ -388,6 +388,10 @@ async function renderProp(){
           <option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option>
           <option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option>
         </select></td>
+      <td><select onchange="setInicio('${p.clave}',this)" title="Mes en que empieza a pagar cuota" style="width:100%;max-width:104px;padding:4px 4px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.72rem">
+        <option value="">Todo el año</option>
+        ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('')}
+      </select></td>
       <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
         <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td></tr>`).join(''); };
   document.getElementById('pQ').oninput=draw; draw();
@@ -413,6 +417,15 @@ async function setSaldo(clave,el){
     if(typeof renderDash==='function') renderDash(); // recalcula estados de cuenta
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ td.querySelectorAll('input,select').forEach(x=>x.disabled=false); }
+}
+async function setInicio(clave,el){
+  el.disabled=true;
+  try{ const r=await post('setPropInicio',{clave,inicio:el.value});
+    const p=PROPS.find(x=>x.clave===clave); if(p){ p.inicioCobro=r.inicioCobro; }
+    document.getElementById('pQ').dispatchEvent(new Event('input'));
+    if(typeof renderDash==='function') renderDash(); // recalcula cuotas facturadas
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ el.disabled=false; }
 }
 async function setCuota(clave,el){
   el.disabled=true;

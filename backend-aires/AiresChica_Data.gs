@@ -18,7 +18,7 @@ var SH = {
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
-                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual'];
+                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual','inicioCobro'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
                  'mesAplicado','notas','creado'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
@@ -46,9 +46,10 @@ function ensureSheets() {
   // Migración: asegurar columnas nuevas en Propietarios (sheets ya creados).
   _ensureColumn(ss.getSheetByName(SH.PROP), 'airbnb');
   _ensureColumn(ss.getSheetByName(SH.PROP), 'cuotaMensual');
-  // Forzar formato TEXTO en columnas de lote/clave: evita que Sheets
-  // convierta "6/7", "4/5", etc. en fechas.
-  _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum'], COL_PROP);
+  _ensureColumn(ss.getSheetByName(SH.PROP), 'inicioCobro');
+  // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
+  // convierta "6/7", "2026-05", etc. en fechas.
+  _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
   _forceText(ss.getSheetByName(SH.PAGOS), ['clave', 'lote'], COL_PAGOS);
   return { created: created, sheets: ss.getSheets().map(function (s) { return s.getName(); }) };
 }
@@ -139,6 +140,10 @@ function getPropietarios() {
     p.cuotaMensual = Number(p.cuotaMensual) || 0; // 0 = cuota calculada (base + cabañas)
     p.cuota    = cuotaDe(p); // cuota fija manual, o base + 30% por cabaña
     p.cuotaGlobal = !(p.cuotaMensual > 0); // true = cuota calculada automáticamente
+    // inicio de cobro: 'YYYY-MM' del mes en que empieza a pagar (vacío = todo el año)
+    p.inicioCobro = (p.inicioCobro instanceof Date)
+      ? Utilities.formatDate(p.inicioCobro, CONFIG.TZ, 'yyyy-MM')
+      : String(p.inicioCobro || '').trim();
     p.saldo2025 = Number(p.saldo2025) || 0;
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
@@ -200,6 +205,25 @@ function setPropSaldo2025(clave, valor) {
       sh.getRange(r + 1, si + 1).setValue(v);
       var prop = _findProp(clave);
       return { ok: true, clave: clave, saldo2025: v, cuota: prop ? prop.cuota : null };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
+// Fija el mes de inicio de cobro ('YYYY-MM') de un propietario. Vacío = todo el
+// año. El estado de cuenta sólo factura cuotas a partir de ese mes.
+function setPropInicio(clave, inicio) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), ii = header.indexOf('inicioCobro');
+  if (ci < 0 || ii < 0) throw new Error('No se encontró la columna clave/inicioCobro.');
+  var v = /^\d{4}-\d{2}$/.test(String(inicio || '')) ? String(inicio) : '';
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, ii + 1).setValue(v);
+      var prop = _findProp(clave);
+      return { ok: true, clave: clave, inicioCobro: v, cuota: prop ? prop.cuota : null };
     }
   }
   throw new Error('No existe la cuenta ' + clave);
@@ -329,7 +353,7 @@ function seedInicial(force) {
   var filasProp = AC_SEED.map(function (s) {
     return [s.clave, s.residencial, s.lote, s.loteNum, s.nombre, s.email, s.celular,
             s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || '', '',
-            (Number(s.cuotaMensual) > 0 ? _round2(s.cuotaMensual) : '')];
+            (Number(s.cuotaMensual) > 0 ? _round2(s.cuotaMensual) : ''), (s.inicioCobro || '')];
   });
   shP.getRange(2, 1, filasProp.length, COL_PROP.length).setValues(filasProp);
 

@@ -48,12 +48,22 @@ function calcEstado(prop, pagosArr, asOf) {
   var deuda2025 = saldo2025 > 0 ? saldo2025 : 0;
   var credito2025 = saldo2025 < 0 ? -saldo2025 : 0;
 
+  // mes en que empieza a pagar cuota (compró el lote este año).
+  //   vacío -> paga todo el año (mes 1); >año actual -> aún no paga (13).
+  var mesInicio = 1;
+  if (prop.inicioCobro) {
+    var _ic = String(prop.inicioCobro).split('-');
+    var _iy = Number(_ic[0]), _im = Number(_ic[1]);
+    if (_iy === year) mesInicio = Math.min(12, Math.max(1, _im || 1));
+    else if (_iy > year) mesInicio = 13;
+  }
+
   // 1) buckets facturados, del más antiguo al más nuevo
   var buckets = [];
   if (deuda2025 > 0) {
     buckets.push({ label: 'Saldo 2025', year: 2025, month: 12, monto: deuda2025, tipo: 'saldo2025' });
   }
-  for (var m = 1; m <= mesActual; m++) {
+  for (var m = mesInicio; m <= mesActual; m++) {
     buckets.push({ label: AC_MESES_LARGO[m - 1], year: year, month: m, monto: cuota, tipo: 'cuota' });
   }
 
@@ -118,7 +128,7 @@ function calcEstado(prop, pagosArr, asOf) {
   });
   var mensual = [], acum = saldo2025;
   if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum });
-  for (var mm = 1; mm <= mesActual; mm++) {
+  for (var mm = mesInicio; mm <= mesActual; mm++) {
     var pg = _round2(pagosMes[mm] || 0);
     acum = _round2(acum + cuota - pg);
     mensual.push({ label: AC_MESES_LARGO[mm - 1], cuota: cuota, pagado: pg, saldo: acum });
@@ -129,6 +139,8 @@ function calcEstado(prop, pagosArr, asOf) {
     residencial: prop.residencial, nombre: prop.nombre,
     email: prop.email, celular: prop.celular,
     cuota: cuota, lotes: prop.lotes, cabanas: prop.cabanas, airbnb: !!prop.airbnb,
+    inicioCobro: prop.inicioCobro || '',
+    cuotaMes: (mesInicio <= mesActual ? cuota : 0), // 0 si aún no empieza a pagar
     buckets: buckets, mensual: mensual,
     facturado: _round2(facturado),
     pagado: totalPagado,
@@ -189,8 +201,8 @@ function buildDashboard(asOf) {
     if (e.diasVencido > 0) morosos++;               // cuota(s) vencida(s)
     else if (e.saldoConMora > 0.009) pendientes++;  // sólo el mes en curso, aún no vencido
     else alDia++;
-    // recaudación del mes en curso
-    facturadoMes += e.cuota;
+    // recaudación del mes en curso (excluye a quien aún no empieza a pagar)
+    facturadoMes += e.cuotaMes;
   });
 
   // pagado del mes en curso (por fecha de pago)
@@ -248,6 +260,7 @@ function buildDashboard(asOf) {
     cuentas: cuentas.map(function (e) {
       return { clave: e.clave, lote: e.lote, loteNum: e.loteNum, residencial: e.residencial, nombre: e.nombre, email: e.email,
                celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas, airbnb: e.airbnb,
+               inicioCobro: e.inicioCobro,
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
