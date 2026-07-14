@@ -53,9 +53,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp th, #tblProp td { padding:7px 8px; }
 #tblProp td.email { max-width:0; overflow:hidden; text-overflow:ellipsis; }
 #tblProp col.c-lote { width:6%; } #tblProp col.c-resid { width:9%; }
-#tblProp col.c-prop { width:14%; } #tblProp col.c-mail { width:12%; }
+#tblProp col.c-prop { width:13%; } #tblProp col.c-mail { width:12%; }
 #tblProp col.c-cel { width:8%; } #tblProp col.c-lotes { width:5%; }
-#tblProp col.c-cab { width:6%; } #tblProp col.c-saldo { width:12%; } #tblProp col.c-ingreso { width:13%; } #tblProp col.c-cuota { width:15%; }
+#tblProp col.c-cab { width:6%; } #tblProp col.c-saldo { width:16%; } #tblProp col.c-ingreso { width:10%; } #tblProp col.c-cuota { width:15%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -383,9 +383,9 @@ async function renderProp(){
       <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num">${p.lotes}</td>
       <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-      <td class="num"><div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-        <input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" title="Monto del saldo inicial 2025" onchange="setSaldo('${p.clave}',this)" style="width:82px;max-width:100%;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}">
-        <select onchange="setSaldo('${p.clave}',this)" title="¿Es deuda que arrastra, o crédito a favor?" style="width:82px;max-width:100%;padding:3px 4px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.7rem;${p.saldo2025<0?'color:var(--ac-ok)':'color:var(--ac-muted)'}">
+      <td class="num"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+        <input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" title="Monto del saldo inicial 2025" onchange="setSaldo('${p.clave}',this)" style="width:60px;text-align:right;padding:5px 5px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}">
+        <select onchange="setSaldo('${p.clave}',this)" title="¿Es deuda que arrastra, o crédito a favor?" style="width:74px;padding:4px 3px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.7rem;${p.saldo2025<0?'color:var(--ac-ok)':'color:var(--ac-muted)'}">
           <option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option>
           <option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option>
         </select></div></td>
