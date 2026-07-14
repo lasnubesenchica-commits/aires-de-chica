@@ -50,8 +50,7 @@ function estadoCuentaHTML(est) {
   }).join('');
 
   var lotesInfo = est.lotes + (est.lotes > 1 ? ' lotes' : ' lote') +
-    (est.cabanas ? ' · ' + est.cabanas + (est.cabanas > 1 ? ' cabañas' : ' cabaña') : '') +
-    (est.airbnb ? ' · AirBnB (+' + cfg.airbnbPct + '%)' : '');
+    (est.cabanas ? ' · ' + est.cabanas + (est.cabanas > 1 ? ' cabañas' : ' cabaña') : '');
 
   return '' +
   '<!doctype html><html><head><meta charset="utf-8"><style>' +

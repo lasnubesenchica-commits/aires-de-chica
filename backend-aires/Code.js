@@ -84,7 +84,7 @@ function doPost(e) {
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
-    else if (action === 'setPropAirbnb')    out = { ok: true, data: setPropAirbnb(data.clave, !!data.airbnb) };
+    else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {

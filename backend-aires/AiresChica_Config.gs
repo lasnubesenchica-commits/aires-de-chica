@@ -16,11 +16,10 @@ var _cfgCache = null;
 
 function _cfgDefaults() {
   return {
-    cuotaBase:         CONFIG.CUOTA_BASE,     // B/. por lote / mes
-    cabanaFee:         CONFIG.CABANA_FEE,     // B/. por cabaña / mes
+    cuotaBase:         CONFIG.CUOTA_BASE,     // B/. cuota base / mes
+    cabanaPct:         30,                    // % de la cuota base que suma CADA cabaña (30% de 45 = 13.50)
     moraPct:           CONFIG.MORA_PCT * 100, // porcentaje (10 = 10%)
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
-    airbnbPct:         30,                    // % de incremento sobre la cuota para lotes con AirBnB
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
     correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
@@ -44,14 +43,15 @@ function _cfg() {
 }
 
 // cuota mensual de una cuenta:
-//   - si el propietario tiene una cuota fija (cuotaMensual > 0), esa manda;
-//   - si no, usa la cuota global de Opciones (cuotaBase);
-//   - luego, si el lote opera AirBnB, aplica el incremento configurado.
+//   - si el propietario tiene una cuota fija manual (cuotaMensual > 0), esa manda
+//     (solo para casos especiales);
+//   - si no: cuota base + (cabanaPct % de la base) por cada cabaña.
+//     Ej: base 45, 2 cabañas, 30% -> 45 * (1 + 2*0.30) = 72.
 function cuotaDe(prop) {
   var c = _cfg();
-  var base = (Number(prop.cuotaMensual) > 0) ? Number(prop.cuotaMensual) : c.cuotaBase;
-  if (prop.airbnb) base = base * (1 + (Number(c.airbnbPct) || 0) / 100);
-  return _round2(base);
+  if (Number(prop.cuotaMensual) > 0) return _round2(Number(prop.cuotaMensual));
+  var cab = Math.max(0, Number(prop.cabanas) || 0);
+  return _round2(c.cuotaBase * (1 + cab * (Number(c.cabanaPct) || 0) / 100));
 }
 
 /* ─────────────── endpoints ─────────────── */
@@ -71,9 +71,8 @@ function guardarConfig(nueva) {
   Object.keys(d).forEach(function (k) { clean[k] = (nueva && nueva[k] !== undefined) ? nueva[k] : d[k]; });
   // saneo
   clean.cuotaBase = Math.max(0, Number(clean.cuotaBase) || 0);
-  clean.cabanaFee = Math.max(0, Number(clean.cabanaFee) || 0);
+  clean.cabanaPct = Math.max(0, Number(clean.cabanaPct) || 0);
   clean.moraPct = Math.max(0, Number(clean.moraPct) || 0);
-  clean.airbnbPct = Math.max(0, Number(clean.airbnbPct) || 0);
   clean.moraDesde = /^\d{4}-\d{2}$/.test(String(clean.moraDesde)) ? clean.moraDesde : d.moraDesde;
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));

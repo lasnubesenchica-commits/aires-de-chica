@@ -136,9 +136,9 @@ function getPropietarios() {
     p.lotes    = Number(p.lotes) || 1;
     p.cabanas  = Number(p.cabanas) || 0;
     p.airbnb   = (p.airbnb === true || String(p.airbnb).toLowerCase() === 'si' || p.airbnb === 'x');
-    p.cuotaMensual = Number(p.cuotaMensual) || 0; // 0 = usa la cuota global
-    p.cuota    = cuotaDe(p); // cuota fija del propietario (o global) + AirBnB
-    p.cuotaGlobal = !(p.cuotaMensual > 0); // indicador: ¿está usando la cuota global?
+    p.cuotaMensual = Number(p.cuotaMensual) || 0; // 0 = cuota calculada (base + cabañas)
+    p.cuota    = cuotaDe(p); // cuota fija manual, o base + 30% por cabaña
+    p.cuotaGlobal = !(p.cuotaMensual > 0); // true = cuota calculada automáticamente
     p.saldo2025 = Number(p.saldo2025) || 0;
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
@@ -168,22 +168,51 @@ function _findProp(clave) {
   return null;
 }
 
-// Habilita/deshabilita AirBnB en el perfil de un propietario (recalcula la cuota).
-function setPropAirbnb(clave, activar) {
-  var ss = _ss();
-  ensureSheets(); // garantiza la columna 'airbnb'
-  var sh = ss.getSheetByName(SH.PROP);
+// Fija el número de cabañas de un propietario (recalcula la cuota: base + 30%/cabaña).
+function setPropCabanas(clave, n) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
   var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
-  var ci = header.indexOf('clave'), ai = header.indexOf('airbnb');
-  if (ci < 0 || ai < 0) throw new Error('No se encontró la columna clave/airbnb.');
+  var ci = header.indexOf('clave'), cbi = header.indexOf('cabanas');
+  if (ci < 0 || cbi < 0) throw new Error('No se encontró la columna clave/cabanas.');
+  var v = Math.max(0, Math.floor(Number(n) || 0));
   for (var r = 1; r < vals.length; r++) {
     if (String(vals[r][ci]).trim() === String(clave).trim()) {
-      sh.getRange(r + 1, ai + 1).setValue(activar ? 'si' : '');
+      sh.getRange(r + 1, cbi + 1).setValue(v);
       var prop = _findProp(clave);
-      return { ok: true, clave: clave, airbnb: !!activar, cuota: prop ? prop.cuota : null };
+      return { ok: true, clave: clave, cabanas: v, cuota: prop ? prop.cuota : null, cuotaGlobal: prop ? prop.cuotaGlobal : true };
     }
   }
   throw new Error('No existe la cuenta ' + clave);
+}
+
+/**
+ * Migración: convierte las cuotas fijas que sólo codificaban el recargo por
+ * cabaña en cuotas calculadas (base + 30%/cabaña). Limpia cuotaMensual cuando
+ * su valor coincide EXACTO con la fórmula, así el # de cabañas pasa a mandar.
+ * Las cuotas realmente personalizadas (que no cuadran con la fórmula) se dejan.
+ * Corre una sola vez en el editor.
+ */
+function migrarModeloCabanas() {
+  ensureSheets();
+  var c = _cfg();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), qi = header.indexOf('cuotaMensual'), cbi = header.indexOf('cabanas');
+  if (ci < 0 || qi < 0 || cbi < 0) throw new Error('Faltan columnas clave/cuotaMensual/cabanas.');
+  var limpiadas = [];
+  for (var r = 1; r < vals.length; r++) {
+    var q = Number(vals[r][qi]) || 0;
+    if (q > 0) {
+      var cab = Math.max(0, Number(vals[r][cbi]) || 0);
+      var esperado = _round2(c.cuotaBase * (1 + cab * (Number(c.cabanaPct) || 0) / 100));
+      if (Math.abs(q - esperado) < 0.01) {
+        sh.getRange(r + 1, qi + 1).setValue('');
+        limpiadas.push(String(vals[r][ci]).trim() + ' (' + q + ' → ' + cab + ' cabaña(s))');
+      }
+    }
+  }
+  return { limpiadas: limpiadas, total: limpiadas.length };
 }
 
 // Fija (o limpia) la cuota mensual de un propietario. valor vacío/0 => usa la global.
