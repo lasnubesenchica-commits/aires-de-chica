@@ -60,14 +60,17 @@ function _analizarComprobante(blob) {
     'pagos bancarios) de propietarios de una comunidad en Panamá. Analiza la imagen/PDF adjunto y responde ' +
     'ÚNICAMENTE con un objeto JSON válido, sin texto ni explicación adicional, con esta forma exacta:\n' +
     '{"esPago": true|false, "monto": number, "fecha": "YYYY-MM-DD" o "", "referencia": "", "banco": "", ' +
-    '"pagador": "", "metodo": "", "lote": "", "confianza": 0.0}\n' +
+    '"pagador": "", "metodo": "", "lote": "", "cuentaDestino": "", "beneficiario": "", "confianza": 0.0}\n' +
     'Reglas:\n' +
     '- esPago: true SOLO si realmente es un comprobante/recibo de un pago o transferencia de dinero.\n' +
     '- monto: el monto pagado en balboas/dólares como número, sin símbolo (ej: 72.00). 0 si no aplica.\n' +
     '- fecha: la fecha del pago en formato YYYY-MM-DD; "" si no se ve.\n' +
-    '- metodo: ACH, Yappy, Nequi, depósito, transferencia, etc. si se identifica; "" si no.\n' +
+    '- metodo: el MEDIO de pago: ACH, Yappy, Nequi, depósito, transferencia, etc. si se identifica; "" si no.\n' +
     '- lote: si aparece un número de lote/casa/finca, ponlo (ej: "16A"); "" si no.\n' +
-    '- pagador: nombre de quien paga si aparece; "" si no.\n' +
+    '- pagador: nombre de quien envía/paga si aparece; "" si no.\n' +
+    '- cuentaDestino: el número de cuenta A LA QUE se envió el dinero (cuenta destino/beneficiaria). ' +
+    'Cópialo tal cual aparece con sus guiones; "" si no se ve (ej. en Yappy suele no haber número de cuenta).\n' +
+    '- beneficiario: el nombre del titular/beneficiario que RECIBE el dinero (a quién se le pagó); "" si no se ve.\n' +
     '- confianza: 0 a 1, qué tan seguro estás de que es un pago y de que el monto es correcto.';
   var payload = {
     model: ANTHROPIC_MODEL,
@@ -92,6 +95,9 @@ function _analizarComprobante(blob) {
     j.referencia = String(j.referencia || '');
     j.pagador   = String(j.pagador || '');
     j.lote      = String(j.lote || '');
+    j.metodo    = String(j.metodo || '');
+    j.cuentaDestino = String(j.cuentaDestino || '');
+    j.beneficiario  = String(j.beneficiario || '');
     j.texto     = txt;
     return j;
   } catch (e) {
@@ -180,6 +186,38 @@ function _esPago(texto) {
   return kw.test(t) && _extraerMonto(texto) > 0;
 }
 
+// Verifica si el pago fue hecho a la cuenta de Aires de Chicá.
+//   nivel: 'ok' (coincide) | 'bad' (no coincide / medio no válido) | 'warn' (no se pudo verificar)
+// Aires de Chicá SOLO recibe por su cuenta de Banco General; no tiene Yappy/Nequi.
+function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
+  var acct = String(CONFIG.CUENTA_NUM || '').replace(/\D/g, '');
+  var mp = _normTxt(metodoPago || '');
+  var cd = String(cuentaDestino || '').replace(/\D/g, '');
+  var ben = _normTxt(beneficiario || '');
+  var esAC = /AIRES\s*DE\s*CHIC/.test(ben);
+
+  // Medios que Aires de Chicá NO usa
+  if (/YAPPY|NEQUI/.test(mp)) {
+    return { nivel: 'bad', metodo: metodoPago,
+      mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Solo recibe por su cuenta de ' + CONFIG.BANCO + '. Verifica a dónde se envió.' };
+  }
+
+  // Comparación por número de cuenta destino
+  if (cd && acct) {
+    var coincide = (cd === acct) ||
+      (cd.length >= 5 && acct.indexOf(cd) >= 0) ||
+      (acct.length >= 5 && cd.indexOf(acct) >= 0);
+    if (coincide) return { nivel: 'ok', mensaje: 'Transferencia a la cuenta de Aires de Chicá (' + CONFIG.CUENTA_NUM + ').' };
+    return { nivel: 'bad',
+      mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con la de Aires de Chicá (' + CONFIG.CUENTA_NUM + '). Verifica antes de aplicar.' };
+  }
+
+  // Sin número de cuenta: apóyate en el beneficiario
+  if (esAC) return { nivel: 'ok', mensaje: 'Beneficiario: ' + beneficiario + ' — coincide con Aires de Chicá.' };
+  if (ben) return { nivel: 'warn', mensaje: 'No se detectó el número de cuenta destino. Beneficiario: ' + beneficiario + '. Verifica manualmente.' };
+  return { nivel: 'warn', mensaje: 'No se pudo verificar la cuenta ni el beneficiario de destino. Revisa el comprobante manualmente.' };
+}
+
 // adjuntos válidos: imagen o PDF, con contenido.
 function _adjuntosValidos(msg) {
   return (msg.getAttachments() || []).filter(function (a) {
@@ -256,12 +294,15 @@ function capturarComprobantes(maxThreads) {
         if (!esPago) { estado = 'descartado'; motivo = vis ? 'Claude: no parece un pago' : 'no parece un pago'; }
       }
 
-      // monto / referencia / lote — de Claude si lo tenemos, si no de OCR/correo
-      var monto, lote;
+      // monto / referencia / lote / destino — de Claude si lo tenemos, si no de OCR/correo
+      var monto, lote, metodoPago = '', cuentaDestino = '', beneficiario = '';
       if (vis) {
         monto = vis.monto || _extraerMonto(emailTxt);
         lote  = vis.lote ? _extraerLote('lote ' + vis.lote) : _extraerLote(emailTxt);
         refCap = vis.referencia || '';
+        metodoPago = vis.metodo || '';
+        cuentaDestino = vis.cuentaDestino || '';
+        beneficiario = vis.beneficiario || '';
         if (vis.pagador) nombreMatch = vis.pagador;
       } else {
         var textoTot = emailTxt + ' ' + ocrTxt;
@@ -285,7 +326,8 @@ function capturarComprobantes(maxThreads) {
         'C' + id, msg.getDate(), from, subject,
         prop ? prop.clave : '', prop ? prop.nombre : nombreMatch, prop ? prop.lote : lote.raw,
         monto || '', refCap, estado, url, id,
-        estado === 'pendiente' ? (metodo || 'sin-match') : '', new Date(), motivo
+        estado === 'pendiente' ? (metodo || 'sin-match') : '', new Date(), motivo,
+        metodoPago, cuentaDestino, beneficiario
       ]);
       if (estado === 'pendiente') nuevos++; else descartados++;
     });
@@ -301,6 +343,7 @@ function getComprobantes(estado) {
   return _sheetRows(SH.COMPROB).map(function (r) {
     r.monto = Number(r.monto) || 0;
     r.fecha = r.fecha instanceof Date ? r.fecha : new Date(r.fecha);
+    r.verif = _verificarDestino(r.metodoPago, r.cuentaDestino, r.beneficiario);
     return r;
   }).filter(function (r) { return !estado || String(r.estado) === estado; })
     .sort(function (a, b) { return new Date(b.fecha) - new Date(a.fecha); });

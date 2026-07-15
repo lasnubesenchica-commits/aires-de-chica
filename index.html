@@ -849,6 +849,20 @@ async function descargarCartera(){
 
 /* ───────── Comprobantes por email ───────── */
 let COMPROB_PROPS=null;
+let COMPROB_VERIF={};
+function _verifBadge(v){
+  if(!v||!v.nivel) return '';
+  const map={ok:['#16a34a','#ecfdf5','✓ Cuenta Aires de Chicá'],warn:['#b45309','#fffbeb','⚠ Verificar cuenta'],bad:['#b91c1c','#fef2f2','⚠ Cuenta no coincide']};
+  const m=map[v.nivel]||map.warn;
+  return `<div title="${String(v.mensaje||'').replace(/"/g,'&quot;')}" style="display:inline-block;margin-top:3px;font-size:.68rem;font-weight:700;color:${m[0]};background:${m[1]};border:1px solid ${m[0]}44;border-radius:6px;padding:1px 6px">${m[2]}</div>`;
+}
+function _verifBanner(v){
+  if(!v||!v.nivel) return '';
+  const map={ok:['#16a34a','#ecfdf5','✓'],warn:['#b45309','#fffbeb','⚠'],bad:['#b91c1c','#fef2f2','⚠']};
+  const m=map[v.nivel]||map.warn;
+  return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;padding:8px 10px;border-radius:8px;color:${m[0]};background:${m[1]};border:1px solid ${m[0]}44;font-size:.82rem">
+    <span style="font-size:1rem;line-height:1">${m[2]}</span><span><b>Cuenta destino:</b> ${String(v.mensaje||'').replace(/</g,'&lt;')}</span></div>`;
+}
 async function renderComprob(){
   const box=document.getElementById('comprobResult'); box.innerHTML='<div class="muted">Cargando…</div>';
   let all, props;
@@ -864,7 +878,7 @@ async function renderComprob(){
       pend.map(c=>{ const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
       return `<tr data-id="${c.id}"><td>${_fx(c.fecha)}</td>
         <td><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
-        <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}</td>
+        <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}${c.metodoPago?`<div class="muted" style="font-size:.7rem">Método: ${String(c.metodoPago).replace(/</g,'&lt;')}</div>`:''}<div>${_verifBadge(c.verif)}</div></td>
         <td class="num"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
         <td><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select> <span class="pill ${conf}" style="font-size:.66rem">${c.metodo}</span></td>
         <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="previewComprob('${c.id}',this)">Confirmar</button>
@@ -879,6 +893,7 @@ async function renderComprob(){
         <td><button class="link-btn" onclick="recuperarComprob('${c.id}',this)">Recuperar</button></td></tr>`).join('')
     }</tbody></table></details>`;
   box.innerHTML=pendHtml+descHtml;
+  COMPROB_VERIF={}; all.forEach(c=>{ COMPROB_VERIF[c.id]=c.verif; });
   pend.forEach(c=>{ if(c.clave){ const tr=box.querySelector(`tr[data-id="${c.id}"]`); if(tr){ const s=tr.querySelector('.cCuenta'); if(s) s.value=c.clave; } } });
 }
 async function recuperarComprob(id,btn){
@@ -912,6 +927,7 @@ function _preHtml(d,id){
             : `<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
   return `<div style="font-size:.86rem">
     <div style="font-weight:700;margin-bottom:8px">Así se aplicará este pago</div>
+    ${_verifBanner(COMPROB_VERIF[id])}
     <div class="muted" style="margin-bottom:10px">${d.nombre} · L${d.lote} · cuota mensual ${_mny(d.cuota)} · pago capturado <b>${_mny(d.monto)}</b></div>
     <table style="width:auto;min-width:420px;margin-bottom:10px">
       <thead><tr><th>Cuota / saldo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead>

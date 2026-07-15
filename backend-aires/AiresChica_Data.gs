@@ -24,7 +24,8 @@ var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','orig
                  'mesAplicado','notas','creado'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
 var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
-                   'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo'];
+                   'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo',
+                   'metodoPago','cuentaDestino','beneficiario'];
 
 /* ─────────────── setup de pestañas ─────────────── */
 
@@ -51,6 +52,9 @@ function ensureSheets() {
   _ensureColumn(ss.getSheetByName(SH.PROP), 'cuotaMensual');
   _ensureColumn(ss.getSheetByName(SH.PROP), 'inicioCobro');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'motivo');
+  _ensureColumn(ss.getSheetByName(SH.COMPROB), 'metodoPago');
+  _ensureColumn(ss.getSheetByName(SH.COMPROB), 'cuentaDestino');
+  _ensureColumn(ss.getSheetByName(SH.COMPROB), 'beneficiario');
   // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
