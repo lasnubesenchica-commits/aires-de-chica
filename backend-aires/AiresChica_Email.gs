@@ -131,6 +131,32 @@ function _totRow(label, val, color, B) {
     '<span style="color:' + color + ';font-weight:600">' + val + '</span></div>';
 }
 
+/**
+ * Instructivo para el propietario: cómo pagar en la Banca en Línea de Banco
+ * General, con énfasis en agregar el correo de comprobantes@ para que el pago
+ * se registre automáticamente. Va al final del cuerpo del correo.
+ */
+function _instructivoPago(loteTxt) {
+  var B = AC_BRAND;
+  var comp = CONFIG.COMPROBANTES_EMAIL;
+  return '<div style="margin-top:22px;padding:16px 18px;border:1px solid ' + B.border + ';border-radius:10px;background:' + B.teal50 + '">' +
+    '<div style="font-weight:700;color:' + B.teal700 + ';font-size:14px;margin-bottom:10px">Cómo registrar su pago en la Banca en Línea de Banco General</div>' +
+    '<ol style="margin:0;padding-left:18px;line-height:1.65">' +
+      '<li>Ingrese a su <b>Banca en Línea de Banco General</b> (página web o app móvil) y seleccione <b>Transferencias</b>.</li>' +
+      '<li>Elija o agregue como beneficiario la cuenta de <b>' + CONFIG.CUENTA_NOMBRE + '</b>:<br>' +
+        CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO + ' N.º <b>' + CONFIG.CUENTA_NUM + '</b>.</li>' +
+      '<li>Indique el <b>monto</b> de su cuota y, en la <b>descripción / concepto</b>, escriba su número de <b>lote ' + loteTxt + '</b>.</li>' +
+      '<li>En el campo de <b>correo electrónico para enviar el comprobante</b>, agregue:<br>' +
+        '<span style="display:inline-block;margin-top:4px;padding:4px 10px;background:#fff;border:1px solid ' + B.teal + ';border-radius:6px;font-weight:700;color:' + B.teal700 + '">' + comp + '</span></li>' +
+      '<li>Revise los datos y <b>confirme</b> la transferencia.</li>' +
+    '</ol>' +
+    '<div style="margin-top:12px;padding:11px 13px;background:#fff;border-left:4px solid ' + B.coral + ';border-radius:6px;font-size:12.5px;line-height:1.55">' +
+      '¿Por qué es importante agregar <b>' + comp + '</b>? Al incluir ese correo, el comprobante de su pago llega <b>automáticamente</b> a la administración y su cuota se registra sin que usted tenga que enviarlo por otro medio. ' +
+      '<b style="color:' + B.coral + '">Si no lo agrega, su pago podría no reflejarse a tiempo.</b>' +
+    '</div>' +
+  '</div>';
+}
+
 function estadoCuentaPDF(estOrClave) {
   var est = (estOrClave && estOrClave.buckets) ? estOrClave : getEstadoCuentaByKey(estOrClave);
   var html = estadoCuentaHTML(est);
@@ -192,7 +218,8 @@ function enviarEstadoCuenta(clave) {
     '<p>' + saldoTxt + '</p>' +
     (est.saldoConMora > 0.009 ?
       '<p style="margin-top:14px">Puede realizar su pago a:<br>' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO +
-      ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '')
+      ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '') +
+    _instructivoPago(est.lote)
   );
   // GmailApp (no MailApp): sale por el camino normal de Gmail, que las cuentas
   // nuevas de Workspace sí entregan (MailApp era rechazado por Gmail).
