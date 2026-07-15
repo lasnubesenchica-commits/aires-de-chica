@@ -850,33 +850,46 @@ async function descargarCartera(){
 let COMPROB_PROPS=null;
 async function renderComprob(){
   const box=document.getElementById('comprobResult'); box.innerHTML='<div class="muted">Cargando…</div>';
-  let lista, props;
-  try{ [lista,props]=await Promise.all([jsonp('getComprobantes',{estado:'pendiente'}), COMPROB_PROPS?Promise.resolve(COMPROB_PROPS):jsonp('getPropietarios')]); }
+  let all, props;
+  try{ [all,props]=await Promise.all([jsonp('getComprobantes',{}), COMPROB_PROPS?Promise.resolve(COMPROB_PROPS):jsonp('getPropietarios')]); }
   catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
   COMPROB_PROPS=props;
   const opts=props.slice().sort((a,b)=>a.residencial.localeCompare(b.residencial)||String(a.lote).localeCompare(String(b.lote)))
     .map(p=>`<option value="${p.clave}">${p.residencial} · L${p.lote} · ${p.nombre}</option>`).join('');
-  if(!lista.length){ box.innerHTML='<div class="muted" style="padding:20px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'; return; }
-  const rows=lista.map(c=>{
-    const conf = c.metodo==='email'||c.metodo==='lote+nombre'?'ok':(c.metodo==='sin-match'?'red':'warn');
-    return `<tr data-id="${c.id}">
-      <td>${_fx(c.fecha)}</td>
-      <td><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
-      <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>'}</td>
-      <td class="num"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-      <td><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select> <span class="pill ${conf}" style="font-size:.66rem">${c.metodo}</span></td>
-      <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="confirmarComprob('${c.id}',this)">Confirmar</button>
-        <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`;
-  }).join('');
-  box.innerHTML=`<table><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-  // preseleccionar la cuenta detectada
-  lista.forEach(c=>{ if(c.clave){ const tr=box.querySelector(`tr[data-id="${c.id}"]`); if(tr){ const s=tr.querySelector('.cCuenta'); if(s) s.value=c.clave; } } });
+  const pend=all.filter(c=>c.estado==='pendiente'), desc=all.filter(c=>c.estado==='descartado');
+  const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
+  const pendHtml = !pend.length ? '<div class="muted" style="padding:16px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'
+    : `<table><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${
+      pend.map(c=>{ const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
+      return `<tr data-id="${c.id}"><td>${_fx(c.fecha)}</td>
+        <td><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
+        <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}</td>
+        <td class="num"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
+        <td><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select> <span class="pill ${conf}" style="font-size:.66rem">${c.metodo}</span></td>
+        <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="confirmarComprob('${c.id}',this)">Confirmar</button>
+          <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`; }).join('')
+    }</tbody></table>`;
+  const descHtml = !desc.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-muted);font-weight:600">Descartados (${desc.length}) — sin adjunto o no parecen pago</summary>
+    <table style="margin-top:8px"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th>Motivo</th><th></th></tr></thead><tbody>${
+      desc.map(c=>`<tr data-id="${c.id}"><td>${_fx(c.fecha)}</td>
+        <td><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
+        <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}</td>
+        <td><span class="muted">${c.motivo||'—'}</span></td>
+        <td><button class="link-btn" onclick="recuperarComprob('${c.id}',this)">Recuperar</button></td></tr>`).join('')
+    }</tbody></table></details>`;
+  box.innerHTML=pendHtml+descHtml;
+  pend.forEach(c=>{ if(c.clave){ const tr=box.querySelector(`tr[data-id="${c.id}"]`); if(tr){ const s=tr.querySelector('.cCuenta'); if(s) s.value=c.clave; } } });
+}
+async function recuperarComprob(id,btn){
+  btn.disabled=true;
+  try{ await post('resolverComprobante',{id,accion:'recuperar'}); renderComprob(); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function capturarAhora(btn){
   btn.disabled=true; const t=btn.textContent; btn.textContent='Revisando…';
   try{ const r=await post('capturarComprobantes',{});
     await renderComprob();
-    alert(r.nuevos? (r.nuevos+' comprobante(s) nuevo(s) capturado(s).') : 'Sin comprobantes nuevos.');
+    alert(`${r.nuevos||0} pendiente(s) capturado(s)` + ((r.descartados)?` · ${r.descartados} descartado(s) (sin adjunto o no parecen pago)`:'') + '.');
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ btn.disabled=false; btn.textContent=t; }
 }

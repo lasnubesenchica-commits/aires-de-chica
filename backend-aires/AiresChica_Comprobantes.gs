@@ -48,6 +48,42 @@ function _carpetaComprobantes() {
   return it.hasNext() ? it.next() : DriveApp.createFolder(name);
 }
 
+// OCR de una imagen/PDF: convierte a Google Doc con OCR (Servicio avanzado Drive v2),
+// lee el texto y borra el doc temporal. Devuelve '' si falla.
+function _ocrTexto(blob) {
+  var fileId = null;
+  try {
+    var f = Drive.Files.insert(
+      { title: 'ac-ocr-tmp', mimeType: 'application/vnd.google-apps.document' },
+      blob, { ocr: true, ocrLanguage: 'es' }
+    );
+    fileId = f.id;
+    var txt = DocumentApp.openById(fileId).getBody().getText();
+    return txt || '';
+  } catch (e) {
+    return '';
+  } finally {
+    if (fileId) { try { Drive.Files.remove(fileId); } catch (e2) {} }
+  }
+}
+
+// ¿el texto (OCR o del correo) parece un comprobante de pago? -> palabra clave + un monto.
+function _esPago(texto) {
+  if (!texto) return false;
+  var t = _normTxt(texto);
+  var kw = /(TRANSFERENCIA|COMPROBANTE|ACH|YAPPY|NEQUI|BANCO|DEPOSITO|MANTENIMIENTO|CUOTA|MONTO|CONFIRMAC|REFERENCIA|EXITOS|BALBOA|PAGO)/;
+  return kw.test(t) && _extraerMonto(texto) > 0;
+}
+
+// adjuntos válidos: imagen o PDF, con contenido.
+function _adjuntosValidos(msg) {
+  return (msg.getAttachments() || []).filter(function (a) {
+    var ct = String(a.getContentType() || '').toLowerCase();
+    return a.getSize() > 0 && a.getSize() < 25 * 1024 * 1024 &&
+      (ct.indexOf('image/') === 0 || ct.indexOf('pdf') >= 0);
+  });
+}
+
 /**
  * Lee correos nuevos dirigidos a comprobantes@ y los deja como PENDIENTES.
  * Idempotente: deduplica por Message-Id contra la hoja Comprobantes.
@@ -73,7 +109,7 @@ function capturarComprobantes(maxThreads) {
   var folder = _carpetaComprobantes();
   var label = GmailApp.getUserLabelByName(GMAIL_LABEL_COMPROB) || GmailApp.createLabel(GMAIL_LABEL_COMPROB);
   var threads = GmailApp.search('to:' + buzon + ' newer_than:120d', 0, maxThreads || 40);
-  var nuevos = 0, filas = [];
+  var nuevos = 0, descartados = 0, filas = [];
 
   threads.forEach(function (th) {
     th.getMessages().forEach(function (msg) {
@@ -85,11 +121,32 @@ function capturarComprobantes(maxThreads) {
 
       var from = msg.getFrom(), fromEmail = _emailDe(from);
       var subject = msg.getSubject() || '', body = (msg.getPlainBody() || '').slice(0, 4000);
-      var texto = subject + ' \n ' + body;
-      var monto = _extraerMonto(texto);
-      var lote = _extraerLote(texto);
+      var emailTxt = subject + ' \n ' + body;
 
-      // emparejar: 1) email del remitente, 2) lote, 3) nombre
+      // FILTRO 1: debe traer un adjunto (imagen/PDF)
+      var atts = _adjuntosValidos(msg);
+      var estado = 'pendiente', motivo = '', ocrTxt = '', url = '';
+      if (!atts.length) {
+        estado = 'descartado'; motivo = 'sin adjunto';
+      } else {
+        // guardar adjuntos + OCR (hasta 2, por costo)
+        atts.forEach(function (a, i) {
+          try {
+            var blob = a.copyBlob();
+            var f = folder.createFile(blob);
+            f.setName(Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + a.getName());
+            if (!url) url = f.getUrl();
+            if (i < 2) ocrTxt += ' ' + _ocrTexto(a.copyBlob());
+          } catch (e) {}
+        });
+        // FILTRO 2: el adjunto (OCR) o el correo deben parecer un pago
+        if (!(_esPago(ocrTxt) || _esPago(emailTxt))) { estado = 'descartado'; motivo = 'no parece un pago'; }
+      }
+
+      // monto (del OCR primero, luego del correo) y emparejado
+      var textoTot = emailTxt + ' ' + ocrTxt;
+      var monto = _extraerMonto(ocrTxt) || _extraerMonto(emailTxt);
+      var lote = _extraerLote(textoTot);
       var prop = byEmail[fromEmail] || null, metodo = prop ? 'email' : '';
       if (!prop && lote.num) {
         var cands = (byLoteNum[lote.num] || []).slice();
@@ -103,30 +160,19 @@ function capturarComprobantes(maxThreads) {
       }
       if (!prop) { var m2 = _matchPorNombre(_nombreDe(from), props); if (m2) { prop = m2.prop; metodo = 'nombre'; } }
 
-      // guardar adjuntos en Drive
-      var url = '';
-      try {
-        (msg.getAttachments() || []).forEach(function (a) {
-          if (a.getSize() > 0 && a.getSize() < 25 * 1024 * 1024) {
-            var f = folder.createFile(a.copyBlob());
-            f.setName(Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + (prop ? prop.lote : lote.num || 's-l') + ' ' + a.getName());
-            if (!url) url = f.getUrl();
-          }
-        });
-      } catch (e) {}
-
       filas.push([
         'C' + id, msg.getDate(), from, subject,
         prop ? prop.clave : '', prop ? prop.nombre : _nombreDe(from), prop ? prop.lote : lote.raw,
-        monto || '', '', 'pendiente', url, id, metodo || 'sin-match', new Date()
+        monto || '', '', estado, url, id,
+        estado === 'pendiente' ? (metodo || 'sin-match') : '', new Date(), motivo
       ]);
-      nuevos++;
+      if (estado === 'pendiente') nuevos++; else descartados++;
     });
     try { th.addLabel(label); } catch (e) {}
   });
 
   if (filas.length) sh.getRange(sh.getLastRow() + 1, 1, filas.length, COL_COMPROB.length).setValues(filas);
-  return { nuevos: nuevos, buzon: buzon, revisados: threads.length };
+  return { nuevos: nuevos, descartados: descartados, buzon: buzon, revisados: threads.length };
 }
 
 function getComprobantes(estado) {
@@ -153,6 +199,13 @@ function resolverComprobante(data) {
       iNo = h.indexOf('nombre'), iLo = h.indexOf('lote'), iFe = h.indexOf('fecha'), iAs = h.indexOf('asunto');
   for (var r = 1; r < vals.length; r++) {
     if (String(vals[r][iId]) !== String(data.id)) continue;
+    // recuperar: un descartado vuelve a la cola de revisión
+    if (data.accion === 'recuperar') {
+      if (String(vals[r][iEst]) !== 'descartado') throw new Error('Solo se recuperan descartados.');
+      sh.getRange(r + 1, iEst + 1).setValue('pendiente');
+      var iMot = h.indexOf('motivo'); if (iMot >= 0) sh.getRange(r + 1, iMot + 1).setValue('');
+      return { ok: true, estado: 'pendiente' };
+    }
     if (String(vals[r][iEst]) !== 'pendiente') throw new Error('El comprobante ya fue ' + vals[r][iEst] + '.');
     if (data.accion === 'rechazar') { sh.getRange(r + 1, iEst + 1).setValue('rechazado'); return { ok: true, estado: 'rechazado' }; }
     // aplicar
