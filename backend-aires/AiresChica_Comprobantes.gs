@@ -206,7 +206,8 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
   if (cd && acct) {
     var coincide = (cd === acct) ||
       (cd.length >= 5 && acct.indexOf(cd) >= 0) ||
-      (acct.length >= 5 && cd.indexOf(acct) >= 0);
+      (acct.length >= 5 && cd.indexOf(acct) >= 0) ||
+      (cd.length >= 3 && cd.length <= 4 && acct.slice(-cd.length) === cd); // "terminación de producto" (últimos dígitos)
     if (coincide) return { nivel: 'ok', mensaje: 'Transferencia a la cuenta de Aires de Chicá (' + CONFIG.CUENTA_NUM + ').' };
     return { nivel: 'bad',
       mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con la de Aires de Chicá (' + CONFIG.CUENTA_NUM + '). Verifica antes de aplicar.' };
@@ -216,6 +217,37 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
   if (esAC) return { nivel: 'ok', mensaje: 'Beneficiario: ' + beneficiario + ' — coincide con Aires de Chicá.' };
   if (ben) return { nivel: 'warn', mensaje: 'No se detectó el número de cuenta destino. Beneficiario: ' + beneficiario + '. Verifica manualmente.' };
   return { nivel: 'warn', mensaje: 'No se pudo verificar la cuenta ni el beneficiario de destino. Revisa el comprobante manualmente.' };
+}
+
+// ¿Es un aviso automático de Banco General? (no trae adjunto: el correo ES el comprobante)
+//   - por remitente: mensajesyalertas@bgeneral.com (u otro @bgeneral.com), o
+//   - por contenido: la redacción fija de BG + un "Monto:" (cubre reenvíos del propietario).
+function _esNotifBanco(from, subject, body) {
+  var f = String(from || '').toLowerCase();
+  if (f.indexOf('bgeneral.com') >= 0) return true;
+  var t = _normTxt(String(subject || '') + ' \n ' + String(body || ''));
+  return /TE\s+(TRANSFIRIO|ENVIO)/.test(t) &&
+         /(SIGUIENTE TRANSACCION|BANCA EN LINEA)/.test(t) &&
+         /MONTO/.test(t);
+}
+
+// Extrae los datos de un aviso de Banco General (texto plano, formato fijo).
+function _parseNotifBanco(subject, body) {
+  var out = { monto: 0, descripcion: '', pagador: '', cuentaTerm: '', tipoCuenta: '' };
+  var b = String(body || '');
+  var mMonto = b.match(/Monto:\s*(?:US\$|USD|B\/\.?|\$)?\s*([0-9][0-9.,]*)/i);
+  if (mMonto) out.monto = _round2(parseFloat(mMonto[1].replace(/,/g, '')) || 0);
+  var mTerm = b.match(/Terminaci[oó]n de producto:\s*([0-9]+)/i);
+  if (mTerm) out.cuentaTerm = mTerm[1];
+  var mTipo = b.match(/A tu:?\s*(.+)/i);
+  if (mTipo) out.tipoCuenta = mTipo[1].trim();
+  var mDesc = b.match(/Descripci[oó]n:\s*(.+)/i);
+  if (mDesc) out.descripcion = mDesc[1].trim();
+  // pagador: "<NOMBRE> te transfirió..." (asunto) o "<NOMBRE> te envió..." (cuerpo)
+  var mPag = String(subject || '').match(/^\s*(.+?)\s+te\s+(?:transfiri|envi)/i) ||
+             b.match(/([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ .]{3,})\s+te\s+(?:envi|transfiri)/i);
+  if (mPag) out.pagador = mPag[1].replace(/\s+/g, ' ').trim();
+  return out;
 }
 
 // adjuntos válidos: imagen o PDF, con contenido.
@@ -266,11 +298,33 @@ function capturarComprobantes(maxThreads) {
       var subject = msg.getSubject() || '', body = (msg.getPlainBody() || '').slice(0, 4000);
       var emailTxt = subject + ' \n ' + body;
 
-      // FILTRO 1: debe traer un adjunto (imagen/PDF)
-      var atts = _adjuntosValidos(msg);
       var estado = 'pendiente', motivo = '', ocrTxt = '', url = '';
       var vis = null, refCap = '', nombreMatch = _nombreDe(from);
-      if (!atts.length) {
+      var monto = 0, lote = { num: '', resPref: '', raw: '' }, metodoPago = '', cuentaDestino = '', beneficiario = '';
+      var esBanco = _esNotifBanco(from, subject, body);
+      var atts = esBanco ? [] : _adjuntosValidos(msg);
+
+      if (esBanco) {
+        // AVISO DE BANCO GENERAL: el correo ES el comprobante (sin adjunto). Es la
+        // confirmación directa del banco de que el dinero entró a la cuenta de AC.
+        var nb = _parseNotifBanco(subject, body);
+        monto = nb.monto || _extraerMonto(emailTxt);
+        lote  = nb.descripcion ? _extraerLote(nb.descripcion) : { num: '', resPref: '', raw: '' };
+        if (!lote.num) lote = _extraerLote(emailTxt);
+        if (nb.pagador) nombreMatch = nb.pagador;
+        metodoPago = 'Banca en Línea (Banco General)';
+        cuentaDestino = nb.cuentaTerm || '';
+        beneficiario = CONFIG.CUENTA_NOMBRE; // BG sólo notifica sobre la cuenta de Aires de Chicá
+        // Guarda el aviso como registro de texto en Drive (para tener enlace "Ver comprobante").
+        try {
+          var fb = folder.createFile(
+            'BG ' + Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + (lote.raw || nb.pagador || '') + '.txt',
+            body, 'text/plain');
+          try { fb.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e2) {}
+          url = fb.getUrl();
+        } catch (e) {}
+      } else if (!atts.length) {
+        // FILTRO 1: un correo normal debe traer un adjunto (imagen/PDF)
         estado = 'descartado'; motivo = 'sin adjunto';
       } else {
         // guardar todos los adjuntos en Drive
@@ -292,22 +346,21 @@ function capturarComprobantes(maxThreads) {
         // FILTRO 2: ¿es un pago?  (Claude si disponible; si no, reglas sobre OCR/correo)
         var esPago = vis ? vis.esPago : (_esPago(ocrTxt) || _esPago(emailTxt));
         if (!esPago) { estado = 'descartado'; motivo = vis ? 'Claude: no parece un pago' : 'no parece un pago'; }
-      }
 
-      // monto / referencia / lote / destino — de Claude si lo tenemos, si no de OCR/correo
-      var monto, lote, metodoPago = '', cuentaDestino = '', beneficiario = '';
-      if (vis) {
-        monto = vis.monto || _extraerMonto(emailTxt);
-        lote  = vis.lote ? _extraerLote('lote ' + vis.lote) : _extraerLote(emailTxt);
-        refCap = vis.referencia || '';
-        metodoPago = vis.metodo || '';
-        cuentaDestino = vis.cuentaDestino || '';
-        beneficiario = vis.beneficiario || '';
-        if (vis.pagador) nombreMatch = vis.pagador;
-      } else {
-        var textoTot = emailTxt + ' ' + ocrTxt;
-        monto = _extraerMonto(ocrTxt) || _extraerMonto(emailTxt);
-        lote  = _extraerLote(textoTot);
+        // monto / referencia / lote / destino — de Claude si lo tenemos, si no de OCR/correo
+        if (vis) {
+          monto = vis.monto || _extraerMonto(emailTxt);
+          lote  = vis.lote ? _extraerLote('lote ' + vis.lote) : _extraerLote(emailTxt);
+          refCap = vis.referencia || '';
+          metodoPago = vis.metodo || '';
+          cuentaDestino = vis.cuentaDestino || '';
+          beneficiario = vis.beneficiario || '';
+          if (vis.pagador) nombreMatch = vis.pagador;
+        } else {
+          var textoTot = emailTxt + ' ' + ocrTxt;
+          monto = _extraerMonto(ocrTxt) || _extraerMonto(emailTxt);
+          lote  = _extraerLote(textoTot);
+        }
       }
       var prop = byEmail[fromEmail] || null, metodo = prop ? 'email' : '';
       if (!prop && lote.num) {
