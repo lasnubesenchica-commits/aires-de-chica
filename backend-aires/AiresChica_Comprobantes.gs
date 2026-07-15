@@ -351,6 +351,42 @@ function resolverComprobante(data) {
   throw new Error('Comprobante no encontrado: ' + data.id);
 }
 
+/**
+ * Simula cómo se aplicaría un pago de `monto` a la cuenta `clave`, SIN registrar nada.
+ * Reutiliza el motor de estado de cuenta (waterfall) comparando el estado antes y
+ * después de añadir el pago: muestra a qué cuota(s) va, cuánto queda pendiente en cada
+ * una y si sobra crédito a favor. Alimenta el panel de revisión previo a "Aplicar".
+ */
+function previsualizarComprobante(clave, monto) {
+  var prop = _findProp(clave);
+  if (!prop) throw new Error('No existe la cuenta ' + clave);
+  monto = _round2(Number(monto) || 0);
+  var pagos = getPagosByClave(clave);
+  var antes = calcEstado(prop, pagos, null);
+  var sim = pagos.concat([{ fecha: _today(), monto: monto, origen: 'sim' }]);
+  var despues = calcEstado(prop, sim, null);
+
+  // a qué buckets entró el dinero nuevo: aquellos cuyo saldo bajó
+  var mapAntes = {}; antes.buckets.forEach(function (b) { mapAntes[b.label] = b; });
+  var aplicacion = [];
+  despues.buckets.forEach(function (b) {
+    var a = mapAntes[b.label];
+    var saldoAntes = a ? a.saldo : b.monto;
+    var aplicado = _round2(saldoAntes - b.saldo);
+    if (aplicado > 0.009) aplicacion.push({ label: b.label, cuota: b.monto, aplicado: aplicado, quedaPendiente: b.saldo });
+  });
+
+  return {
+    clave: clave, nombre: prop.nombre, lote: prop.lote, cuota: cuotaDe(prop), monto: monto,
+    antes:   { saldo: antes.saldo,   mora: antes.mora,   saldoConMora: antes.saldoConMora,   creditoAFavor: antes.creditoAFavor },
+    despues: { saldo: despues.saldo, mora: despues.mora, saldoConMora: despues.saldoConMora, creditoAFavor: despues.creditoAFavor },
+    aplicacion: aplicacion,
+    totalAplicado: _round2(aplicacion.reduce(function (s, x) { return s + x.aplicado; }, 0)),
+    creditoResultante: despues.creditoAFavor,
+    pendienteResultante: despues.saldoConMora
+  };
+}
+
 /** Ejecuta UNA vez en el editor: autoriza Gmail/Drive, activa la captura diaria y hace la primera lectura. */
 function activarCapturaComprobantes() {
   var cfg = _cfg(); cfg.capturaComprobantes = true;

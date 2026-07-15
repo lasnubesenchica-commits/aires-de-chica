@@ -867,7 +867,7 @@ async function renderComprob(){
         <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}</td>
         <td class="num"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
         <td><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select> <span class="pill ${conf}" style="font-size:.66rem">${c.metodo}</span></td>
-        <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="confirmarComprob('${c.id}',this)">Confirmar</button>
+        <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="previewComprob('${c.id}',this)">Confirmar</button>
           <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`; }).join('')
     }</tbody></table>`;
   const descHtml = !desc.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-muted);font-weight:600">Descartados (${desc.length}) — sin adjunto o no parecen pago</summary>
@@ -898,16 +898,61 @@ async function capturarAhora(btn){
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ btn.disabled=false; btn.textContent=t; }
 }
-async function confirmarComprob(id,btn){
+const _mny=n=>'B/.'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+function _preHtml(d,id){
+  const filas = d.aplicacion.length
+    ? d.aplicacion.map(a=>`<tr><td>${a.label}</td><td class="num">${_mny(a.cuota)}</td>
+        <td class="num" style="color:var(--ac-teal-600);font-weight:700">${_mny(a.aplicado)}</td>
+        <td class="num">${a.quedaPendiente>0.009?_mny(a.quedaPendiente):'<span style="color:#16a34a;font-weight:600">saldada ✓</span>'}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="muted" style="padding:8px 0">Este pago no cubre cuotas pendientes; entra completo como crédito a favor.</td></tr>`;
+  const credito=d.creditoResultante>0.009, pend=d.pendienteResultante>0.009;
+  const resultado = credito
+    ? `<span style="color:#16a34a;font-weight:700">Queda crédito a favor: ${_mny(d.creditoResultante)}</span>`
+    : (pend ? `<span style="color:#b45309;font-weight:700">Sigue pendiente: ${_mny(d.pendienteResultante)}</span>`
+            : `<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
+  return `<div style="font-size:.86rem">
+    <div style="font-weight:700;margin-bottom:8px">Así se aplicará este pago</div>
+    <div class="muted" style="margin-bottom:10px">${d.nombre} · L${d.lote} · cuota mensual ${_mny(d.cuota)} · pago capturado <b>${_mny(d.monto)}</b></div>
+    <table style="width:auto;min-width:420px;margin-bottom:10px">
+      <thead><tr><th>Cuota / saldo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead>
+      <tbody>${filas}</tbody></table>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px">
+      <div>Total aplicado: <b>${_mny(d.totalAplicado)}</b></div>
+      <div>${resultado}</div>
+      <div class="muted">Saldo (con mora): ${_mny(d.antes.saldoConMora)} → <b>${_mny(d.despues.saldoConMora)}</b></div>
+    </div>
+    <button class="btn green" style="padding:7px 14px" onclick="aplicarComprob('${id}',this)">Aplicar pago</button>
+    <button class="link-btn" style="margin-left:10px" onclick="this.closest('tr.cdet').remove()">Cancelar</button>
+  </div>`;
+}
+async function previewComprob(id,btn){
   const tr=btn.closest('tr'); const clave=tr.querySelector('.cCuenta').value, monto=tr.querySelector('.cMonto').value;
   if(!clave) return alert('Asigna una cuenta.');
   if(!(+monto>0)) return alert('Indica el monto.');
-  btn.disabled=true;
-  try{ const r=await post('resolverComprobante',{id,accion:'aplicar',clave,monto:+monto});
+  // toggle: si ya hay un panel abierto para esta fila, ciérralo
+  const nx=tr.nextElementSibling;
+  if(nx && nx.classList.contains('cdet')){ const was=nx.dataset.for===id; nx.remove(); if(was) return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Calculando…';
+  let d;
+  try{ d=await jsonp('previsualizarComprobante',{clave,monto:+monto}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
+  btn.disabled=false; btn.textContent=t;
+  const det=document.createElement('tr'); det.className='cdet'; det.dataset.for=id;
+  det.innerHTML=`<td colspan="6" style="background:var(--ac-teal-50,#eef8f6);border-left:3px solid var(--ac-teal-600,#0d9488);padding:14px 16px">${_preHtml(d,id)}</td>`;
+  tr.after(det);
+}
+async function aplicarComprob(id,btn){
+  const tr=document.querySelector(`#comprobResult tr[data-id="${id}"]`); if(!tr) return;
+  const clave=tr.querySelector('.cCuenta').value, monto=tr.querySelector('.cMonto').value;
+  if(!clave) return alert('Asigna una cuenta.');
+  if(!(+monto>0)) return alert('Indica el monto.');
+  btn.disabled=true; btn.textContent='Aplicando…';
+  try{ await post('resolverComprobante',{id,accion:'aplicar',clave,monto:+monto});
+    const det=tr.nextElementSibling; if(det&&det.classList.contains('cdet')) det.remove();
     tr.style.opacity='.4'; tr.querySelectorAll('button,select,input').forEach(x=>x.disabled=true);
     if(typeof renderDash==='function') renderDash();
-    setTimeout(renderComprob,600);
-  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+    setTimeout(renderComprob,700);
+  }catch(e){ btn.disabled=false; btn.textContent='Aplicar pago'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function rechazarComprob(id,btn){
   if(!confirm('¿Rechazar este comprobante? No se registrará ningún pago.')) return;
