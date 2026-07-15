@@ -27,7 +27,8 @@ function _cfgDefaults() {
     notifRecordatorio: false,
     recordatorioDia:   1,
     notifMora:         false,
-    moraDia:           5
+    moraDia:           5,
+    capturaComprobantes: false   // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
   };
 }
 
@@ -83,6 +84,7 @@ function guardarConfig(nueva) {
   clean.notifOnPago = !!clean.notifOnPago;
   clean.notifRecordatorio = !!clean.notifRecordatorio;
   clean.notifMora = !!clean.notifMora;
+  clean.capturaComprobantes = !!clean.capturaComprobantes;
 
   PropertiesService.getScriptProperties().setProperty(CFG_PROP, JSON.stringify(clean));
   _cfgCache = null;
@@ -104,13 +106,16 @@ function reconcileTriggers(cfg) {
   cfg = cfg || _cfg();
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var h = t.getHandlerFunction();
-    if (h === 'recordatorioMensual' || h === 'avisoDeMora') ScriptApp.deleteTrigger(t);
+    if (h === 'recordatorioMensual' || h === 'avisoDeMora' || h === 'capturarComprobantes') ScriptApp.deleteTrigger(t);
   });
   if (cfg.notifRecordatorio) {
     ScriptApp.newTrigger('recordatorioMensual').timeBased().onMonthDay(cfg.recordatorioDia).atHour(8).create();
   }
   if (cfg.notifMora) {
     ScriptApp.newTrigger('avisoDeMora').timeBased().onMonthDay(cfg.moraDia).atHour(8).create();
+  }
+  if (cfg.capturaComprobantes) {
+    ScriptApp.newTrigger('capturarComprobantes').timeBased().everyDays(1).atHour(7).create();
   }
 }
 
@@ -125,7 +130,7 @@ function avisoDeMora()         { return enviarRecordatorios('mora'); }
 
 function _listNotifTriggers() {
   return ScriptApp.getProjectTriggers()
-    .filter(function (t) { return ['recordatorioMensual', 'avisoDeMora'].indexOf(t.getHandlerFunction()) >= 0; })
+    .filter(function (t) { return ['recordatorioMensual', 'avisoDeMora', 'capturarComprobantes'].indexOf(t.getHandlerFunction()) >= 0; })
     .map(function (t) {
       return { funcion: t.getHandlerFunction() };
     });

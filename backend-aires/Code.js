@@ -18,6 +18,7 @@ var CONFIG = {
   SHEET_ID:       '1S-mea6zy87PwYFuwtbb4hqHX8LaK7sHW4zqX5kk2_4E',
   ADMIN_EMAIL:    'admin@airesdechica.org',
   REPLY_TO:       'admin@airesdechica.org',
+  COMPROBANTES_EMAIL: 'comprobantes@airesdechica.org', // alias/reenvío a admin@
   // Logo servido desde GitHub Pages (dominio propio de Aires de Chicá).
   LOGO_URL:       'https://admin.airesdechica.org/brand/logo.svg',
   LOGO_PNG_URL:   'https://admin.airesdechica.org/brand/logo.png',
@@ -55,6 +56,7 @@ function doGet(e) {
     else if (action === 'getDashboard')    { requireAuth(p.token); out = { ok: true, data: buildDashboard(p.asOf || null) }; }
     else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios() }; }
     else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
+    else if (action === 'getComprobantes') { requireAuth(p.token); out = { ok: true, data: getComprobantes(p.estado || null) }; }
     else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
@@ -89,6 +91,8 @@ function doPost(e) {
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropSaldo2025') out = { ok: true, data: setPropSaldo2025(data.clave, data.saldo2025) };
     else if (action === 'setPropInicio')    out = { ok: true, data: setPropInicio(data.clave, data.inicio) };
+    else if (action === 'capturarComprobantes') out = { ok: true, data: capturarComprobantes() };
+    else if (action === 'resolverComprobante')  out = { ok: true, data: resolverComprobante(data) };
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {

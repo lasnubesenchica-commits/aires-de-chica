@@ -153,6 +153,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
   <nav class="tabs" id="tabs">
     <button data-tab="dash" class="active">Estado de cuentas</button>
     <button data-tab="conc">Conciliación bancaria</button>
+    <button data-tab="comprob">Comprobantes</button>
     <button data-tab="prop">Propietarios</button>
     <button data-tab="recor">Recordatorios</button>
     <button data-tab="opts">⚙ Opciones</button>
@@ -222,6 +223,15 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
           <span class="muted">o haz clic para seleccionarlo (formato BGRExcelContReport)</span></div>
           <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none"/></div>
         <div id="concResult" style="margin-top:18px"></div>
+      </div></div>
+  </section>
+
+  <section id="tab-comprob" style="display:none">
+    <div class="card"><div class="hd"><h2>Comprobantes por email</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn" onclick="capturarAhora(this)" title="Lee comprobantes@airesdechica.org ahora mismo">Revisar correo ahora</button></div>
+      <div class="bd" style="padding:18px">
+        <p class="muted" style="margin-top:0">Los propietarios envían su comprobante a <b>comprobantes@airesdechica.org</b>. El sistema lo revisa una vez al día, empareja al propietario y lo deja aquí <b>pendiente</b>. Revisa el monto y la cuenta, y <b>confirma</b> para registrar el pago (o recházalo). Nada se aplica solo.</p>
+        <div id="comprobResult"><div class="muted">Cargando…</div></div>
       </div></div>
   </section>
 
@@ -635,7 +645,10 @@ async function renderOpts(){
         <div class="toggle"><input type="checkbox" id="o_avmora" ${c.notifMora?'checked':''}>
           <div class="t-body"><b>Aviso de mora</b>
             <div class="t-sub">Solo a morosos con recargo · el día <input type="number" id="o_moradia" min="1" max="28" value="${c.moraDia}"> de cada mes.</div></div></div>
-        <div class="help" style="margin-top:10px">Envíos programados actualmente: <b>${(d.triggers||[]).length? d.triggers.map(t=>t.funcion==='recordatorioMensual'?'Recordatorio':'Aviso de mora').join(', ') : 'ninguno'}</b>.</div>
+        <div class="toggle" style="border-top:1px dashed var(--ac-border);margin-top:8px;padding-top:12px"><input type="checkbox" id="o_captura" ${c.capturaComprobantes?'checked':''}>
+          <div class="t-body"><b>Captura de comprobantes por email</b>
+            <div class="t-sub">Lee <b>comprobantes@airesdechica.org</b> una vez al día y deja los pagos <b>pendientes de revisión</b> en la pestaña Comprobantes. Solo <b>lee</b> correo entrante — no envía nada (independiente del interruptor de envíos).</div></div></div>
+        <div class="help" style="margin-top:10px">Tareas programadas: <b>${(d.triggers||[]).length? d.triggers.map(t=>({recordatorioMensual:'Recordatorio',avisoDeMora:'Aviso de mora',capturarComprobantes:'Captura de comprobantes'}[t.funcion]||t.funcion)).join(', ') : 'ninguna'}</b>.</div>
       </div></div>
     </div>
 
@@ -660,7 +673,8 @@ async function guardarOpts(){
     notifRecordatorio:document.getElementById('o_recor').checked,
     recordatorioDia:+document.getElementById('o_recordia').value,
     notifMora:document.getElementById('o_avmora').checked,
-    moraDia:+document.getElementById('o_moradia').value
+    moraDia:+document.getElementById('o_moradia').value,
+    capturaComprobantes:document.getElementById('o_captura').checked
   };
   try{
     const r=await post('guardarConfig',{config:cfg});
@@ -832,14 +846,68 @@ async function descargarCartera(){
   XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
 }
 
+/* ───────── Comprobantes por email ───────── */
+let COMPROB_PROPS=null;
+async function renderComprob(){
+  const box=document.getElementById('comprobResult'); box.innerHTML='<div class="muted">Cargando…</div>';
+  let lista, props;
+  try{ [lista,props]=await Promise.all([jsonp('getComprobantes',{estado:'pendiente'}), COMPROB_PROPS?Promise.resolve(COMPROB_PROPS):jsonp('getPropietarios')]); }
+  catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  COMPROB_PROPS=props;
+  const opts=props.slice().sort((a,b)=>a.residencial.localeCompare(b.residencial)||String(a.lote).localeCompare(String(b.lote)))
+    .map(p=>`<option value="${p.clave}">${p.residencial} · L${p.lote} · ${p.nombre}</option>`).join('');
+  if(!lista.length){ box.innerHTML='<div class="muted" style="padding:20px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'; return; }
+  const rows=lista.map(c=>{
+    const conf = c.metodo==='email'||c.metodo==='lote+nombre'?'ok':(c.metodo==='sin-match'?'red':'warn');
+    return `<tr data-id="${c.id}">
+      <td>${_fx(c.fecha)}</td>
+      <td><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
+      <td style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>'}</td>
+      <td class="num"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
+      <td><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select> <span class="pill ${conf}" style="font-size:.66rem">${c.metodo}</span></td>
+      <td style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="confirmarComprob('${c.id}',this)">Confirmar</button>
+        <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`;
+  }).join('');
+  box.innerHTML=`<table><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  // preseleccionar la cuenta detectada
+  lista.forEach(c=>{ if(c.clave){ const tr=box.querySelector(`tr[data-id="${c.id}"]`); if(tr){ const s=tr.querySelector('.cCuenta'); if(s) s.value=c.clave; } } });
+}
+async function capturarAhora(btn){
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Revisando…';
+  try{ const r=await post('capturarComprobantes',{});
+    await renderComprob();
+    alert(r.nuevos? (r.nuevos+' comprobante(s) nuevo(s) capturado(s).') : 'Sin comprobantes nuevos.');
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+async function confirmarComprob(id,btn){
+  const tr=btn.closest('tr'); const clave=tr.querySelector('.cCuenta').value, monto=tr.querySelector('.cMonto').value;
+  if(!clave) return alert('Asigna una cuenta.');
+  if(!(+monto>0)) return alert('Indica el monto.');
+  btn.disabled=true;
+  try{ const r=await post('resolverComprobante',{id,accion:'aplicar',clave,monto:+monto});
+    tr.style.opacity='.4'; tr.querySelectorAll('button,select,input').forEach(x=>x.disabled=true);
+    if(typeof renderDash==='function') renderDash();
+    setTimeout(renderComprob,600);
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function rechazarComprob(id,btn){
+  if(!confirm('¿Rechazar este comprobante? No se registrará ningún pago.')) return;
+  btn.disabled=true;
+  try{ await post('resolverComprobante',{id,accion:'rechazar'});
+    renderComprob();
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
 /* Tabs + init */
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','prop','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','comprob','prop','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
+  if(t==='comprob')renderComprob();
   if(t==='opts')renderOpts();
 });
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });

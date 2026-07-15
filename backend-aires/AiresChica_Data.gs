@@ -14,7 +14,8 @@
 var SH = {
   PROP:  'Propietarios',
   PAGOS: 'Pagos',
-  LOG:   'ConciliacionLog'
+  LOG:   'ConciliacionLog',
+  COMPROB: 'Comprobantes'
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
@@ -22,13 +23,15 @@ var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celula
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
                  'mesAplicado','notas','creado'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
+var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
+                   'referencia','estado','adjuntoUrl','msgId','metodo','capturado'];
 
 /* ─────────────── setup de pestañas ─────────────── */
 
 function ensureSheets() {
   var ss = _ss();
   var created = [];
-  [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG]].forEach(function (pair) {
+  [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }
