@@ -67,6 +67,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .dl-item { display:block; width:100%; text-align:left; padding:11px 14px; border:0; background:none; font:inherit; cursor:pointer; color:var(--ac-ink); white-space:nowrap; }
 .dl-item:hover { background:var(--ac-teal-50); }
 .dl-item + .dl-item { border-top:1px solid var(--ac-border); }
+.seg { display:inline-flex; border:1px solid var(--ac-border); border-radius:10px; overflow:hidden; background:#fff; }
+.seg-btn { border:0; background:none; padding:8px 15px; font:inherit; font-weight:600; color:var(--ac-muted); cursor:pointer; white-space:nowrap; }
+.seg-btn + .seg-btn { border-left:1px solid var(--ac-border); }
+.seg-btn:hover { background:var(--ac-teal-50); }
+.seg-btn.active { background:var(--ac-teal-600); color:#fff; }
+.seg-btn.active:hover { background:var(--ac-teal-600); }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -155,7 +161,12 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
   <section id="tab-dash">
     <div class="kpis" id="kpis"></div>
     <div class="card">
-      <div class="hd"><h2>Cuentas</h2><div class="spacer" style="flex:1"></div>
+      <div class="hd"><h2>Cuentas</h2>
+        <div class="seg" id="vistaSeg">
+          <button type="button" class="seg-btn active" data-v="cartera" onclick="setVista('cartera')">Cartera acumulada</button>
+          <button type="button" class="seg-btn" data-v="mes" onclick="setVista('mes')">Cobros del mes</button>
+        </div>
+        <div class="spacer" style="flex:1"></div>
         <div class="controls">
           <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Periodo de corte: el estado de cuenta se calcula como si hoy fuera la fecha de corte. No filtra cuentas; recalcula los saldos a esa fecha.">Periodo
             <select id="fRango" onchange="aplicarRango()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
@@ -165,10 +176,6 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
               <option value="custom">Personalizado…</option>
             </select></label>
           <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="display:none;font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
-          <select id="fVista" onchange="cambiarVista()" title="Cartera acumulada = saldos corridos. Cobros del mes = quién cubrió la cuota del mes de corte." style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
-            <option value="cartera">Cartera acumulada</option>
-            <option value="mes">Cobros del mes</option>
-          </select>
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <select id="fMesEstado" onchange="renderTabla()" style="display:none"><option value="">Todos</option><option value="pagado">Pagó</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
@@ -328,8 +335,9 @@ const HEAD_MES=`<tr><th>Lote</th><th>Residencial</th><th>Propietario</th>
   <th class="num">Falta <span class="hlp" title="Parte de la cuota del mes que aún no está cubierta.">ⓘ</span></th>
   <th>Estado del mes <span class="hlp" title="Pagó = la cuota del mes está cubierta (aunque sea con crédito). Parcial = cubierta en parte. Pendiente = nada cubierto.">ⓘ</span></th>
   <th></th></tr>`;
-function cambiarVista(){
-  VISTA=document.getElementById('fVista').value; const mes=(VISTA==='mes');
+function setVista(v){
+  VISTA=v; const mes=(v==='mes');
+  document.querySelectorAll('#vistaSeg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.v===v));
   document.getElementById('fEstado').style.display=mes?'none':'';
   document.getElementById('fMesEstado').style.display=mes?'':'none';
   document.getElementById('legendCartera').style.display=mes?'none':'';
