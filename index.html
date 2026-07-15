@@ -164,7 +164,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
               <option value="mesAnterior">Cierre mes anterior</option>
               <option value="custom">Personalizado…</option>
             </select></label>
-          <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+          <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="display:none;font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
           <select id="fVista" onchange="cambiarVista()" title="Cartera acumulada = saldos corridos. Cobros del mes = quién cubrió la cuota del mes de corte." style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
             <option value="cartera">Cartera acumulada</option>
             <option value="mes">Cobros del mes</option>
@@ -666,8 +666,9 @@ function aplicarRango(){
   if(r==='ytd') ae.value=_iso(t);
   else if(r==='mesActual') ae.value=_iso(new Date(t.getFullYear(), t.getMonth()+1, 0)); // último día de este mes
   else if(r==='mesAnterior') ae.value=_iso(new Date(t.getFullYear(), t.getMonth(), 0));  // último día del mes pasado
-  ae.disabled=(r!=='custom');
-  if(r==='custom'){ ae.focus(); if(ae.showPicker) try{ae.showPicker();}catch(e){} return; }
+  const custom=(r==='custom');
+  ae.disabled=!custom; ae.style.display=custom?'':'none';   // el campo de fecha solo aparece en Personalizado
+  if(custom){ ae.focus(); if(ae.showPicker) try{ae.showPicker();}catch(e){} return; }
   renderDash();
 }
 function rangoCustom(){ document.getElementById('fRango').value='custom'; document.getElementById('fAsOf').disabled=false; renderDash(); }
