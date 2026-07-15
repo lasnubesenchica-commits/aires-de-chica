@@ -147,7 +147,10 @@ function _extraerLote(t) {
 function _carpetaComprobantes() {
   var name = 'Aires de Chicá - Comprobantes';
   var it = DriveApp.getFoldersByName(name);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(name);
+  var folder = it.hasNext() ? it.next() : DriveApp.createFolder(name);
+  // Enlace público de solo lectura: los comprobantes se ven sin iniciar sesión.
+  try { folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+  return folder;
 }
 
 // OCR de una imagen/PDF: convierte a Google Doc con OCR (Servicio avanzado Drive v2),
@@ -237,6 +240,7 @@ function capturarComprobantes(maxThreads) {
           try {
             var f = folder.createFile(a.copyBlob());
             f.setName(Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + a.getName());
+            try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e2) {}
             if (!url) url = f.getUrl();
           } catch (e) {}
         });

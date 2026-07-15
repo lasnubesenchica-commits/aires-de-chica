@@ -228,6 +228,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
 
   <section id="tab-comprob" style="display:none">
     <div class="card"><div class="hd"><h2>Comprobantes por email</h2><div class="spacer" style="flex:1"></div>
+      <span id="comprobFlash" class="muted" style="font-size:.82rem;margin-right:12px"></span>
       <button class="btn" onclick="capturarAhora(this)" title="Lee comprobantes@airesdechica.org ahora mismo">Revisar correo ahora</button></div>
       <div class="bd" style="padding:18px">
         <p class="muted" style="margin-top:0">Los propietarios envían su comprobante a <b>comprobantes@airesdechica.org</b>. El sistema lo revisa una vez al día, empareja al propietario y lo deja aquí <b>pendiente</b>. Revisa el monto y la cuenta, y <b>confirma</b> para registrar el pago (o recházalo). Nada se aplica solo.</p>
@@ -857,7 +858,7 @@ async function renderComprob(){
   const opts=props.slice().sort((a,b)=>a.residencial.localeCompare(b.residencial)||String(a.lote).localeCompare(String(b.lote)))
     .map(p=>`<option value="${p.clave}">${p.residencial} · L${p.lote} · ${p.nombre}</option>`).join('');
   const pend=all.filter(c=>c.estado==='pendiente'), desc=all.filter(c=>c.estado==='descartado');
-  const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
+  const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" class="cprev" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
   const pendHtml = !pend.length ? '<div class="muted" style="padding:16px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'
     : `<table><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${
       pend.map(c=>{ const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
@@ -887,9 +888,13 @@ async function recuperarComprob(id,btn){
 }
 async function capturarAhora(btn){
   btn.disabled=true; const t=btn.textContent; btn.textContent='Revisando…';
+  const flash=document.getElementById('comprobFlash'); if(flash) flash.textContent='';
   try{ const r=await post('capturarComprobantes',{});
     await renderComprob();
-    alert(`${r.nuevos||0} pendiente(s) capturado(s)` + ((r.descartados)?` · ${r.descartados} descartado(s) (sin adjunto o no parecen pago)`:'') + '.');
+    if(flash){
+      flash.textContent = `${r.nuevos||0} pendiente(s) capturado(s)` + ((r.descartados)?` · ${r.descartados} descartado(s)`:'') + '.';
+      clearTimeout(flash._t); flash._t=setTimeout(()=>{ flash.textContent=''; }, 6000);
+    }
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ btn.disabled=false; btn.textContent=t; }
 }
@@ -911,6 +916,43 @@ async function rechazarComprob(id,btn){
     renderComprob();
   }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
 }
+
+/* Preview flotante del comprobante al pasar el mouse sobre "Ver comprobante". */
+(function(){
+  var tip=null;
+  function ensureTip(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.id='cprevTip';
+    tip.style.cssText='position:fixed;z-index:9999;display:none;padding:6px;background:#fff;border:1px solid var(--ac-border,#d4d4d4);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.22);max-width:340px';
+    tip.innerHTML='<div class="muted" style="font-size:.72rem;padding:20px 30px;text-align:center">Cargando preview…</div>';
+    document.body.appendChild(tip);
+    return tip;
+  }
+  function idDe(href){ var m=String(href||'').match(/[-\w]{25,}/); return m?m[0]:''; }
+  function show(a){
+    var id=idDe(a.getAttribute('href')); if(!id) return;
+    var el=ensureTip();
+    el.innerHTML='<div class="muted" style="font-size:.72rem;padding:20px 30px;text-align:center">Cargando preview…</div>';
+    var img=new Image();
+    img.style.cssText='display:block;max-width:326px;max-height:420px;border-radius:6px';
+    img.onload=function(){ el.innerHTML=''; el.appendChild(img); position(el,a); };
+    img.onerror=function(){ el.innerHTML='<div class="muted" style="font-size:.72rem;padding:16px 20px;text-align:center">No se pudo cargar el preview.<br>Usa <b>Ver comprobante</b>.</div>'; };
+    img.src='https://drive.google.com/thumbnail?id='+id+'&sz=w480';
+    el.style.display='block'; position(el,a);
+  }
+  function position(el,a){
+    var r=a.getBoundingClientRect(), vw=innerWidth, vh=innerHeight;
+    var w=el.offsetWidth||330, h=el.offsetHeight||240;
+    var left=r.left; if(left+w>vw-8) left=vw-w-8; if(left<8) left=8;
+    var top=r.bottom+8; if(top+h>vh-8) top=r.top-h-8; if(top<8) top=8;
+    el.style.left=left+'px'; el.style.top=top+'px';
+  }
+  function hide(){ if(tip) tip.style.display='none'; }
+  document.addEventListener('mouseover',function(e){ var a=e.target.closest&&e.target.closest('a.cprev'); if(a) show(a); });
+  document.addEventListener('mouseout',function(e){ var a=e.target.closest&&e.target.closest('a.cprev'); if(a && !(e.relatedTarget&&tip&&tip.contains(e.relatedTarget))) hide(); });
+  document.addEventListener('scroll',hide,true);
+})();
 
 /* Tabs + init */
 document.getElementById('tabs').addEventListener('click',e=>{
