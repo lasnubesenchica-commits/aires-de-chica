@@ -231,6 +231,30 @@ function _esNotifBanco(from, subject, body) {
          /MONTO/.test(t);
 }
 
+// Genera un PDF con formato del aviso de Banco General (para que el comprobante
+// tenga una miniatura legible en Drive / en el tooltip de "Ver comprobante").
+function _pdfRow(k, v) {
+  return '<tr><td style="padding:3px 16px 3px 0;color:#5B7883">' + k + '</td>' +
+         '<td style="padding:3px 0;font-weight:600">' + (v || '—') + '</td></tr>';
+}
+function _notifBancoPdf(nb, body, fecha) {
+  var esc = function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  var f = Utilities.formatDate(fecha, CONFIG.TZ, 'dd/MM/yyyy');
+  var html = '<html><head><meta charset="utf-8"></head>' +
+    '<body style="font-family:Helvetica,Arial,sans-serif;color:#143039;padding:36px">' +
+    '<div style="font-size:20px;font-weight:700;color:#0E8FB0">Aviso de pago recibido</div>' +
+    '<div style="color:#5B7883;margin:2px 0 16px">Banca en Línea · ' + CONFIG.BANCO + ' · ' + f + '</div>' +
+    '<div style="font-size:34px;font-weight:800;color:#0E8FB0;margin:6px 0 18px">' + _money(nb.monto || 0) + '</div>' +
+    '<table style="border-collapse:collapse;font-size:14px">' +
+      _pdfRow('Pagador', esc(nb.pagador)) +
+      _pdfRow('Descripción', esc(nb.descripcion)) +
+      _pdfRow('Cuenta destino (terminación)', esc(nb.cuentaTerm)) +
+    '</table>' +
+    '<div style="margin-top:22px;color:#5B7883;font-size:11px;white-space:pre-wrap;border-top:1px solid #ddd;padding-top:10px">' +
+      esc(body) + '</div></body></html>';
+  return HtmlService.createHtmlOutput(html).getAs('application/pdf');
+}
+
 // Extrae los datos de un aviso de Banco General (texto plano, formato fijo).
 function _parseNotifBanco(subject, body) {
   var out = { monto: 0, descripcion: '', pagador: '', cuentaTerm: '', tipoCuenta: '' };
@@ -315,11 +339,11 @@ function capturarComprobantes(maxThreads) {
         metodoPago = 'Banca en Línea (Banco General)';
         cuentaDestino = nb.cuentaTerm || '';
         beneficiario = CONFIG.CUENTA_NOMBRE; // BG sólo notifica sobre la cuenta de Aires de Chicá
-        // Guarda el aviso como registro de texto en Drive (para tener enlace "Ver comprobante").
+        // Guarda el aviso como PDF con formato en Drive (miniatura legible + enlace "Ver comprobante").
         try {
-          var fb = folder.createFile(
-            'BG ' + Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + (lote.raw || nb.pagador || '') + '.txt',
-            body, 'text/plain');
+          var pdf = _notifBancoPdf(nb, body, msg.getDate())
+            .setName('BG ' + Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + (lote.raw || nb.pagador || '') + '.pdf');
+          var fb = folder.createFile(pdf);
           try { fb.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e2) {}
           url = fb.getUrl();
         } catch (e) {}
