@@ -30,18 +30,46 @@ function _mesesAtraso(year, month1, asOf) {
 
 function _finDeMes(year, month1) { return new Date(year, month1, 0); } // último día del mes
 
+// Clave 'YYYY-MM' para condonaciones de mora.
+function _ymKey(y, m) { return y + '-' + (m < 10 ? '0' + m : '' + m); }
+
+// Conjunto de meses con mora condonada de un propietario.
+//   prop.moraCondon = 'ALL' (toda la mora) | '2026-04,2026-05' (meses puntuales) | ''
+function _condonSet(prop) {
+  var raw = String(prop && prop.moraCondon || '').trim();
+  if (raw.toUpperCase() === 'ALL') return { all: true, set: {} };
+  var set = {};
+  raw.split(',').forEach(function (t) { t = t.trim(); if (t) set[t] = true; });
+  return { all: false, set: set };
+}
+
 /**
  * Calcula el estado de cuenta de un propietario.
+ *
+ * MORA (recargo por atraso): se trata APARTE del principal (cuotas). Una vez que
+ * una cuota se vuelve morosa genera su recargo, y ese recargo PERMANECE como saldo
+ * aunque después se pague la cuota (no se borra al aplicar el pago).
+ *  - cfg.moraCrece=false (default): cargo fijo de una sola vez (moraPct % de la cuota).
+ *  - cfg.moraCrece=true: crece moraPct % por cada mes de atraso, y se congela el mes
+ *    en que la cuota queda saldada (fechado por aplicación cronológica del principal).
+ *  - cfg.moraOrden='cuota' (default): los pagos cubren primero las cuotas y de último la mora.
+ *    cfg.moraOrden='mora': los pagos cubren primero la mora y luego las cuotas.
+ *  - prop.moraCondon: meses (o 'ALL') cuya mora fue condonada por el administrador.
+ *
  * @return {Object} desglose por cuota + totales + KPIs de la cuenta.
  */
 function calcEstado(prop, pagosArr, asOf) {
   asOf = _asOfDate(asOf);
   var cfg = _cfg();
   var moraPct = cfg.moraPct / 100;
+  var moraCrece = !!cfg.moraCrece;
+  var moraOrden = (cfg.moraOrden === 'mora') ? 'mora' : 'cuota';
   var cuota = cuotaDe(prop);
   var year = CONFIG.ANIO_ACTUAL;
   var mesActual = (asOf.getFullYear() > year) ? 12 : (asOf.getMonth() + 1);
   var moraDesde = _moraDesdeIdx();
+  var currentIdx = year * 12 + mesActual;
+  var condon = _condonSet(prop);
 
   // saldo inicial 2025: positivo = deuda arrastrada; negativo = crédito a favor.
   var saldo2025 = _round2(Number(prop.saldo2025) || 0);
@@ -58,59 +86,87 @@ function calcEstado(prop, pagosArr, asOf) {
     else if (_iy > year) mesInicio = 13;
   }
 
-  // 1) buckets facturados, del más antiguo al más nuevo
+  // 1) buckets de principal, del más antiguo al más nuevo
   var buckets = [];
   if (deuda2025 > 0) {
-    buckets.push({ label: 'Saldo 2025', year: 2025, month: 12, monto: deuda2025, tipo: 'saldo2025' });
+    buckets.push({ label: 'Saldo 2025', year: 2025, month: 12, idx: 2025 * 12 + 12, monto: deuda2025, tipo: 'saldo2025' });
   }
   for (var m = mesInicio; m <= mesActual; m++) {
-    buckets.push({ label: AC_MESES_LARGO[m - 1], year: year, month: m, monto: cuota, tipo: 'cuota' });
+    buckets.push({ label: AC_MESES_LARGO[m - 1], year: year, month: m, idx: year * 12 + m, monto: cuota, tipo: 'cuota' });
   }
 
-  // 2) total pagado y aplicación en cascada.
-  //    El crédito a favor de 2025 se suma al dinero disponible y cubre las
-  //    cuotas más antiguas primero (se va consumiendo mes a mes).
   var totalPagado = 0;
   (pagosArr || []).forEach(function (p) { totalPagado += Number(p.monto) || 0; });
   totalPagado = _round2(totalPagado);
 
-  var rem = _round2(totalPagado + credito2025), facturado = 0, moraTotal = 0, saldoTotal = 0;
-  var oldestUnpaid = null, bucketMes = null; // bucketMes = cuota del mes de corte (para "cobros del mes")
+  // 2) fechado de pago (cronológico, principal más antiguo primero) para congelar la mora
+  //    en modo 'crece'. El crédito 2025 está disponible desde el inicio.
+  var thresholds = [], run = 0;
+  buckets.forEach(function (b) { run = _round2(run + b.monto); thresholds.push(run); });
+  var payoffIdx = buckets.map(function () { return Infinity; });
+  var pays = (pagosArr || []).map(function (p) { return { d: new Date(p.fecha), a: _round2(Number(p.monto) || 0) }; })
+    .filter(function (x) { return x.a > 0 && !isNaN(x.d.getTime()); })
+    .sort(function (a, b) { return a.d - b.d; });
+  var acc = credito2025;
+  buckets.forEach(function (b, k) { if (acc >= thresholds[k] - 0.009) payoffIdx[k] = Math.min(payoffIdx[k], b.idx); });
+  pays.forEach(function (p) {
+    acc = _round2(acc + p.a);
+    var pidx = p.d.getFullYear() * 12 + (p.d.getMonth() + 1);
+    buckets.forEach(function (b, k) { if (payoffIdx[k] === Infinity && acc >= thresholds[k] - 0.009) payoffIdx[k] = pidx; });
+  });
+
+  // 3) mora por bucket (cargo fijo o creciente, independiente del pago; congela al saldar)
+  buckets.forEach(function (b, k) {
+    b.mora = 0; b.moraMeses = 0; b.condonada = false;
+    if (b.tipo !== 'cuota') return;
+    if (b.idx < moraDesde) return;                  // cuotas anteriores a moraDesde no generan mora (regla del cliente)
+    var hi = Math.min(payoffIdx[k], currentIdx);   // hasta cuándo corre el atraso
+    var lo = b.idx + 1;                             // se vuelve morosa el mes siguiente al vencimiento
+    var meses = Math.max(0, hi - lo + 1);
+    var cond = condon.all || !!condon.set[_ymKey(b.year, b.month)];
+    if (meses > 0 && cond) { b.condonada = true; }
+    if (meses > 0 && !cond) {
+      b.moraMeses = meses;
+      b.mora = _round2(cuota * moraPct * (moraCrece ? meses : 1));
+    }
+  });
+
+  // 4) aplicación del pago: principal y mora, en el ORDEN configurado.
+  var pool = _round2(totalPagado + credito2025);
+  buckets.forEach(function (b) { b.pagado = 0; b.saldo = b.monto; b.moraPagado = 0; b.moraSaldo = b.mora; });
+  var moraList = buckets.filter(function (b) { return b.mora > 0; });
+  function _aplicaPrincipal() {
+    buckets.forEach(function (b) { var ap = Math.min(pool, b.saldo); b.pagado = _round2(b.pagado + ap); b.saldo = _round2(b.saldo - ap); pool = _round2(pool - ap); });
+  }
+  function _aplicaMora() {
+    moraList.forEach(function (b) { var ap = Math.min(pool, b.moraSaldo); b.moraPagado = _round2(b.moraPagado + ap); b.moraSaldo = _round2(b.moraSaldo - ap); pool = _round2(pool - ap); });
+  }
+  if (moraOrden === 'mora') { _aplicaMora(); _aplicaPrincipal(); } else { _aplicaPrincipal(); _aplicaMora(); }
+
+  // 5) totales
+  var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
+  var oldestUnpaid = null, bucketMes = null;
   buckets.forEach(function (b) {
     facturado += b.monto;
-    var aplicado = Math.min(rem, b.monto);
-    b.pagado = _round2(aplicado);
-    b.saldo = _round2(b.monto - aplicado);
-    rem = _round2(rem - aplicado);
-    // mora: sólo cuotas >= abril 2026 con saldo pendiente
-    b.mora = 0;
-    var idxBucket = b.year * 12 + b.month;
-    if (b.saldo > 0 && idxBucket >= moraDesde && b.tipo === 'cuota') {
-      var ml = _mesesAtraso(b.year, b.month, asOf);
-      b.mesesAtraso = ml;
-      b.mora = _round2(b.saldo * moraPct * ml);
-      moraTotal += b.mora;
-    }
-    if (b.saldo > 0) {
-      saldoTotal += b.saldo;
-      if (!oldestUnpaid) oldestUnpaid = b;
-    }
+    moraCargada = _round2(moraCargada + b.mora);
+    if (b.saldo > 0.009) { saldoTotal = _round2(saldoTotal + b.saldo); if (!oldestUnpaid) oldestUnpaid = b; }
+    if (b.moraSaldo > 0.009) moraPendiente = _round2(moraPendiente + b.moraSaldo);
     if (b.tipo === 'cuota' && b.month === mesActual) bucketMes = b;
   });
 
-  // cobertura de la cuota del MES DE CORTE (cubierta = pagos + crédito aplicados en cascada)
+  // cobertura de la cuota del MES DE CORTE (principal)
   var pendienteMes = bucketMes ? bucketMes.saldo : 0;
   var cubiertoMes = bucketMes ? _round2(bucketMes.monto - bucketMes.saldo) : 0;
   var estadoMes;
-  if (!bucketMes) estadoMes = 'na';                                    // no factura este mes (ingresó después / futuro)
-  else if (pendienteMes <= 0.009) estadoMes = 'pagado';               // cubierta (aunque sea con crédito)
+  if (!bucketMes) estadoMes = 'na';
+  else if (pendienteMes <= 0.009) estadoMes = 'pagado';
   else if (pendienteMes < bucketMes.monto - 0.009) estadoMes = 'parcial';
   else estadoMes = 'pendiente';
 
   saldoTotal = _round2(saldoTotal);
-  moraTotal = _round2(moraTotal);
-  var creditoAFavor = _round2(rem);
-  var saldoConMora = _round2(saldoTotal + moraTotal);
+  var moraTotal = moraPendiente;              // compat: "mora" = recargo pendiente
+  var creditoAFavor = _round2(pool);
+  var saldoConMora = _round2(saldoTotal + moraPendiente);
 
   // 3) aging (días de la cuota vencida más antigua)
   var diasVencido = 0, aging = '0';
@@ -140,12 +196,18 @@ function calcEstado(prop, pagosArr, asOf) {
       if (p.comprobanteUrl) (vouchersMes[mi] = vouchersMes[mi] || []).push(p.comprobanteUrl);
     }
   });
+  // mora y condonación por mes (para pintar la columna Mora)
+  var moraByIdx = {}, condonByIdx = {};
+  buckets.forEach(function (b) { if (b.tipo === 'cuota') { moraByIdx[b.idx] = b.mora; condonByIdx[b.idx] = b.condonada; } });
+
   var mensual = [], acum = saldo2025;
-  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum, vouchers: [] });
+  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum, mora: 0, condonada: false, vouchers: [] });
   for (var mm = mesInicio; mm <= mesActual; mm++) {
     var pg = _round2(pagosMes[mm] || 0);
     acum = _round2(acum + cuota - pg);
-    mensual.push({ label: AC_MESES_LARGO[mm - 1], cuota: cuota, pagado: pg, saldo: acum, vouchers: vouchersMes[mm] || [] });
+    var _idx = year * 12 + mm;
+    mensual.push({ label: AC_MESES_LARGO[mm - 1], ym: _ymKey(year, mm), cuota: cuota, pagado: pg, saldo: acum,
+      mora: _round2(moraByIdx[_idx] || 0), condonada: !!condonByIdx[_idx], vouchers: vouchersMes[mm] || [] });
   }
 
   return {
@@ -160,9 +222,12 @@ function calcEstado(prop, pagosArr, asOf) {
     facturado: _round2(facturado),
     pagado: totalPagado,
     saldo: saldoTotal,
-    mora: moraTotal,
+    mora: moraTotal,               // recargo por mora PENDIENTE (lo que aún se debe)
+    moraCargada: moraCargada,      // recargo por mora total generado (antes de pagos/condonación)
     saldoConMora: saldoConMora,
     creditoAFavor: creditoAFavor,
+    moraOrden: moraOrden, moraCrece: moraCrece,
+    moraCondon: String(prop.moraCondon || ''), moraCondonAll: condon.all,
     diasVencido: diasVencido,
     aging: aging,
     estado: estado,
@@ -278,7 +343,8 @@ function buildDashboard(asOf) {
                inicioCobro: e.inicioCobro,
                cuotaMes: e.cuotaMes, cubiertoMes: e.cubiertoMes, pendienteMes: e.pendienteMes, estadoMes: e.estadoMes,
                facturado: e.facturado, pagado: e.pagado,
-               saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
+               saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
+               moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
                fechaVencimiento: e.fechaVencimiento,
                // desglose mensual (caja real) para que el modal abra al instante (sin otra llamada)

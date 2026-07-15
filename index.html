@@ -449,8 +449,9 @@ function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
+  const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo acum.</th></tr></thead>
+    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo cuota</th><th class="num">Mora</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
       const vs=b.vouchers||[];
       const pagadoCell = b.pagado
@@ -458,24 +459,41 @@ function _renderEstado(e){
             ? `<a href="${vs[0]}" target="_blank" class="cprev" title="Ver comprobante" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none">${money(b.pagado)} 📎</a>`+(vs.length>1?`<span class="muted" style="font-size:.68rem"> +${vs.length-1}</span>`:'')
             : money(b.pagado))
         : (b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—');
+      let moraCell='—';
+      if(all && (b.mora>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
+      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a>`;
+      else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a>`;
       return `<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
       <td class="num">${b.cuota?money(b.cuota):'—'}</td>
       <td class="num">${pagadoCell}</td>
-      <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo acumulado = cuota del mes menos lo pagado ese mes (los negativos son crédito a favor).</div>
+      <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td>
+      <td class="num">${moraCell}</td></tr>`;}).join('')}</tbody></table>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo cuota = principal (cuota menos lo pagado). La <b>Mora</b> es un cargo aparte que permanece aunque se pague la cuota.</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Saldo pendiente</span><b>${money(e.saldo)}</b></div>
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Mora (10%)</span><b style="color:var(--ac-coral)">${money(e.mora)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Saldo pendiente (cuotas)</span><b>${money(e.saldo)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Recargo por mora acumulado</span><b style="color:var(--ac-coral)">${money(e.mora)}</b></div>
       ${e.creditoAFavor>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">-${money(e.creditoAFavor)}</b></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
         <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoConMora)}</b></div>
     </div></div>
-    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      ${(e.moraCargada>0.009||all)?`<button class="link-btn" style="color:${all?'var(--ac-ok)':'var(--ac-coral)'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar toda la mora':'Condonar toda la mora'}</button>`:''}
+      <span class="spacer" style="flex:1"></span>
       <button class="btn" onclick="mailEstado('${e.clave}')" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
     </div>`;
   document.getElementById('modal').classList.add('show');
 }
 function closeModal(){ document.getElementById('modal').classList.remove('show'); }
+async function condonarMora(clave, mes, condonar, ev){
+  if(ev) ev.preventDefault();
+  if(mes==='ALL' && !confirm(condonar?'¿Condonar TODA la mora de este propietario?':'¿Reactivar toda la mora de este propietario?')) return;
+  try{
+    await post('setMoraCondon',{clave, mes, condonar});
+    const e=await jsonp('getEstadoCuenta',{clave});   // recalcula y repinta el modal
+    _renderEstado(e);
+    if(typeof renderDash==='function') renderDash();  // refresca KPIs (cache del dashboard)
+  }catch(err){ if(!onAuthError(err)) alert('Error: '+err); }
+}
 async function mailEstado(clave){ try{ const r=await post('enviarEstado',{clave});
   alert(r.enviado?(r.prueba?'🧪 Modo prueba: enviado a '+r.email+' (en real iría a '+(r.destinatarioReal||'—')+')':'Enviado a '+r.email):'No enviado: '+(r.motivo||'')); }catch(e){ if(!onAuthError(e))alert('Error: '+e); } }
 async function enviar(tipo){ document.getElementById('recorResult').textContent='Enviando…';
@@ -628,7 +646,19 @@ async function renderOpts(){
         <div class="field"><label>La mora aplica desde</label>
           <div class="in"><input type="month" id="o_moradesde" value="${c.moraDesde}"></div>
           <div class="help">Las cuotas anteriores a este mes no generan recargo.</div></div>
-        <div class="help">Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
+        <div class="field"><label>Cálculo del recargo por mora</label>
+          <div class="in"><select id="o_moracrece" style="min-width:260px;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+            <option value="fija" ${!c.moraCrece?'selected':''}>Cargo fijo una sola vez (no crece)</option>
+            <option value="crece" ${c.moraCrece?'selected':''}>Crece cada mes de atraso (se congela al pagar)</option>
+          </select></div>
+          <div class="help"><b>Fija:</b> la cuota morosa genera un único recargo de ${c.moraPct}% y no crece con el tiempo. <b>Crece:</b> suma ${c.moraPct}% por cada mes de atraso y deja de crecer el día en que se salda esa cuota.</div></div>
+        <div class="field"><label>Orden de aplicación del pago</label>
+          <div class="in"><select id="o_moraorden" style="min-width:260px;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+            <option value="cuota" ${c.moraOrden!=='mora'?'selected':''}>Primero las cuotas, la mora de último</option>
+            <option value="mora" ${c.moraOrden==='mora'?'selected':''}>Primero la mora, luego las cuotas</option>
+          </select></div>
+          <div class="help">A qué se abona primero cada pago. <b>Cuotas primero:</b> la mora queda pendiente hasta que el propietario se pone al día en cuotas. <b>Mora primero:</b> cada pago salda primero el recargo acumulado.</div></div>
+        <div class="help">La mora <b>no se borra</b> al pagar la cuota: queda como saldo aparte (columna Mora del estado de cuenta). Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
       </div></div>
 
       <div class="card"><div class="hd"><h2>Notificaciones</h2></div><div class="bd" style="padding:18px">
@@ -674,6 +704,8 @@ async function guardarOpts(){
     cabanaPct:+document.getElementById('o_cabpct').value,
     moraPct:+document.getElementById('o_mora').value,
     moraDesde:document.getElementById('o_moradesde').value,
+    moraCrece:document.getElementById('o_moracrece').value==='crece',
+    moraOrden:document.getElementById('o_moraorden').value,
     enviosActivos:document.getElementById('o_maestro').checked,
     modoPrueba:document.getElementById('o_prueba').checked,
     correoPrueba:document.getElementById('o_correoprueba').value.trim(),
@@ -932,6 +964,16 @@ function _preHtml(d,id){
     ? `<span style="color:#16a34a;font-weight:700">Queda crédito a favor: ${_mny(d.creditoResultante)}</span>`
     : (pend ? `<span style="color:#b45309;font-weight:700">Sigue pendiente: ${_mny(d.pendienteResultante)}</span>`
             : `<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
+  const hayMora = d.antes.mora>0.009 || (d.aplicacionMora&&d.aplicacionMora.length);
+  const ordenTxt = d.orden==='mora' ? 'primero la mora, luego las cuotas' : 'primero las cuotas, la mora de último';
+  const moraFilas = (d.aplicacionMora||[]).map(a=>`<tr><td>${a.label} · mora</td><td class="num">${_mny(a.mora)}</td>
+        <td class="num" style="color:var(--ac-coral);font-weight:700">${_mny(a.aplicado)}</td>
+        <td class="num">${a.quedaPendiente>0.009?_mny(a.quedaPendiente):'<span style="color:#16a34a;font-weight:600">saldada ✓</span>'}</td></tr>`).join('');
+  const moraBloque = !hayMora ? '' :
+    `<div style="margin:2px 0 8px;padding:8px 10px;border-radius:8px;background:#fff5ef;border:1px solid #f4d9c8;font-size:.8rem">
+      <b>Este propietario tiene mora.</b> Orden configurado: <b>${ordenTxt}</b>. Recargo por mora: ${_mny(d.antes.mora)} → <b>${_mny(d.despues.mora)}</b>.
+      ${moraFilas?`<table style="width:auto;min-width:420px;margin-top:8px"><thead><tr><th>Recargo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead><tbody>${moraFilas}</tbody></table>`:' El pago no alcanza a abonar mora.'}
+    </div>`;
   return `<div style="font-size:.86rem">
     <div style="font-weight:700;margin-bottom:8px">Así se aplicará este pago</div>
     ${_verifBanner(COMPROB_VERIF[id])}
@@ -939,6 +981,7 @@ function _preHtml(d,id){
     <table style="width:auto;min-width:420px;margin-bottom:10px">
       <thead><tr><th>Cuota / saldo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead>
       <tbody>${filas}</tbody></table>
+    ${moraBloque}
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px">
       <div>Total aplicado: <b>${_mny(d.totalAplicado)}</b></div>
       <div>${resultado}</div>

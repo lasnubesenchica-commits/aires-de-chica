@@ -40,12 +40,15 @@ function estadoCuentaHTML(est) {
   var filas = (est.mensual || []).map(function (b) {
     var saldoColor = b.saldo > 0.009 ? B.red : (b.saldo < -0.009 ? B.ok : B.ink);
     var pagadoTxt = b.pagado ? _money(b.pagado) : (b.cuota ? '<span style="color:' + B.coral + '">0.00</span>' : '—');
+    var moraTxt = b.condonada ? '<span style="color:' + B.muted + '">condon.</span>'
+      : (b.mora > 0.009 ? '<span style="color:' + B.coral + '">' + _money(b.mora) + '</span>' : '—');
     var bg = b.saldo > 0.009 ? '#FFF7F4' : '#ffffff';
     return '<tr style="background:' + bg + '">' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + '">' + b.label + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + (b.cuota ? _money(b.cuota) : '—') + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + pagadoTxt + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right;color:' + saldoColor + '">' + _money(b.saldo) + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + moraTxt + '</td>' +
       '</tr>';
   }).join('');
 
@@ -93,15 +96,16 @@ function estadoCuentaHTML(est) {
       '<th style="padding:9px 10px;text-align:left">Mes</th>' +
       '<th style="padding:9px 10px;text-align:right">Cuota</th>' +
       '<th style="padding:9px 10px;text-align:right">Pagado</th>' +
-      '<th style="padding:9px 10px;text-align:right">Saldo acum.</th>' +
+      '<th style="padding:9px 10px;text-align:right">Saldo cuota</th>' +
+      '<th style="padding:9px 10px;text-align:right">Mora</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table>' +
 
   // Totales
   '<table style="width:100%;border-collapse:collapse;margin-top:18px"><tr>' +
     '<td style="width:55%"></td>' +
     '<td style="vertical-align:top">' +
-      _totRow('Saldo pendiente', _money(est.saldo), B.ink, B) +
-      _totRow('Recargo por mora (' + cfg.moraPct + '%)', _money(est.mora), B.coral, B) +
+      _totRow('Saldo pendiente (cuotas)', _money(est.saldo), B.ink, B) +
+      _totRow('Recargo por mora acumulado', _money(est.mora), B.coral, B) +
       (est.creditoAFavor > 0.009 ? _totRow('Crédito a favor', '-' + _money(est.creditoAFavor), B.ok, B) : '') +
       '<div style="display:flex;justify-content:space-between;padding:11px 12px;background:' + B.teal50 + ';border-radius:8px;margin-top:6px">' +
         '<span style="font-weight:700">SALDO TOTAL</span>' +

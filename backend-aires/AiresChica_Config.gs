@@ -20,6 +20,8 @@ function _cfgDefaults() {
     cabanaPct:         30,                    // % de la cuota base que suma CADA cabaña (30% de 45 = 13.50)
     moraPct:           CONFIG.MORA_PCT * 100, // porcentaje (10 = 10%)
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
+    moraCrece:         false,                 // false = recargo fijo de una sola vez; true = crece moraPct% por mes de atraso (se congela al saldar la cuota)
+    moraOrden:         'cuota',               // 'cuota' = los pagos cubren primero las cuotas y de último la mora; 'mora' = primero la mora
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
     correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
@@ -75,6 +77,8 @@ function guardarConfig(nueva) {
   clean.cabanaPct = Math.max(0, Number(clean.cabanaPct) || 0);
   clean.moraPct = Math.max(0, Number(clean.moraPct) || 0);
   clean.moraDesde = /^\d{4}-\d{2}$/.test(String(clean.moraDesde)) ? clean.moraDesde : d.moraDesde;
+  clean.moraCrece = !!clean.moraCrece;
+  clean.moraOrden = (clean.moraOrden === 'mora') ? 'mora' : 'cuota';
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
   clean.enviosActivos = !!clean.enviosActivos;

@@ -95,6 +95,7 @@ function doPost(e) {
     else if (action === 'capturarComprobantes') out = { ok: true, data: capturarComprobantes() };
     else if (action === 'resolverComprobante')  out = { ok: true, data: resolverComprobante(data) };
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
+    else if (action === 'setMoraCondon')    out = { ok: true, data: setMoraCondon(data.clave, data.mes, !!data.condonar) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err), stack: String(err && err.stack || '') };

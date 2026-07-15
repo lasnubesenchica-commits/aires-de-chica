@@ -19,7 +19,7 @@ var SH = {
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
-                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual','inicioCobro'];
+                 'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual','inicioCobro','moraCondon'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
                  'mesAplicado','notas','creado','comprobanteUrl'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
@@ -51,6 +51,7 @@ function ensureSheets() {
   _ensureColumn(ss.getSheetByName(SH.PROP), 'airbnb');
   _ensureColumn(ss.getSheetByName(SH.PROP), 'cuotaMensual');
   _ensureColumn(ss.getSheetByName(SH.PROP), 'inicioCobro');
+  _ensureColumn(ss.getSheetByName(SH.PROP), 'moraCondon');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'motivo');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'metodoPago');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'cuentaDestino');
@@ -154,6 +155,7 @@ function getPropietarios() {
       ? Utilities.formatDate(p.inicioCobro, CONFIG.TZ, 'yyyy-MM')
       : String(p.inicioCobro || '').trim();
     p.saldo2025 = Number(p.saldo2025) || 0;
+    p.moraCondon = String(p.moraCondon || '').trim(); // 'ALL' | '2026-04,2026-05' | ''
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
     return p;
@@ -252,6 +254,44 @@ function setPropInicio(clave, inicio) {
       var prop = _findProp(clave);
       return { ok: true, clave: clave, inicioCobro: v, cuota: prop ? prop.cuota : null };
     }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
+/**
+ * Condona (o reactiva) la mora de un propietario.
+ *   mes = 'ALL'  -> condona/reactiva TODA la mora del propietario.
+ *   mes = 'YYYY-MM' -> condona/reactiva la mora de ese mes puntual.
+ *   condonar = true (condonar) | false (reactivar).
+ * Nota: si 'ALL' está activo, los meses puntuales no aplican (el panel lo maneja).
+ */
+function setMoraCondon(clave, mes, condonar) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var col = _ensureColumn(sh, 'moraCondon'); // 1-based
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave');
+  mes = String(mes || '').trim();
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() !== String(clave).trim()) continue;
+    var cur = String(vals[r][col - 1] || '').trim();
+    var out;
+    if (mes.toUpperCase() === 'ALL') {
+      out = condonar ? 'ALL' : '';
+    } else if (/^\d{4}-\d{2}$/.test(mes)) {
+      if (cur.toUpperCase() === 'ALL') { out = cur; } // 'ALL' manda; el panel bloquea meses puntuales
+      else {
+        var list = cur ? cur.split(',').map(function (t) { return t.trim(); }).filter(Boolean) : [];
+        var i = list.indexOf(mes);
+        if (condonar && i < 0) list.push(mes);
+        if (!condonar && i >= 0) list.splice(i, 1);
+        out = list.join(',');
+      }
+    } else {
+      throw new Error('Mes inválido para condonar: ' + mes);
+    }
+    sh.getRange(r + 1, col).setValue(out);
+    return { ok: true, clave: clave, moraCondon: out };
   }
   throw new Error('No existe la cuenta ' + clave);
 }
@@ -381,7 +421,7 @@ function seedInicial(force) {
   var filasProp = AC_SEED.map(function (s) {
     return [s.clave, s.residencial, s.lote, s.loteNum, s.nombre, s.email, s.celular,
             s.lotes, s.cabanas, _round2(s.cuota), _round2(s.saldo2025), 'si', s.notas || '', '',
-            (Number(s.cuotaMensual) > 0 ? _round2(s.cuotaMensual) : ''), (s.inicioCobro || '')];
+            (Number(s.cuotaMensual) > 0 ? _round2(s.cuotaMensual) : ''), (s.inicioCobro || ''), ''];
   });
   shP.getRange(2, 1, filasProp.length, COL_PROP.length).setValues(filasProp);
 

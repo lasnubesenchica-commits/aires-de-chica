@@ -464,22 +464,25 @@ function previsualizarComprobante(clave, monto) {
   var sim = pagos.concat([{ fecha: _today(), monto: monto, origen: 'sim' }]);
   var despues = calcEstado(prop, sim, null);
 
-  // a qué buckets entró el dinero nuevo: aquellos cuyo saldo bajó
+  // a qué buckets entró el dinero nuevo (principal y mora): aquellos cuyo saldo bajó
   var mapAntes = {}; antes.buckets.forEach(function (b) { mapAntes[b.label] = b; });
-  var aplicacion = [];
+  var aplicacion = [], aplicacionMora = [];
   despues.buckets.forEach(function (b) {
-    var a = mapAntes[b.label];
-    var saldoAntes = a ? a.saldo : b.monto;
-    var aplicado = _round2(saldoAntes - b.saldo);
-    if (aplicado > 0.009) aplicacion.push({ label: b.label, cuota: b.monto, aplicado: aplicado, quedaPendiente: b.saldo });
+    var a = mapAntes[b.label] || {};
+    var apPrin = _round2((a.saldo != null ? a.saldo : b.monto) - b.saldo);
+    if (apPrin > 0.009) aplicacion.push({ label: b.label, cuota: b.monto, aplicado: apPrin, quedaPendiente: b.saldo });
+    var apMora = _round2((a.moraSaldo != null ? a.moraSaldo : b.mora) - b.moraSaldo);
+    if (apMora > 0.009) aplicacionMora.push({ label: b.label, mora: b.mora, aplicado: apMora, quedaPendiente: b.moraSaldo });
   });
 
   return {
     clave: clave, nombre: prop.nombre, lote: prop.lote, cuota: cuotaDe(prop), monto: monto,
+    orden: despues.moraOrden,
     antes:   { saldo: antes.saldo,   mora: antes.mora,   saldoConMora: antes.saldoConMora,   creditoAFavor: antes.creditoAFavor },
     despues: { saldo: despues.saldo, mora: despues.mora, saldoConMora: despues.saldoConMora, creditoAFavor: despues.creditoAFavor },
     aplicacion: aplicacion,
-    totalAplicado: _round2(aplicacion.reduce(function (s, x) { return s + x.aplicado; }, 0)),
+    aplicacionMora: aplicacionMora,
+    totalAplicado: _round2(aplicacion.reduce(function (s, x) { return s + x.aplicado; }, 0) + aplicacionMora.reduce(function (s, x) { return s + x.aplicado; }, 0)),
     creditoResultante: despues.creditoAFavor,
     pendienteResultante: despues.saldoConMora
   };
