@@ -379,9 +379,11 @@ function resolverComprobante(data) {
     if (!(monto > 0)) throw new Error('Indica un monto válido.');
     var prop = _findProp(clave);
     if (!prop) throw new Error('No existe la cuenta ' + clave);
+    var iUrl = h.indexOf('adjuntoUrl'), iRef = h.indexOf('referencia');
     appendPago({
       fecha: new Date(vals[r][iFe]), clave: clave, lote: prop.lote, nombre: prop.nombre, monto: monto,
-      origen: 'comprobante', referencia: '',
+      origen: 'comprobante', referencia: (iRef >= 0 ? String(vals[r][iRef] || '') : ''),
+      comprobanteUrl: (iUrl >= 0 ? String(vals[r][iUrl] || '') : ''),
       notas: 'Comprobante email: ' + String(vals[r][iAs] || '').slice(0, 120)
     });
     sh.getRange(r + 1, iCl + 1).setValue(clave);

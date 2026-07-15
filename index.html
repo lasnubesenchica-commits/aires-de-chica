@@ -451,10 +451,17 @@ function _renderEstado(e){
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   document.getElementById('modalBd').innerHTML=`
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo acum.</th></tr></thead>
-    <tbody>${e.mensual.map(b=>`<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
+    <tbody>${e.mensual.map(b=>{
+      const vs=b.vouchers||[];
+      const pagadoCell = b.pagado
+        ? (vs.length
+            ? `<a href="${vs[0]}" target="_blank" class="cprev" title="Ver comprobante" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none">${money(b.pagado)} 📎</a>`+(vs.length>1?`<span class="muted" style="font-size:.68rem"> +${vs.length-1}</span>`:'')
+            : money(b.pagado))
+        : (b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—');
+      return `<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
       <td class="num">${b.cuota?money(b.cuota):'—'}</td>
-      <td class="num">${b.pagado?money(b.pagado):(b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—')}</td>
-      <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`).join('')}</tbody></table>
+      <td class="num">${pagadoCell}</td>
+      <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`;}).join('')}</tbody></table>
     <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo acumulado = cuota del mes menos lo pagado ese mes (los negativos son crédito a favor).</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
       <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Saldo pendiente</span><b>${money(e.saldo)}</b></div>

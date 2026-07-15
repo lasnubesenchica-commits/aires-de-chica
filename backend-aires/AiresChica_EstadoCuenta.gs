@@ -131,17 +131,21 @@ function calcEstado(prop, pagosArr, asOf) {
 
   // 4) desglose MENSUAL (caja real): cuota del mes + lo efectivamente pagado ese mes
   //    calendario + saldo acumulado. Es la vista que coincide con el Excel del cliente.
-  var pagosMes = {};
+  var pagosMes = {}, vouchersMes = {};
   (pagosArr || []).forEach(function (p) {
     var d = new Date(p.fecha);
-    if (d.getFullYear() === year) pagosMes[d.getMonth() + 1] = _round2((pagosMes[d.getMonth() + 1] || 0) + (Number(p.monto) || 0));
+    if (d.getFullYear() === year) {
+      var mi = d.getMonth() + 1;
+      pagosMes[mi] = _round2((pagosMes[mi] || 0) + (Number(p.monto) || 0));
+      if (p.comprobanteUrl) (vouchersMes[mi] = vouchersMes[mi] || []).push(p.comprobanteUrl);
+    }
   });
   var mensual = [], acum = saldo2025;
-  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum });
+  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum, vouchers: [] });
   for (var mm = mesInicio; mm <= mesActual; mm++) {
     var pg = _round2(pagosMes[mm] || 0);
     acum = _round2(acum + cuota - pg);
-    mensual.push({ label: AC_MESES_LARGO[mm - 1], cuota: cuota, pagado: pg, saldo: acum });
+    mensual.push({ label: AC_MESES_LARGO[mm - 1], cuota: cuota, pagado: pg, saldo: acum, vouchers: vouchersMes[mm] || [] });
   }
 
   return {

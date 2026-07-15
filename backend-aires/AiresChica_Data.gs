@@ -21,7 +21,7 @@ var SH = {
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
                  'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual','inicioCobro'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
-                 'mesAplicado','notas','creado'];
+                 'mesAplicado','notas','creado','comprobanteUrl'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
 var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
                    'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo',
@@ -55,6 +55,7 @@ function ensureSheets() {
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'metodoPago');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'cuentaDestino');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'beneficiario');
+  _ensureColumn(ss.getSheetByName(SH.PAGOS), 'comprobanteUrl');
   // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
@@ -341,7 +342,8 @@ function appendPago(pago) {
     pago.origen || 'manual',
     pago.mesAplicado || '',
     pago.notas || '',
-    new Date()
+    new Date(),
+    pago.comprobanteUrl || ''
   ]);
   return id;
 }
@@ -390,7 +392,7 @@ function seedInicial(force) {
       if (Number(monto) > 0) {
         filasPago.push(['SEED-' + s.clave + '-' + AC_MESES[idx], new Date(year, idx, 15),
           s.clave, s.lote, s.nombre, _round2(monto), '', 'carga-inicial',
-          AC_MESES[idx] + ' ' + year, 'Histórico ' + AC_MESES[idx], new Date()]);
+          AC_MESES[idx] + ' ' + year, 'Histórico ' + AC_MESES[idx], new Date(), '']);
       }
     });
   });
