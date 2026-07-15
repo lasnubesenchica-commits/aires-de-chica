@@ -64,6 +64,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .legend-txt { color:var(--ac-muted); }
 .hlp { cursor:help; color:var(--ac-teal-600); font-size:.82em; opacity:.7; }
 .hlp:hover { opacity:1; }
+.dl-item { display:block; width:100%; text-align:left; padding:11px 14px; border:0; background:none; font:inherit; cursor:pointer; color:var(--ac-ink); white-space:nowrap; }
+.dl-item:hover { background:var(--ac-teal-50); }
+.dl-item + .dl-item { border-top:1px solid var(--ac-border); }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -159,6 +162,13 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
+          <div style="position:relative">
+            <button class="btn" onclick="toggleDl(event)" style="padding:8px 12px">Descargar Excel ▾</button>
+            <div id="dlMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--ac-border);border-radius:10px;box-shadow:0 10px 28px rgba(20,48,57,.15);z-index:30;min-width:250px;overflow:hidden">
+              <button class="dl-item" onclick="descargarConciliacion()">📥 Conciliación bancaria</button>
+              <button class="dl-item" onclick="descargarCartera()">📊 Reporte general de cobros</button>
+            </div>
+          </div>
         </div></div>
       <div class="legend">
         <span class="legend-item"><span class="pill ok">Al día</span><span class="legend-txt">no debe nada (o pagó todo / tiene saldo a favor).</span></span>
@@ -587,6 +597,71 @@ async function guardarOpts(){
     else { msg.innerHTML='<span class="ok-msg">✓ Guardado</span>'; setTimeout(renderOpts,1400); }
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota/mora en los KPIs
   }catch(e){ if(!onAuthError(e)){ msg.textContent='Error: '+e; } }
+}
+
+/* ───────── Descarga de Excel (SheetJS, en el navegador) ───────── */
+function toggleDl(ev){ ev.stopPropagation(); const m=document.getElementById('dlMenu'); m.style.display = m.style.display==='none' ? 'block' : 'none'; }
+document.addEventListener('click',()=>{ const m=document.getElementById('dlMenu'); if(m) m.style.display='none'; });
+function _fx(v){ const d=new Date(v); return isNaN(d)?'' : `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; }
+function _corteStr(){ const ae=document.getElementById('fAsOf'); return (ae&&ae.value)?ae.value:new Date().toISOString().slice(0,10); }
+function _sum(arr,k){ return Math.round(arr.reduce((s,x)=>s+(Number(x[k])||0),0)*100)/100; }
+function _sheet(aoa, moneyCols, widths){
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const rng=XLSX.utils.decode_range(ws['!ref']);
+  for(let r=1;r<=rng.e.r;r++){ (moneyCols||[]).forEach(c=>{ const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell&&typeof cell.v==='number') cell.z='"B/."#,##0.00'; }); }
+  if(widths) ws['!cols']=widths.map(w=>({wch:w}));
+  return ws;
+}
+async function descargarConciliacion(){
+  document.getElementById('dlMenu').style.display='none';
+  if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
+  let pagos; try{ pagos=await jsonp('getPagos'); }catch(e){ if(!onAuthError(e)) alert('Error: '+e); return; }
+  const resid={}; (DASH.cuentas||[]).forEach(c=>resid[c.clave]=c.residencial);
+  pagos=(pagos||[]).slice().sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  const head=['Fecha','Residencial','Lote','Propietario','Monto','Origen','Referencia','Mes aplicado','Notas'];
+  const rows=pagos.map(p=>[_fx(p.fecha), resid[p.clave]||'', String(p.lote||''), p.nombre||'', Number(p.monto)||0, p.origen||'', p.referencia||'', p.mesAplicado||'', p.notas||'']);
+  const total=Math.round(rows.reduce((s,r)=>s+(r[4]||0),0)*100)/100;
+  const ws1=_sheet([head,...rows,[],['','','','TOTAL',total]],[4],[12,14,8,26,12,13,18,15,22]);
+  const mm=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'], tot=Array(12).fill(0);
+  pagos.forEach(p=>{ const d=new Date(p.fecha); if(d.getFullYear()===DASH.anio) tot[d.getMonth()]+=Number(p.monto)||0; });
+  const ws2=_sheet([['Mes','Total cobrado'],...mm.map((m,i)=>[m+' '+DASH.anio, Math.round(tot[i]*100)/100]),[],['TOTAL', Math.round(tot.reduce((a,b)=>a+b,0)*100)/100]],[1],[16,16]);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Pagos registrados');
+  XLSX.utils.book_append_sheet(wb,ws2,'Resumen mensual');
+  XLSX.writeFile(wb, `AiresDeChica_Conciliacion_${_corteStr()}.xlsx`);
+}
+async function descargarCartera(){
+  document.getElementById('dlMenu').style.display='none';
+  if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
+  const k=DASH.kpis, corte=_corteStr();
+  const aoa1=[
+    ['Aires de Chicá — Estado de cobros'],['Corte al', corte],[],
+    ['Indicador','Valor'],
+    ['Cuentas', k.cuentas],['Al día', k.alDia],['Pendientes (mes en curso)', k.pendientes],
+    ['Morosos', k.morosos],['Tasa de morosidad %', k.tasaMorosidad],[],
+    ['Facturado (año)', k.totalFacturado],['Cobrado (año)', k.totalPagado],['% Recaudación anual', k.tasaRecaudacionAnual],
+    ['Cartera vencida', k.carteraVencida],['Mora acumulada', k.moraAcumulada],['Saldo total por cobrar', k.saldoTotalConMora],[],
+    ['Facturado del mes', k.facturadoMes],['Cobrado del mes', k.pagadoMes],['% Recaudación del mes', k.tasaRecaudacionMes]
+  ];
+  const ws1=XLSX.utils.aoa_to_sheet(aoa1); ws1['!cols']=[{wch:28},{wch:16}];
+  [10,11,13,14,15,17,18].forEach(r=>{ const cell=ws1[XLSX.utils.encode_cell({r,c:1})]; if(cell&&typeof cell.v==='number') cell.z='"B/."#,##0.00'; });
+  const head=['Lote','Residencial','Propietario','Correo','Cuota/mes','Facturado','Pagado','Saldo','Mora','Total','Estado','Días venc.'];
+  const cuentas=[...(DASH.cuentas||[])].sort((a,b)=>b.saldoConMora-a.saldoConMora);
+  const rows=cuentas.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.email||'',c.cuota,c.facturado,c.pagado,c.saldo,c.mora,c.saldoConMora,c.estado,c.diasVencido]);
+  const totRow=['','','','TOTAL','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'mora'),_sum(cuentas,'saldoConMora'),'',''];
+  const ws2=_sheet([head,...rows,[],totRow],[4,5,6,7,8,9],[8,13,24,26,10,11,11,11,10,11,11,9]);
+  const r3=(DASH.porResidencial||[]).map(r=>[r.residencial,r.cuentas,r.facturado,r.pagado,r.saldo,r.mora]);
+  const ws3=_sheet([['Residencial','Cuentas','Facturado','Pagado','Saldo','Mora'],...r3],[2,3,4,5],[16,9,13,13,13,11]);
+  const ag=DASH.aging||{}, agm=DASH.agingMonto||{};
+  const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
+  const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
+  const ws4=_sheet([['Antigüedad','Cuentas','Monto (saldo+mora)'],...r4],[2],[16,9,20]);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
+  XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
+  XLSX.utils.book_append_sheet(wb,ws3,'Por residencial');
+  XLSX.utils.book_append_sheet(wb,ws4,'Aging');
+  XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
 }
 
 /* Tabs + init */

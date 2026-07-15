@@ -54,6 +54,7 @@ function doGet(e) {
     else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
     else if (action === 'getDashboard')    { requireAuth(p.token); out = { ok: true, data: buildDashboard(p.asOf || null) }; }
     else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios() }; }
+    else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
     else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
