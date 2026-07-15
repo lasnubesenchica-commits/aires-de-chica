@@ -168,14 +168,18 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         </div>
         <div class="spacer" style="flex:1"></div>
         <div class="controls">
-          <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Periodo de corte: el estado de cuenta se calcula como si hoy fuera la fecha de corte. No filtra cuentas; recalcula los saldos a esa fecha.">Periodo
-            <select id="fRango" onchange="aplicarRango()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
-              <option value="ytd">Año a la fecha (YTD)</option>
-              <option value="mesActual">Cierre mes actual</option>
-              <option value="mesAnterior">Cierre mes anterior</option>
-              <option value="custom">Personalizado…</option>
-            </select></label>
-          <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="display:none;font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+          <span id="ctrlPeriodo" style="display:inline-flex;align-items:center;gap:8px">
+            <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Periodo de corte: el estado de cuenta se calcula como si hoy fuera la fecha de corte. No filtra cuentas; recalcula los saldos a esa fecha.">Periodo
+              <select id="fRango" onchange="aplicarRango()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+                <option value="ytd">Año a la fecha (YTD)</option>
+                <option value="mesActual">Cierre mes actual</option>
+                <option value="mesAnterior">Cierre mes anterior</option>
+                <option value="custom">Personalizado…</option>
+              </select></label>
+            <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="display:none;font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+          </span>
+          <label class="muted" id="ctrlMes" style="display:none;align-items:center;gap:6px;font-size:.82rem" title="Mes cuya cuota quieres revisar. Mes en curso = a hoy; meses pasados = al cierre de ese mes.">Mes
+            <select id="fMes" onchange="aplicarMes()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff"></select></label>
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <select id="fMesEstado" onchange="renderTabla()" style="display:none"><option value="">Todos</option><option value="pagado">Pagó</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
@@ -342,7 +346,10 @@ function setVista(v){
   document.getElementById('fMesEstado').style.display=mes?'':'none';
   document.getElementById('legendCartera').style.display=mes?'none':'';
   document.getElementById('legendMes').style.display=mes?'':'none';
-  renderTabla();
+  document.getElementById('ctrlPeriodo').style.display=mes?'none':'';
+  document.getElementById('ctrlMes').style.display=mes?'':'none';
+  if(mes) _initMes();
+  aplicarCorte(); // recalcula el corte según el control activo (Mes o Periodo)
 }
 async function renderDash(){
   const ae=document.getElementById('fAsOf');
@@ -669,17 +676,37 @@ document.addEventListener('click',()=>{ const m=document.getElementById('dlMenu'
 function _fx(v){ const d=new Date(v); return isNaN(d)?'' : `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; }
 function _corteStr(){ const ae=document.getElementById('fAsOf'); return (ae&&ae.value)?ae.value:new Date().toISOString().slice(0,10); }
 function _iso(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function aplicarRango(){
-  const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), t=new Date();
-  if(r==='ytd') ae.value=_iso(t);
-  else if(r==='mesActual') ae.value=_iso(new Date(t.getFullYear(), t.getMonth()+1, 0)); // último día de este mes
-  else if(r==='mesAnterior') ae.value=_iso(new Date(t.getFullYear(), t.getMonth(), 0));  // último día del mes pasado
-  const custom=(r==='custom');
-  ae.disabled=!custom; ae.style.display=custom?'':'none';   // el campo de fecha solo aparece en Personalizado
-  if(custom){ ae.focus(); if(ae.showPicker) try{ae.showPicker();}catch(e){} return; }
+const AC_MESES_NOM=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function _initMes(){
+  const sel=document.getElementById('fMes'); const y=(DASH&&DASH.anio)||2026, cur=new Date().getMonth()+1;
+  if(sel.dataset.built) return; sel.dataset.built='1';
+  let h=''; for(let m=1;m<=cur;m++) h+=`<option value="${m}"${m===cur?' selected':''}>${AC_MESES_NOM[m-1]} ${y}</option>`;
+  sel.innerHTML=h;
+}
+// Calcula la fecha de corte según el control activo (Periodo en cartera / Mes en cobros) y recarga.
+function aplicarCorte(){
+  const ae=document.getElementById('fAsOf'), prev=ae.value, t=new Date(), y=t.getFullYear(), cur=t.getMonth()+1;
+  if(VISTA==='mes'){
+    const m=+document.getElementById('fMes').value||cur;
+    ae.value=(m>=cur)?_iso(t):_iso(new Date(y,m,0));          // mes en curso = hoy; pasado = fin de ese mes
+  } else {
+    const r=document.getElementById('fRango').value;
+    if(r==='ytd') ae.value=_iso(t);
+    else if(r==='mesActual') ae.value=_iso(new Date(y,cur,0));
+    else if(r==='mesAnterior') ae.value=_iso(new Date(y,t.getMonth(),0));
+    // custom: se deja ae.value como está
+  }
+  if(ae.value===prev && DASH){ renderTabla(); return; }        // mismo corte -> no recarga, solo redibuja
   renderDash();
 }
-function rangoCustom(){ document.getElementById('fRango').value='custom'; document.getElementById('fAsOf').disabled=false; renderDash(); }
+function aplicarRango(){
+  const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), custom=(r==='custom');
+  ae.style.display=custom?'':'none'; ae.disabled=!custom;      // el campo de fecha solo aparece en Personalizado
+  if(custom){ ae.focus(); if(ae.showPicker) try{ae.showPicker();}catch(e){} return; }
+  aplicarCorte();
+}
+function aplicarMes(){ aplicarCorte(); }
+function rangoCustom(){ document.getElementById('fRango').value='custom'; document.getElementById('fAsOf').disabled=false; aplicarCorte(); }
 function _sum(arr,k){ return Math.round(arr.reduce((s,x)=>s+(Number(x[k])||0),0)*100)/100; }
 function _sheet(aoa, moneyCols, widths){
   const ws=XLSX.utils.aoa_to_sheet(aoa);
