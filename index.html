@@ -165,8 +165,13 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
               <option value="custom">Personalizado…</option>
             </select></label>
           <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+          <select id="fVista" onchange="cambiarVista()" title="Cartera acumulada = saldos corridos. Cobros del mes = quién cubrió la cuota del mes de corte." style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+            <option value="cartera">Cartera acumulada</option>
+            <option value="mes">Cobros del mes</option>
+          </select>
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
+          <select id="fMesEstado" onchange="renderTabla()" style="display:none"><option value="">Todos</option><option value="pagado">Pagó</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
           <div style="position:relative">
             <button class="btn" onclick="toggleDl(event)" style="padding:8px 12px" title="Descargar reportes en Excel">Descargar ▾</button>
@@ -176,12 +181,17 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
             </div>
           </div>
         </div></div>
-      <div class="legend">
+      <div class="legend" id="legendCartera">
         <span class="legend-item"><span class="pill ok">Al día</span><span class="legend-txt">no debe nada (o pagó todo / tiene saldo a favor).</span></span>
         <span class="legend-item"><span class="pill warn">Pendiente</span><span class="legend-txt">debe la cuota del mes en curso, aún dentro del plazo (vence a fin de mes) — sin recargo.</span></span>
         <span class="legend-item"><span class="pill red">Moroso</span><span class="legend-txt">tiene al menos una cuota vencida; genera mora del 10% desde abril 2026.</span></span>
       </div>
-      <div class="bd"><table id="tblCuentas"><thead><tr>
+      <div class="legend" id="legendMes" style="display:none">
+        <span class="legend-item"><span class="pill ok">Pagó</span><span class="legend-txt">la cuota del mes de corte está cubierta (con pago o crédito a favor).</span></span>
+        <span class="legend-item"><span class="pill warn">Parcial</span><span class="legend-txt">la cuota del mes está cubierta solo en parte.</span></span>
+        <span class="legend-item"><span class="pill red">Pendiente</span><span class="legend-txt">no ha cubierto nada de la cuota del mes.</span></span>
+      </div>
+      <div class="bd"><table id="tblCuentas"><thead id="cuentasHead"><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th>
         <th class="num">Cuota/mes <span class="hlp" title="Cuota mensual del propietario: cuota base + 30% por cada cabaña (o la cuota fija si se le definió una).">ⓘ</span></th>
         <th class="num">Pagado <span class="hlp" title="Suma de todos los pagos recibidos en el año, hasta la fecha de corte.">ⓘ</span></th>
@@ -302,8 +312,30 @@ document.getElementById('gateForm').addEventListener('submit', async e=>{
 function logout(){ TOKEN=''; localStorage.removeItem('ac_token'); setupGate('login'); }
 
 /* ───────── Dashboard ───────── */
-let DASH=null;
+let DASH=null, VISTA='cartera';
 const pillFor = e => e==='Al día'?'<span class="pill ok">Al día</span>':e==='Pendiente'?'<span class="pill warn">Pendiente</span>':'<span class="pill red">Moroso</span>';
+const pillMes = e => e==='pagado'?'<span class="pill ok">Pagó</span>':e==='parcial'?'<span class="pill warn">Parcial</span>':e==='pendiente'?'<span class="pill red">Pendiente</span>':'<span class="muted">—</span>';
+const HEAD_CARTERA=`<tr><th>Lote</th><th>Residencial</th><th>Propietario</th>
+  <th class="num">Cuota/mes <span class="hlp" title="Cuota mensual del propietario: cuota base + 30% por cada cabaña (o la cuota fija si se le definió una).">ⓘ</span></th>
+  <th class="num">Pagado <span class="hlp" title="Suma de todos los pagos recibidos en el año, hasta la fecha de corte.">ⓘ</span></th>
+  <th class="num">Saldo <span class="hlp" title="Saldo pendiente = cuotas facturadas hasta la fecha (más deuda 2025, menos crédito a favor) − lo pagado. No incluye la mora.">ⓘ</span></th>
+  <th class="num">Mora <span class="hlp" title="Recargo del 10% mensual sobre cada cuota vencida, a partir de abril 2026.">ⓘ</span></th>
+  <th class="num">Total <span class="hlp" title="Total a cobrar = Saldo pendiente + Mora.">ⓘ</span></th>
+  <th>Estado</th><th>Vence</th><th></th></tr>`;
+const HEAD_MES=`<tr><th>Lote</th><th>Residencial</th><th>Propietario</th>
+  <th class="num">Cuota del mes <span class="hlp" title="Cuota que le corresponde al propietario en el mes de corte.">ⓘ</span></th>
+  <th class="num">Cubierto <span class="hlp" title="Parte de la cuota del mes ya cubierta por pagos o crédito a favor (aplicados del saldo más antiguo al más nuevo).">ⓘ</span></th>
+  <th class="num">Falta <span class="hlp" title="Parte de la cuota del mes que aún no está cubierta.">ⓘ</span></th>
+  <th>Estado del mes <span class="hlp" title="Pagó = la cuota del mes está cubierta (aunque sea con crédito). Parcial = cubierta en parte. Pendiente = nada cubierto.">ⓘ</span></th>
+  <th></th></tr>`;
+function cambiarVista(){
+  VISTA=document.getElementById('fVista').value; const mes=(VISTA==='mes');
+  document.getElementById('fEstado').style.display=mes?'none':'';
+  document.getElementById('fMesEstado').style.display=mes?'':'none';
+  document.getElementById('legendCartera').style.display=mes?'none':'';
+  document.getElementById('legendMes').style.display=mes?'':'none';
+  renderTabla();
+}
 async function renderDash(){
   const ae=document.getElementById('fAsOf');
   if(ae && !ae.value){ const t=new Date(); ae.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
@@ -344,15 +376,33 @@ async function renderDash(){
   renderTabla();
 }
 function renderTabla(){
-  const q=document.getElementById('fQ').value.toLowerCase(), fr=document.getElementById('fRes').value, fe=document.getElementById('fEstado').value;
+  const q=document.getElementById('fQ').value.toLowerCase(), fr=document.getElementById('fRes').value;
+  const head=document.getElementById('cuentasHead'), body=document.querySelector('#tblCuentas tbody');
+  const base=c=>!( (fr && c.residencial!==fr) || (q && !(c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q))) );
+  if(VISTA==='mes'){
+    head.innerHTML=HEAD_MES;
+    const fm=document.getElementById('fMesEstado').value;
+    const rows=DASH.cuentas.filter(c=>base(c) && (!fm || c.estadoMes===fm))
+      .sort((a,b)=>(b.pendienteMes||0)-(a.pendienteMes||0) || String(a.residencial).localeCompare(b.residencial));
+    body.innerHTML = rows.map(c=>`<tr onclick="openEstado('${c.clave}')" style="cursor:pointer">
+      <td><b>${c.lote}</b></td><td>${c.residencial}</td><td>${c.nombre}</td>
+      <td class="num">${c.cuotaMes?money(c.cuotaMes):'—'}</td>
+      <td class="num" style="color:var(--ac-ok)">${c.cubiertoMes>0.009?money(c.cubiertoMes):'—'}</td>
+      <td class="num" style="${c.pendienteMes>0.009?'color:var(--ac-danger);font-weight:600':''}">${c.pendienteMes>0.009?money(c.pendienteMes):'—'}</td>
+      <td>${pillMes(c.estadoMes)}</td>
+      <td style="color:var(--ac-teal-600);font-weight:600">Ver →</td></tr>`).join('')
+      || '<tr><td colspan="8" class="muted" style="padding:20px">Sin resultados.</td></tr>';
+    return;
+  }
+  head.innerHTML=HEAD_CARTERA;
+  const fe=document.getElementById('fEstado').value;
   const rows=DASH.cuentas.filter(c=>{
-    if(fr && c.residencial!==fr) return false;
+    if(!base(c)) return false;
     if(fe==='Moroso' && c.saldoConMora<=0.009) return false;
     if(fe==='Al día' && c.saldoConMora>0.009) return false;
-    if(q && !(c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q))) return false;
     return true;
   }).sort((a,b)=>b.saldoConMora-a.saldoConMora);
-  document.querySelector('#tblCuentas tbody').innerHTML = rows.map(c=>`<tr onclick="openEstado('${c.clave}')" style="cursor:pointer">
+  body.innerHTML = rows.map(c=>`<tr onclick="openEstado('${c.clave}')" style="cursor:pointer">
     <td><b>${c.lote}</b></td><td>${c.residencial}</td><td>${c.nombre}</td>
     <td class="num">${money(c.cuota)}</td><td class="num">${money(c.pagado)}</td>
     <td class="num">${money(c.saldo)}</td><td class="num" style="color:var(--ac-coral)">${c.mora>0?money(c.mora):'—'}</td>
@@ -731,11 +781,18 @@ async function descargarCartera(){
   const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
   const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
   const ws4=_tableSheet('Aging (antigüedad de saldos)','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {});
+  // Cobros del mes de corte
+  const elbl={pagado:'Pagó',parcial:'Parcial',pendiente:'Pendiente',na:'—'};
+  const cmes=[...(DASH.cuentas||[])].filter(c=>c.cuotaMes>0).sort((a,b)=>(b.pendienteMes||0)-(a.pendienteMes||0));
+  const r5=cmes.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.cuotaMes,c.cubiertoMes,c.pendienteMes, elbl[c.estadoMes]||'—']);
+  const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pendienteMes'),''];
+  const ws5=_tableSheet('Cobros del mes','Corte al '+corte, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Falta','Estado del mes'], r5, [3,4,5], [8,13,26,13,12,11,14], {totalRow:tot5});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
   XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
   XLSX.utils.book_append_sheet(wb,ws3,'Por residencial');
   XLSX.utils.book_append_sheet(wb,ws4,'Aging');
+  XLSX.utils.book_append_sheet(wb,ws5,'Cobros del mes');
   XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
 }
 

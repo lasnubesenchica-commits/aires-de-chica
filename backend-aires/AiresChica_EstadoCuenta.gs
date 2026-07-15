@@ -75,7 +75,7 @@ function calcEstado(prop, pagosArr, asOf) {
   totalPagado = _round2(totalPagado);
 
   var rem = _round2(totalPagado + credito2025), facturado = 0, moraTotal = 0, saldoTotal = 0;
-  var oldestUnpaid = null;
+  var oldestUnpaid = null, bucketMes = null; // bucketMes = cuota del mes de corte (para "cobros del mes")
   buckets.forEach(function (b) {
     facturado += b.monto;
     var aplicado = Math.min(rem, b.monto);
@@ -95,7 +95,17 @@ function calcEstado(prop, pagosArr, asOf) {
       saldoTotal += b.saldo;
       if (!oldestUnpaid) oldestUnpaid = b;
     }
+    if (b.tipo === 'cuota' && b.month === mesActual) bucketMes = b;
   });
+
+  // cobertura de la cuota del MES DE CORTE (cubierta = pagos + crédito aplicados en cascada)
+  var pendienteMes = bucketMes ? bucketMes.saldo : 0;
+  var cubiertoMes = bucketMes ? _round2(bucketMes.monto - bucketMes.saldo) : 0;
+  var estadoMes;
+  if (!bucketMes) estadoMes = 'na';                                    // no factura este mes (ingresó después / futuro)
+  else if (pendienteMes <= 0.009) estadoMes = 'pagado';               // cubierta (aunque sea con crédito)
+  else if (pendienteMes < bucketMes.monto - 0.009) estadoMes = 'parcial';
+  else estadoMes = 'pendiente';
 
   saldoTotal = _round2(saldoTotal);
   moraTotal = _round2(moraTotal);
@@ -141,6 +151,7 @@ function calcEstado(prop, pagosArr, asOf) {
     cuota: cuota, lotes: prop.lotes, cabanas: prop.cabanas, airbnb: !!prop.airbnb,
     inicioCobro: prop.inicioCobro || '',
     cuotaMes: (mesInicio <= mesActual ? cuota : 0), // 0 si aún no empieza a pagar
+    cubiertoMes: cubiertoMes, pendienteMes: pendienteMes, estadoMes: estadoMes,
     buckets: buckets, mensual: mensual,
     facturado: _round2(facturado),
     pagado: totalPagado,
@@ -261,6 +272,7 @@ function buildDashboard(asOf) {
       return { clave: e.clave, lote: e.lote, loteNum: e.loteNum, residencial: e.residencial, nombre: e.nombre, email: e.email,
                celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas, airbnb: e.airbnb,
                inicioCobro: e.inicioCobro,
+               cuotaMes: e.cuotaMes, cubiertoMes: e.cubiertoMes, pendienteMes: e.pendienteMes, estadoMes: e.estadoMes,
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
