@@ -62,6 +62,8 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .legend-item { display:flex; align-items:baseline; gap:7px; }
 .legend-item .pill { flex:none; }
 .legend-txt { color:var(--ac-muted); }
+.hlp { cursor:help; color:var(--ac-teal-600); font-size:.82em; opacity:.7; }
+.hlp:hover { opacity:1; }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
@@ -152,6 +154,8 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
     <div class="card">
       <div class="hd"><h2>Cuentas</h2><div class="spacer" style="flex:1"></div>
         <div class="controls">
+          <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Fecha de corte: el estado de cuenta se calcula como si hoy fuera esta fecha. Por defecto, al día de hoy (año en curso).">Corte al
+            <input type="date" id="fAsOf" onchange="renderDash()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff"></label>
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
@@ -162,8 +166,12 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         <span class="legend-item"><span class="pill red">Moroso</span><span class="legend-txt">tiene al menos una cuota vencida; genera mora del 10% desde abril 2026.</span></span>
       </div>
       <div class="bd"><table id="tblCuentas"><thead><tr>
-        <th>Lote</th><th>Residencial</th><th>Propietario</th><th class="num">Cuota/mes</th>
-        <th class="num">Pagado</th><th class="num">Saldo</th><th class="num">Mora</th><th class="num">Total</th>
+        <th>Lote</th><th>Residencial</th><th>Propietario</th>
+        <th class="num">Cuota/mes <span class="hlp" title="Cuota mensual del propietario: cuota base + 30% por cada cabaña (o la cuota fija si se le definió una).">ⓘ</span></th>
+        <th class="num">Pagado <span class="hlp" title="Suma de todos los pagos recibidos en el año, hasta la fecha de corte.">ⓘ</span></th>
+        <th class="num">Saldo <span class="hlp" title="Saldo pendiente = cuotas facturadas hasta la fecha (más deuda 2025, menos crédito a favor) − lo pagado. No incluye la mora.">ⓘ</span></th>
+        <th class="num">Mora <span class="hlp" title="Recargo del 10% mensual sobre cada cuota vencida, a partir de abril 2026 (se acumula por cada mes de atraso).">ⓘ</span></th>
+        <th class="num">Total <span class="hlp" title="Total a cobrar = Saldo pendiente + Mora.">ⓘ</span></th>
         <th>Estado</th><th>Vence</th><th></th>
       </tr></thead><tbody></tbody></table></div>
     </div>
@@ -281,7 +289,10 @@ function logout(){ TOKEN=''; localStorage.removeItem('ac_token'); setupGate('log
 let DASH=null;
 const pillFor = e => e==='Al día'?'<span class="pill ok">Al día</span>':e==='Pendiente'?'<span class="pill warn">Pendiente</span>':'<span class="pill red">Moroso</span>';
 async function renderDash(){
-  DASH = await jsonp('getDashboard');
+  const ae=document.getElementById('fAsOf');
+  if(ae && !ae.value){ const t=new Date(); ae.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+  const asOf = (ae && ae.value) ? ae.value : null;   // vacío = hoy (año en curso, YTD)
+  DASH = await jsonp('getDashboard', asOf?{asOf}:{});
   const k=DASH.kpis;
   const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
   const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
