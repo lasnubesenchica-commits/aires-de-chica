@@ -173,6 +173,24 @@ function _findProp(clave) {
   return null;
 }
 
+// Fija el número de lotes de un propietario (informativo; no cambia la cuota).
+function setPropLotes(clave, n) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave'), li = header.indexOf('lotes');
+  if (ci < 0 || li < 0) throw new Error('No se encontró la columna clave/lotes.');
+  var v = Math.max(1, Math.floor(Number(n) || 1));
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, li + 1).setValue(v);
+      var prop = _findProp(clave);
+      return { ok: true, clave: clave, lotes: v, cuota: prop ? prop.cuota : null };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
 // Fija el número de cabañas de un propietario (recalcula la cuota: base + 30%/cabaña).
 function setPropCabanas(clave, n) {
   ensureSheets();

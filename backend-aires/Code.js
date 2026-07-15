@@ -84,6 +84,7 @@ function doPost(e) {
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
+    else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropSaldo2025') out = { ok: true, data: setPropSaldo2025(data.clave, data.saldo2025) };
     else if (action === 'setPropInicio')    out = { ok: true, data: setPropInicio(data.clave, data.inicio) };
