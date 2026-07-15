@@ -157,8 +157,14 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
     <div class="card">
       <div class="hd"><h2>Cuentas</h2><div class="spacer" style="flex:1"></div>
         <div class="controls">
-          <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Fecha de corte: el estado de cuenta se calcula como si hoy fuera esta fecha. Por defecto, al día de hoy (año en curso).">Corte al
-            <input type="date" id="fAsOf" onchange="renderDash()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff"></label>
+          <label class="muted" style="font-size:.82rem;display:flex;align-items:center;gap:6px" title="Periodo de corte: el estado de cuenta se calcula como si hoy fuera la fecha de corte. No filtra cuentas; recalcula los saldos a esa fecha.">Periodo
+            <select id="fRango" onchange="aplicarRango()" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
+              <option value="ytd">Año a la fecha (YTD)</option>
+              <option value="mesActual">Cierre mes actual</option>
+              <option value="mesAnterior">Cierre mes anterior</option>
+              <option value="custom">Personalizado…</option>
+            </select></label>
+          <input type="date" id="fAsOf" onchange="rangoCustom()" disabled title="Fecha de corte" style="font:inherit;padding:6px 8px;border:1px solid var(--ac-border);border-radius:9px;background:#fff">
           <select id="fRes"><option value="">Todos los residenciales</option></select>
           <select id="fEstado"><option value="">Todos</option><option>Moroso</option><option>Al día</option></select>
           <input type="search" id="fQ" placeholder="Buscar propietario o lote…"/>
@@ -604,6 +610,17 @@ function toggleDl(ev){ ev.stopPropagation(); const m=document.getElementById('dl
 document.addEventListener('click',()=>{ const m=document.getElementById('dlMenu'); if(m) m.style.display='none'; });
 function _fx(v){ const d=new Date(v); return isNaN(d)?'' : `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; }
 function _corteStr(){ const ae=document.getElementById('fAsOf'); return (ae&&ae.value)?ae.value:new Date().toISOString().slice(0,10); }
+function _iso(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function aplicarRango(){
+  const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), t=new Date();
+  if(r==='ytd') ae.value=_iso(t);
+  else if(r==='mesActual') ae.value=_iso(new Date(t.getFullYear(), t.getMonth()+1, 0)); // último día de este mes
+  else if(r==='mesAnterior') ae.value=_iso(new Date(t.getFullYear(), t.getMonth(), 0));  // último día del mes pasado
+  ae.disabled=(r!=='custom');
+  if(r==='custom'){ ae.focus(); if(ae.showPicker) try{ae.showPicker();}catch(e){} return; }
+  renderDash();
+}
+function rangoCustom(){ document.getElementById('fRango').value='custom'; document.getElementById('fAsOf').disabled=false; renderDash(); }
 function _sum(arr,k){ return Math.round(arr.reduce((s,x)=>s+(Number(x[k])||0),0)*100)/100; }
 function _sheet(aoa, moneyCols, widths){
   const ws=XLSX.utils.aoa_to_sheet(aoa);
