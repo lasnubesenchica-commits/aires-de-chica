@@ -3,9 +3,15 @@
  *
  * Los propietarios envían su comprobante a comprobantes@airesdechica.org
  * (alias/reenvío a admin@, que es la cuenta bajo la que corre el script).
- * Un trigger diario `capturarComprobantes()` lee los correos nuevos, extrae
- * lote + monto, empareja al propietario (por email del remitente, lote o
+ * Un trigger diario `capturarComprobantes()` lee los correos nuevos, analiza
+ * el adjunto con Claude vision (extrae si es un pago + monto + referencia +
+ * fecha + pagador), empareja al propietario (por email del remitente, lote o
  * nombre), guarda el adjunto en Drive y deja el comprobante como PENDIENTE.
+ *
+ * ANÁLISIS DEL ADJUNTO: se usa Claude vision (modelo Haiku 4.5) que LEE y
+ * ENTIENDE el comprobante y devuelve datos estructurados. Requiere la Script
+ * Property `ANTHROPIC_API_KEY`. Si no hay key (o la llamada falla), cae
+ * automáticamente al OCR de Google Drive + reglas (fallback).
  *
  * NADA se aplica solo: la cola queda para revisión en el panel; el admin
  * confirma (se registra el pago) o rechaza. Así se evita aplicar montos
@@ -13,6 +19,102 @@
  */
 
 var GMAIL_LABEL_COMPROB = 'AC-Comprobantes';
+
+// ─── Claude vision ───
+var ANTHROPIC_KEY_PROP = 'ANTHROPIC_API_KEY';
+var ANTHROPIC_MODEL    = 'claude-haiku-4-5';   // barato y con visión; suficiente para leer recibos
+var ANTHROPIC_URL      = 'https://api.anthropic.com/v1/messages';
+
+function _anthropicKey() {
+  return String(PropertiesService.getScriptProperties().getProperty(ANTHROPIC_KEY_PROP) || '').trim();
+}
+
+// Extrae el primer objeto JSON de un texto (tolerante a texto alrededor).
+function _parseJsonLoose(txt) {
+  if (!txt) return null;
+  try { return JSON.parse(txt); } catch (e) {}
+  var m = String(txt).match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
+  return null;
+}
+
+/**
+ * Analiza un comprobante (imagen o PDF) con Claude vision.
+ * Devuelve { esPago, monto, fecha, referencia, banco, pagador, metodo, lote, confianza, texto }
+ * o null si no hay API key o la llamada falla (para caer al fallback OCR).
+ */
+function _analizarComprobante(blob) {
+  var key = _anthropicKey();
+  if (!key) return null;
+  var ct = String(blob.getContentType() || '').toLowerCase();
+  var b64 = Utilities.base64Encode(blob.getBytes());
+  var src;
+  if (ct.indexOf('pdf') >= 0) {
+    src = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
+  } else {
+    var mt = (ct.indexOf('image/') === 0) ? ct : 'image/jpeg';
+    src = { type: 'image', source: { type: 'base64', media_type: mt, data: b64 } };
+  }
+  var prompt =
+    'Eres un asistente que revisa comprobantes de pago (transferencias ACH, Yappy, Nequi, depósitos y ' +
+    'pagos bancarios) de propietarios de una comunidad en Panamá. Analiza la imagen/PDF adjunto y responde ' +
+    'ÚNICAMENTE con un objeto JSON válido, sin texto ni explicación adicional, con esta forma exacta:\n' +
+    '{"esPago": true|false, "monto": number, "fecha": "YYYY-MM-DD" o "", "referencia": "", "banco": "", ' +
+    '"pagador": "", "metodo": "", "lote": "", "confianza": 0.0}\n' +
+    'Reglas:\n' +
+    '- esPago: true SOLO si realmente es un comprobante/recibo de un pago o transferencia de dinero.\n' +
+    '- monto: el monto pagado en balboas/dólares como número, sin símbolo (ej: 72.00). 0 si no aplica.\n' +
+    '- fecha: la fecha del pago en formato YYYY-MM-DD; "" si no se ve.\n' +
+    '- metodo: ACH, Yappy, Nequi, depósito, transferencia, etc. si se identifica; "" si no.\n' +
+    '- lote: si aparece un número de lote/casa/finca, ponlo (ej: "16A"); "" si no.\n' +
+    '- pagador: nombre de quien paga si aparece; "" si no.\n' +
+    '- confianza: 0 a 1, qué tan seguro estás de que es un pago y de que el monto es correcto.';
+  var payload = {
+    model: ANTHROPIC_MODEL,
+    max_tokens: 500,
+    messages: [{ role: 'user', content: [src, { type: 'text', text: prompt }] }]
+  };
+  try {
+    var resp = UrlFetchApp.fetch(ANTHROPIC_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) return null;
+    var data = JSON.parse(resp.getContentText());
+    var txt = '';
+    (data.content || []).forEach(function (b) { if (b.type === 'text') txt += b.text; });
+    var j = _parseJsonLoose(txt);
+    if (!j) return null;
+    j.esPago    = !!j.esPago;
+    j.monto     = _round2(Number(j.monto) || 0);
+    j.confianza = Number(j.confianza) || 0;
+    j.referencia = String(j.referencia || '');
+    j.pagador   = String(j.pagador || '');
+    j.lote      = String(j.lote || '');
+    j.texto     = txt;
+    return j;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Prueba rápida: valida que la API key de Anthropic funcione. Ejecuta en el editor. */
+function probarAnthropic() {
+  var key = _anthropicKey();
+  if (!key) return { ok: false, error: 'Falta la Script Property ANTHROPIC_API_KEY.' };
+  try {
+    var resp = UrlFetchApp.fetch(ANTHROPIC_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 16,
+        messages: [{ role: 'user', content: 'Responde solo con la palabra: OK' }] }),
+      muteHttpExceptions: true
+    });
+    return { ok: resp.getResponseCode() === 200, code: resp.getResponseCode(),
+      respuesta: resp.getContentText().slice(0, 300) };
+  } catch (e) { return { ok: false, error: String(e) }; }
+}
 
 function _emailDe(from) {
   var m = String(from || '').match(/<([^>]+)>/);
@@ -67,7 +169,7 @@ function _ocrTexto(blob) {
   }
 }
 
-// ¿el texto (OCR o del correo) parece un comprobante de pago? -> palabra clave + un monto.
+// FALLBACK (sin API key): ¿el texto (OCR o del correo) parece un comprobante de pago? -> palabra clave + un monto.
 function _esPago(texto) {
   if (!texto) return false;
   var t = _normTxt(texto);
@@ -126,27 +228,42 @@ function capturarComprobantes(maxThreads) {
       // FILTRO 1: debe traer un adjunto (imagen/PDF)
       var atts = _adjuntosValidos(msg);
       var estado = 'pendiente', motivo = '', ocrTxt = '', url = '';
+      var vis = null, refCap = '', nombreMatch = _nombreDe(from);
       if (!atts.length) {
         estado = 'descartado'; motivo = 'sin adjunto';
       } else {
-        // guardar adjuntos + OCR (hasta 2, por costo)
-        atts.forEach(function (a, i) {
+        // guardar todos los adjuntos en Drive
+        atts.forEach(function (a) {
           try {
-            var blob = a.copyBlob();
-            var f = folder.createFile(blob);
+            var f = folder.createFile(a.copyBlob());
             f.setName(Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + a.getName());
             if (!url) url = f.getUrl();
-            if (i < 2) ocrTxt += ' ' + _ocrTexto(a.copyBlob());
           } catch (e) {}
         });
-        // FILTRO 2: el adjunto (OCR) o el correo deben parecer un pago
-        if (!(_esPago(ocrTxt) || _esPago(emailTxt))) { estado = 'descartado'; motivo = 'no parece un pago'; }
+        // ANÁLISIS: Claude vision sobre el primer adjunto (fallback: OCR de Google, hasta 2 adjuntos)
+        try { vis = _analizarComprobante(atts[0].copyBlob()); } catch (e) { vis = null; }
+        if (!vis) {
+          for (var oi = 0; oi < atts.length && oi < 2; oi++) {
+            try { ocrTxt += ' ' + _ocrTexto(atts[oi].copyBlob()); } catch (e) {}
+          }
+        }
+        // FILTRO 2: ¿es un pago?  (Claude si disponible; si no, reglas sobre OCR/correo)
+        var esPago = vis ? vis.esPago : (_esPago(ocrTxt) || _esPago(emailTxt));
+        if (!esPago) { estado = 'descartado'; motivo = vis ? 'Claude: no parece un pago' : 'no parece un pago'; }
       }
 
-      // monto (del OCR primero, luego del correo) y emparejado
-      var textoTot = emailTxt + ' ' + ocrTxt;
-      var monto = _extraerMonto(ocrTxt) || _extraerMonto(emailTxt);
-      var lote = _extraerLote(textoTot);
+      // monto / referencia / lote — de Claude si lo tenemos, si no de OCR/correo
+      var monto, lote;
+      if (vis) {
+        monto = vis.monto || _extraerMonto(emailTxt);
+        lote  = vis.lote ? _extraerLote('lote ' + vis.lote) : _extraerLote(emailTxt);
+        refCap = vis.referencia || '';
+        if (vis.pagador) nombreMatch = vis.pagador;
+      } else {
+        var textoTot = emailTxt + ' ' + ocrTxt;
+        monto = _extraerMonto(ocrTxt) || _extraerMonto(emailTxt);
+        lote  = _extraerLote(textoTot);
+      }
       var prop = byEmail[fromEmail] || null, metodo = prop ? 'email' : '';
       if (!prop && lote.num) {
         var cands = (byLoteNum[lote.num] || []).slice();
@@ -154,16 +271,16 @@ function capturarComprobantes(maxThreads) {
         if (cands.length === 1) { prop = cands[0]; metodo = 'lote'; }
         else if (cands.length > 1) {
           var best = null, bs = 0;
-          cands.forEach(function (p) { var s = _scoreNombre(_nombreDe(from), p.nombre); if (s > bs) { bs = s; best = p; } });
+          cands.forEach(function (p) { var s = _scoreNombre(nombreMatch, p.nombre); if (s > bs) { bs = s; best = p; } });
           if (best && bs > 0) { prop = best; metodo = 'lote+nombre'; }
         }
       }
-      if (!prop) { var m2 = _matchPorNombre(_nombreDe(from), props); if (m2) { prop = m2.prop; metodo = 'nombre'; } }
+      if (!prop) { var m2 = _matchPorNombre(nombreMatch, props); if (m2) { prop = m2.prop; metodo = 'nombre'; } }
 
       filas.push([
         'C' + id, msg.getDate(), from, subject,
-        prop ? prop.clave : '', prop ? prop.nombre : _nombreDe(from), prop ? prop.lote : lote.raw,
-        monto || '', '', estado, url, id,
+        prop ? prop.clave : '', prop ? prop.nombre : nombreMatch, prop ? prop.lote : lote.raw,
+        monto || '', refCap, estado, url, id,
         estado === 'pendiente' ? (metodo || 'sin-match') : '', new Date(), motivo
       ]);
       if (estado === 'pendiente') nuevos++; else descartados++;
