@@ -232,7 +232,7 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
   <div class="mb" id="modalBd"></div></div></div>
 </div><!-- /app -->
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
 let TOKEN = localStorage.getItem('ac_token') || '';
@@ -612,6 +612,46 @@ function _sheet(aoa, moneyCols, widths){
   if(widths) ws['!cols']=widths.map(w=>({wch:w}));
   return ws;
 }
+/* ── estilos (xlsx-js-style) ── */
+const BR={teal:'0E8FB0',teal700:'086176',teal50:'E8F6FA',green:'1E8E5A',coral:'E8804C',ink:'143039',muted:'5B7883',border:'D3E6EC',red:'C0392B',amber:'B7791F',zebra:'F4FAFB'};
+const _bt={style:'thin',color:{rgb:BR.border}};
+const AB={top:_bt,bottom:_bt,left:_bt,right:_bt};
+const MONEYFMT='"B/."#,##0.00';
+const ST={
+  title:{font:{bold:true,sz:15,color:{rgb:BR.teal700}},alignment:{vertical:'center'}},
+  sub:{font:{sz:10,italic:true,color:{rgb:BR.muted}}},
+  th:{font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:BR.teal}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:AB},
+  cell:{border:AB,alignment:{vertical:'center'}},
+  money:{border:AB,numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}},
+  total:{font:{bold:true},fill:{fgColor:{rgb:BR.teal50}},border:{top:{style:'medium',color:{rgb:BR.teal}},bottom:_bt,left:_bt,right:_bt}},
+  totalMoney:{font:{bold:true},fill:{fgColor:{rgb:BR.teal50}},numFmt:MONEYFMT,alignment:{horizontal:'right'},border:{top:{style:'medium',color:{rgb:BR.teal}},bottom:_bt,left:_bt,right:_bt}},
+  section:{font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:BR.teal700}},alignment:{vertical:'center'}},
+  label:{font:{color:{rgb:BR.ink}},border:AB,alignment:{vertical:'center'}},
+  valB:{font:{bold:true,color:{rgb:BR.ink}},border:AB,alignment:{horizontal:'right',vertical:'center'}},
+  valMoney:{font:{bold:true,color:{rgb:BR.ink}},border:AB,numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}}
+};
+function _s(ws,r,c,style){ const a=XLSX.utils.encode_cell({r,c}); if(!ws[a]) ws[a]={t:'s',v:''}; ws[a].s=style;
+  const ref=XLSX.utils.decode_range(ws['!ref']||'A1'); if(r>ref.e.r||c>ref.e.c){ ref.e.r=Math.max(ref.e.r,r); ref.e.c=Math.max(ref.e.c,c); ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:ref.e}); } }
+function _estadoStyle(est,zeb){ return {border:AB,alignment:{horizontal:'center',vertical:'center'},font:{bold:true,color:{rgb:est==='Moroso'?BR.red:est==='Pendiente'?BR.amber:BR.green}},...(zeb?{fill:{fgColor:{rgb:BR.zebra}}}:{})}; }
+// Hoja tabular con título, encabezado de color, zebra, total y (opcional) columna Estado coloreada.
+function _tableSheet(title, subtitle, headers, rows, moneyCols, widths, opts){
+  opts=opts||{};
+  const aoa=[[title],[subtitle||''],headers,...rows];
+  if(opts.totalRow) aoa.push(opts.totalRow);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const ncol=headers.length, money=new Set(moneyCols||[]);
+  ws['!cols']=widths.map(w=>({wch:w}));
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:ncol-1}},{s:{r:1,c:0},e:{r:1,c:ncol-1}}];
+  ws['!rows']=[{hpt:22},{hpt:15},{hpt:20}];
+  _s(ws,0,0,ST.title); _s(ws,1,0,ST.sub);
+  for(let c=0;c<ncol;c++) _s(ws,2,c,ST.th);
+  for(let i=0;i<rows.length;i++){ const r=3+i, zeb=(i%2===1);
+    for(let c=0;c<ncol;c++){ let base=money.has(c)?{...ST.money}:{...ST.cell}; if(zeb) base.fill={fgColor:{rgb:BR.zebra}}; _s(ws,r,c,base); }
+    if(opts.estadoCol!=null) _s(ws,r,opts.estadoCol,_estadoStyle(rows[i][opts.estadoCol],zeb));
+  }
+  if(opts.totalRow){ const r=3+rows.length; for(let c=0;c<ncol;c++) _s(ws,r,c, money.has(c)?ST.totalMoney:ST.total); }
+  return ws;
+}
 async function descargarConciliacion(){
   document.getElementById('dlMenu').style.display='none';
   if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
@@ -630,32 +670,50 @@ async function descargarConciliacion(){
   XLSX.utils.book_append_sheet(wb,ws2,'Resumen mensual');
   XLSX.writeFile(wb, `AiresDeChica_Conciliacion_${_corteStr()}.xlsx`);
 }
+function _resumenSheet(k, corte){
+  // hoja Resumen con secciones de color y valores en negrilla
+  const M=v=>({v:Number(v)||0,money:true}), P=v=>({v:(Number(v)||0),pct:true}), N=v=>({v:Number(v)||0});
+  const blocks=[
+    {sec:'Cartera', rows:[['Cuentas',N(k.cuentas)],['Al día',N(k.alDia)],['Pendientes (mes en curso)',N(k.pendientes)],['Morosos',N(k.morosos)],['Tasa de morosidad',P(k.tasaMorosidad)]]},
+    {sec:'Recaudación del año', rows:[['Facturado',M(k.totalFacturado)],['Cobrado',M(k.totalPagado)],['% Recaudación anual',P(k.tasaRecaudacionAnual)],['Cartera vencida',M(k.carteraVencida)],['Mora acumulada',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)]]},
+    {sec:'Mes en curso', rows:[['Facturado del mes',M(k.facturadoMes)],['Cobrado del mes',M(k.pagadoMes)],['% Recaudación del mes',P(k.tasaRecaudacionMes)]]}
+  ];
+  const aoa=[['Aires de Chicá'],['Estado de cobros · Corte al '+corte],['']];
+  const meta=[]; // {r, type}
+  blocks.forEach(bl=>{ aoa.push([bl.sec,'']); meta.push({r:aoa.length-1,type:'sec'});
+    bl.rows.forEach(rw=>{ const cell=rw[1]; aoa.push([rw[0], cell.v]); meta.push({r:aoa.length-1,type: cell.money?'money':(cell.pct?'pct':'num')}); });
+    aoa.push(['']); });
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:30},{wch:18}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}}];
+  ws['!rows']=[{hpt:24},{hpt:16}];
+  _s(ws,0,0,ST.title); _s(ws,1,0,ST.sub);
+  meta.forEach(m=>{
+    if(m.type==='sec'){ _s(ws,m.r,0,ST.section); _s(ws,m.r,1,ST.section); }
+    else { _s(ws,m.r,0,ST.label);
+      if(m.type==='money') _s(ws,m.r,1,ST.valMoney);
+      else if(m.type==='pct'){ const a=XLSX.utils.encode_cell({r:m.r,c:1}); if(ws[a]) ws[a].z='0.0"%"'; _s(ws,m.r,1,{...ST.valB,numFmt:'0.0"%"'}); }
+      else _s(ws,m.r,1,ST.valB);
+    }
+  });
+  return ws;
+}
 async function descargarCartera(){
   document.getElementById('dlMenu').style.display='none';
   if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
   const k=DASH.kpis, corte=_corteStr();
-  const aoa1=[
-    ['Aires de Chicá — Estado de cobros'],['Corte al', corte],[],
-    ['Indicador','Valor'],
-    ['Cuentas', k.cuentas],['Al día', k.alDia],['Pendientes (mes en curso)', k.pendientes],
-    ['Morosos', k.morosos],['Tasa de morosidad %', k.tasaMorosidad],[],
-    ['Facturado (año)', k.totalFacturado],['Cobrado (año)', k.totalPagado],['% Recaudación anual', k.tasaRecaudacionAnual],
-    ['Cartera vencida', k.carteraVencida],['Mora acumulada', k.moraAcumulada],['Saldo total por cobrar', k.saldoTotalConMora],[],
-    ['Facturado del mes', k.facturadoMes],['Cobrado del mes', k.pagadoMes],['% Recaudación del mes', k.tasaRecaudacionMes]
-  ];
-  const ws1=XLSX.utils.aoa_to_sheet(aoa1); ws1['!cols']=[{wch:28},{wch:16}];
-  [10,11,13,14,15,17,18].forEach(r=>{ const cell=ws1[XLSX.utils.encode_cell({r,c:1})]; if(cell&&typeof cell.v==='number') cell.z='"B/."#,##0.00'; });
+  const ws1=_resumenSheet(k, corte);
   const head=['Lote','Residencial','Propietario','Correo','Cuota/mes','Facturado','Pagado','Saldo','Mora','Total','Estado','Días venc.'];
   const cuentas=[...(DASH.cuentas||[])].sort((a,b)=>b.saldoConMora-a.saldoConMora);
   const rows=cuentas.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.email||'',c.cuota,c.facturado,c.pagado,c.saldo,c.mora,c.saldoConMora,c.estado,c.diasVencido]);
-  const totRow=['','','','TOTAL','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'mora'),_sum(cuentas,'saldoConMora'),'',''];
-  const ws2=_sheet([head,...rows,[],totRow],[4,5,6,7,8,9],[8,13,24,26,10,11,11,11,10,11,11,9]);
+  const totRow=['','','TOTAL','','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'mora'),_sum(cuentas,'saldoConMora'),'',''];
+  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte, head, rows, [4,5,6,7,8,9], [8,13,24,26,10,11,11,11,10,11,11,9], {totalRow:totRow, estadoCol:10});
   const r3=(DASH.porResidencial||[]).map(r=>[r.residencial,r.cuentas,r.facturado,r.pagado,r.saldo,r.mora]);
-  const ws3=_sheet([['Residencial','Cuentas','Facturado','Pagado','Saldo','Mora'],...r3],[2,3,4,5],[16,9,13,13,13,11]);
+  const tot3=['TOTAL', _sum(DASH.porResidencial||[],'cuentas'), _sum(DASH.porResidencial||[],'facturado'),_sum(DASH.porResidencial||[],'pagado'),_sum(DASH.porResidencial||[],'saldo'),_sum(DASH.porResidencial||[],'mora')];
+  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3});
   const ag=DASH.aging||{}, agm=DASH.agingMonto||{};
   const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
   const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
-  const ws4=_sheet([['Antigüedad','Cuentas','Monto (saldo+mora)'],...r4],[2],[16,9,20]);
+  const ws4=_tableSheet('Aging (antigüedad de saldos)','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
   XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
