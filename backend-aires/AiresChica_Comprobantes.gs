@@ -535,6 +535,57 @@ function reprocesarComprobante(id) {
   throw new Error('Comprobante no encontrado: ' + id);
 }
 
+/**
+ * MIGRACIÓN (ejecutar UNA vez en el editor): regenera como PDF los avisos de
+ * Banco General que se habían guardado como .txt (miniatura ilegible). Re-lee el
+ * correo original por su msgId, crea el PDF con formato, actualiza el enlace del
+ * comprobante y del pago asociado, y manda el .txt viejo a la papelera.
+ * Seguro de correr varias veces: solo toca archivos que aún son .txt.
+ */
+function regenerarPdfsBanco() {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.COMPROB);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iUrl = h.indexOf('adjuntoUrl'), iMsg = h.indexOf('msgId'), iLo = h.indexOf('lote');
+  var folder = _carpetaComprobantes();
+  var cambios = [];
+
+  for (var r = 1; r < vals.length; r++) {
+    var url = String(vals[r][iUrl] || '');
+    var idm = url.match(/[-\w]{25,}/); if (!idm) continue;
+    var fileId = idm[0], mime = '';
+    try { mime = DriveApp.getFileById(fileId).getMimeType(); } catch (e) { continue; }
+    if (mime !== 'text/plain') continue;              // solo los .txt viejos
+
+    var msgId = String(vals[r][iMsg] || ''); if (!msgId) continue;
+    var msg = null; try { msg = GmailApp.getMessageById(msgId); } catch (e) {}
+    if (!msg) continue;
+
+    var body = (msg.getPlainBody() || '').slice(0, 4000);
+    var nb = _parseNotifBanco(msg.getSubject() || '', body);
+    var pdf = _notifBancoPdf(nb, body, msg.getDate())
+      .setName('BG ' + Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd') + ' ' + (String(vals[r][iLo] || nb.pagador || '')) + '.pdf');
+    var f = folder.createFile(pdf);
+    try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    var newUrl = f.getUrl();
+    sh.getRange(r + 1, iUrl + 1).setValue(newUrl);
+    cambios.push({ old: url, neu: newUrl });
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}  // .txt viejo a la papelera
+  }
+
+  // actualiza los pagos que apuntaban al .txt viejo
+  var shP = _ss().getSheetByName(SH.PAGOS);
+  var pv = shP.getDataRange().getValues(), ph = pv[0].map(function (x) { return String(x).trim(); });
+  var iCu = ph.indexOf('comprobanteUrl'), pagos = 0;
+  if (iCu >= 0) {
+    for (var p = 1; p < pv.length; p++) {
+      var cur = String(pv[p][iCu] || '');
+      cambios.forEach(function (c) { if (cur === c.old) { shP.getRange(p + 1, iCu + 1).setValue(c.neu); pagos++; } });
+    }
+  }
+  return { regenerados: cambios.length, pagosActualizados: pagos };
+}
+
 /** Ejecuta UNA vez en el editor: autoriza Gmail/Drive, activa la captura diaria y hace la primera lectura. */
 function activarCapturaComprobantes() {
   var cfg = _cfg(); cfg.capturaComprobantes = true;
