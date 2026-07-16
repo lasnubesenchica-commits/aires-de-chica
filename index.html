@@ -105,6 +105,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .pcard .pc-saldo input { flex:1; text-align:right; }
 .pcard .pc-saldo select { width:96px; flex:none; }
 .pcard .pc-cuota-sub { font-size:.72rem; color:var(--ac-muted); font-weight:400; margin-top:2px; }
+/* Toast "guardado" */
+#toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(16px); background:var(--ac-ok); color:#fff; padding:9px 18px; border-radius:22px; font-weight:700; font-size:.85rem; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100; box-shadow:0 8px 24px rgba(16,60,80,.22); }
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 @media (max-width:720px){
   #tblCuentas, #tblProp { display:none; }
   .cards { display:flex; }
@@ -656,10 +659,18 @@ async function renderProp(){
   };
   document.getElementById('pQ').oninput=draw; draw();
 }
+function toast(msg){
+  let t=document.getElementById('toast');
+  if(!t){ t=document.createElement('div'); t.id='toast'; document.body.appendChild(t); }
+  t.textContent=msg||'✓ Guardado';
+  t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), 1600);
+}
 async function setLotes(clave,el){
   el.disabled=true;
   try{ const r=await post('setPropLotes',{clave,lotes:el.value});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.lotes=r.lotes; }
+    toast('✓ Guardado');
     document.getElementById('pQ').dispatchEvent(new Event('input'));
     if(typeof renderDash==='function') renderDash();
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
@@ -669,6 +680,7 @@ async function setCabanas(clave,el){
   el.disabled=true;
   try{ const r=await post('setPropCabanas',{clave,cabanas:el.value});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.cabanas=r.cabanas; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
+    toast('✓ Guardado');
     document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota en KPIs/tabla
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
@@ -682,6 +694,7 @@ async function setSaldo(clave,el){
   td.querySelectorAll('input,select').forEach(x=>x.disabled=true);
   try{ const r=await post('setPropSaldo2025',{clave,saldo2025:signed});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.saldo2025=r.saldo2025; }
+    toast('✓ Guardado');
     document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja (color/tipo)
     if(typeof renderDash==='function') renderDash(); // recalcula estados de cuenta
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
@@ -691,6 +704,7 @@ async function setInicio(clave,el){
   el.disabled=true;
   try{ const r=await post('setPropInicio',{clave,inicio:el.value});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.inicioCobro=r.inicioCobro; }
+    toast('✓ Guardado');
     document.getElementById('pQ').dispatchEvent(new Event('input'));
     if(typeof renderDash==='function') renderDash(); // recalcula cuotas facturadas
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
@@ -700,6 +714,7 @@ async function setCuota(clave,el){
   el.disabled=true;
   try{ const r=await post('setPropCuota',{clave,cuota:el.value});
     const p=PROPS.find(x=>x.clave===clave); if(p){ p.cuotaMensual=r.cuotaMensual; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
+    toast('✓ Guardado');
     document.getElementById('pQ').dispatchEvent(new Event('input'));
     if(typeof renderDash==='function') renderDash();
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
