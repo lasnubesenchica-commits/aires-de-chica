@@ -86,10 +86,16 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .acct-card .ac-name { margin:5px 0 8px; font-size:1rem; font-weight:600; color:var(--ac-ink); }
 .acct-card .ac-bot { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:.86rem; color:var(--ac-muted); }
 .acct-card .ac-bot b { color:var(--ac-ink); }
-/* Tarjetas de propietarios (vista móvil, editables) */
-.pcard { border:1px solid var(--ac-border); border-radius:12px; background:#fff; padding:12px 14px; }
+/* Tarjetas de propietarios (vista móvil, editables y colapsables) */
+.pcard { border:1px solid var(--ac-border); border-radius:12px; background:#fff; }
+.pcard > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; }
+.pcard > summary::-webkit-details-marker { display:none; }
+.pcard[open] > summary { border-bottom:1px solid var(--ac-border); }
 .pcard .pc-lote { font-weight:700; font-size:.92rem; }
-.pcard .pc-name { font-size:1rem; font-weight:600; margin:3px 0 1px; }
+.pcard .pc-name { font-size:1rem; font-weight:600; margin-top:2px; }
+.pcard .pc-chev { color:var(--ac-muted); font-size:.75rem; flex:none; transition:transform .15s; }
+.pcard[open] .pc-chev { transform:rotate(180deg); }
+.pcard .pc-body { padding:12px 14px 14px; }
 .pcard .pc-contact { font-size:.8rem; margin-bottom:10px; }
 .pcard .pc-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .pcard .pc-fields label { display:flex; flex-direction:column; gap:4px; font-size:.72rem; font-weight:600; color:var(--ac-muted); min-width:0; }
@@ -613,6 +619,7 @@ async function enviarPrueba(tipo,inputId,propId,btn){
 
 /* ───────── Propietarios ───────── */
 let PROPS=[];
+let PROP_OPEN=new Set();
 async function renderProp(){
   try{ PROPS=await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
   const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -635,9 +642,9 @@ async function renderProp(){
       </select></td>
       <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
         <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td></tr>`).join('');
-    document.getElementById('propCards').innerHTML=list.map(p=>`<div class="pcard">
-      <div class="pc-lote">L${p.lote} · ${p.residencial}</div>
-      <div class="pc-name">${p.nombre}</div>
+    document.getElementById('propCards').innerHTML=list.map(p=>`<details class="pcard" ${PROP_OPEN.has(p.clave)?'open':''} ontoggle="this.open?PROP_OPEN.add('${p.clave}'):PROP_OPEN.delete('${p.clave}')">
+      <summary><div><div class="pc-lote">L${p.lote} · ${p.residencial}</div><div class="pc-name">${p.nombre}</div></div><span class="pc-chev">▾</span></summary>
+      <div class="pc-body">
       <div class="pc-contact muted">${p.email||'sin correo'}${p.celular?' · '+p.celular:''}</div>
       <div class="pc-fields">
         <label>Lotes<input type="number" min="1" step="1" value="${p.lotes||1}" onchange="setLotes('${p.clave}',this)"></label>
@@ -645,7 +652,7 @@ async function renderProp(){
         <label class="pc-full">Saldo 2025<span class="pc-saldo"><input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" onchange="setSaldo('${p.clave}',this)" style="${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}"><select onchange="setSaldo('${p.clave}',this)"><option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option><option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option></select></span></label>
         <label class="pc-full">Ingreso (empieza a pagar)<select onchange="setInicio('${p.clave}',this)">${mesOpts(p)}</select></label>
         <label class="pc-full">Cuota/mes<input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" onchange="setCuota('${p.clave}',this)"><span class="pc-cuota-sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</span></label>
-      </div></div>`).join('');
+      </div></div></details>`).join('');
   };
   document.getElementById('pQ').oninput=draw; draw();
 }
