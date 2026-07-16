@@ -57,6 +57,7 @@ function doGet(e) {
     else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios() }; }
     else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
     else if (action === 'getComprobantes') { requireAuth(p.token); out = { ok: true, data: getComprobantes(p.estado || null) }; }
+    else if (action === 'auditarDuplicados') { requireAuth(p.token); out = { ok: true, data: auditarDuplicados(p.tolDias) }; }
     else if (action === 'previsualizarComprobante') { requireAuth(p.token); out = { ok: true, data: previsualizarComprobante(p.clave, p.monto) }; }
     else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }

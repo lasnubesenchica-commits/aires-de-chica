@@ -72,12 +72,21 @@ function conciliarBanco(rows, filename) {
     });
   });
 
-  // firmas de pagos ya registrados (para deduplicar por clave+fecha+monto)
-  var existentes = {};
-  getPagos().forEach(function (p) {
-    var f = Utilities.formatDate(new Date(p.fecha), CONFIG.TZ, 'yyyy-MM-dd');
-    existentes[_sigPago(f, p.monto, p.clave)] = true;
+  // pagos ya registrados, para detectar POSIBLES duplicados por
+  // clave + monto + fecha (con tolerancia de días, porque el mismo pago puede
+  // venir por email con una fecha y por el banco con otra).
+  var TOL_DIAS = 3, TOL_MS = TOL_DIAS * 86400000;
+  var existentesList = getPagos().filter(function (p) { return p.clave; }).map(function (p) {
+    return { clave: String(p.clave), monto: _round2(p.monto), t: new Date(p.fecha).getTime() };
   });
+  function _yaExiste(clave, monto, tMs) {
+    monto = _round2(monto);
+    for (var i = 0; i < existentesList.length; i++) {
+      var e = existentesList[i];
+      if (e.clave === clave && Math.abs(e.monto - monto) < 0.005 && Math.abs(e.t - tMs) <= TOL_MS) return true;
+    }
+    return false;
+  }
 
   var pagos = [], gastos = [], ignorados = [], duplicados = 0;
 
@@ -132,12 +141,18 @@ function conciliarBanco(rows, filename) {
     }
 
     var clave = prop ? prop.clave : '';
-    var sig = _sigPago(fechaISO, credito, clave || (loteNum + '?'));
-    if (clave && existentes[sig]) { duplicados++; continue; }
-    existentes[sig] = true; // evita duplicar dentro del mismo archivo
+    // ¿posible duplicado? mismo propietario + monto + fecha (±TOL_DIAS).
+    // Ya NO se descarta en silencio: se incluye desmarcado para que el admin decida.
+    var posibleDup = false;
+    if (clave) {
+      var tMs = fecha.getTime();
+      posibleDup = _yaExiste(clave, credito, tMs);
+      existentesList.push({ clave: clave, monto: _round2(credito), t: tMs }); // evita duplicar dentro del mismo archivo
+      if (posibleDup) duplicados++;
+    }
 
     pagos.push({
-      seleccionado: !!prop && !esVarios,
+      seleccionado: !!prop && !esVarios && !posibleDup,
       fecha: fechaISO,
       monto: _round2(credito),
       descripcion: desc,
@@ -156,7 +171,8 @@ function conciliarBanco(rows, filename) {
       metodo: metodo,
       confianza: prop ? confianza : 'sin-match',
       ambiguo: ambiguo,
-      variosLotes: esVarios
+      variosLotes: esVarios,
+      posibleDuplicado: posibleDup
     });
   }
 
@@ -182,6 +198,46 @@ function conciliarBanco(rows, filename) {
     ignorados: ignorados,
     totalCreditos: _round2(pagos.reduce(function (a, p) { return a + p.monto; }, 0)),
     totalGastos: _round2(gastos.reduce(function (a, g) { return a + g.monto; }, 0))
+  };
+}
+
+/**
+ * Auditoría de duplicados en el histórico ya registrado (solo lectura).
+ * Agrupa los pagos por propietario + monto y detecta los que caen dentro de una
+ * ventana de fechas (tolDias). Devuelve grupos sospechosos para revisión manual;
+ * NO borra nada.
+ */
+function auditarDuplicados(tolDias) {
+  tolDias = Number(tolDias) || 3;
+  var TOL = tolDias * 86400000;
+  var pagos = getPagos().filter(function (p) { return p.clave && p.monto > 0; }).map(function (p) {
+    return { id: p.id, clave: String(p.clave), nombre: p.nombre, lote: p.lote, monto: _round2(p.monto),
+      t: new Date(p.fecha).getTime(), fecha: Utilities.formatDate(new Date(p.fecha), CONFIG.TZ, 'yyyy-MM-dd'),
+      origen: p.origen, notas: String(p.notas || '') };
+  });
+  var byKey = {};
+  pagos.forEach(function (p) { var k = p.clave + '|' + p.monto.toFixed(2); (byKey[k] = byKey[k] || []).push(p); });
+
+  var grupos = [];
+  Object.keys(byKey).forEach(function (k) {
+    var arr = byKey[k].slice().sort(function (a, b) { return a.t - b.t; });
+    if (arr.length < 2) return;
+    var cluster = [arr[0]];
+    for (var i = 1; i < arr.length; i++) {
+      if (arr[i].t - cluster[cluster.length - 1].t <= TOL) cluster.push(arr[i]);
+      else { if (cluster.length >= 2) grupos.push(cluster.slice()); cluster = [arr[i]]; }
+    }
+    if (cluster.length >= 2) grupos.push(cluster.slice());
+  });
+
+  grupos.sort(function (a, b) { return b.length - a.length; });
+  return {
+    tolDias: tolDias,
+    totalGrupos: grupos.length,
+    grupos: grupos.map(function (g) {
+      return { clave: g[0].clave, nombre: g[0].nombre, lote: g[0].lote, monto: g[0].monto, cantidad: g.length,
+        pagos: g.map(function (p) { return { id: p.id, fecha: p.fecha, origen: p.origen, notas: p.notas.slice(0, 90) }; }) };
+    })
   };
 }
 

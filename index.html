@@ -224,6 +224,12 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
           <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none"/></div>
         <div id="concResult" style="margin-top:18px"></div>
       </div></div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>Auditar duplicados del histórico</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn" onclick="auditarDup(this)" title="Busca pagos repetidos ya registrados">Revisar duplicados</button></div>
+      <div class="bd" style="padding:18px">
+        <p class="muted" style="margin-top:0">Busca en los pagos ya registrados grupos del <b>mismo propietario, mismo monto y fecha cercana</b> (±3 días), por si algún pago quedó duplicado. Solo <b>muestra</b> los candidatos para que los revises; no borra nada.</p>
+        <div id="auditResult"></div>
+      </div></div>
   </section>
 
   <section id="tab-comprob" style="display:none">
@@ -594,13 +600,14 @@ function renderConc(d){
   const res=document.getElementById('concResult');
   const rowsHtml=d.pagos.map((p,i)=>{
     const conf = p.confianza==='alta'?'ok':p.confianza==='media'?'warn':'red';
-    const sel = p.match && !p.variosLotes ? 'checked':'';
+    const sel = p.match && !p.variosLotes && !p.posibleDuplicado ? 'checked':'';
     const cand = (p.candidatos&&p.candidatos.length)
       ? `<select data-i="${i}" class="candSel">${p.candidatos.map(c=>`<option value="${c.clave}">${c.residencial} · L${c.lote} · ${c.nombre}</option>`).join('')}<option value="">— sin asignar —</option></select>`
       : (p.match?`${p.residencial||''} · L${p.lote} · ${p.nombre}`:`<span class="muted">${p.pagador||'sin identificar'}</span>`);
-    return `<tr><td><input type="checkbox" class="cchk" data-i="${i}" ${sel}></td>
+    const dupBadge = p.posibleDuplicado ? `<div style="margin-top:3px"><span class="pill red" style="font-size:.62rem" title="Ya existe un pago igual (mismo propietario, monto y fecha ±3 días). Revísalo antes de incluir para no duplicar.">⚠ posible duplicado</span></div>`:'';
+    return `<tr${p.posibleDuplicado?' style="background:#fff5f2"':''}><td><input type="checkbox" class="cchk" data-i="${i}" ${sel}></td>
       <td>${p.fecha}</td><td class="num">${money(p.monto)}</td><td>${cand}</td>
-      <td><span class="pill ${conf}">${p.confianza}</span></td>
+      <td><span class="pill ${conf}">${p.confianza}</span>${dupBadge}</td>
       <td class="muted" style="max-width:280px;white-space:normal;font-size:.78rem">${p.descripcion}</td></tr>`;
   }).join('');
   res.innerHTML=`
@@ -608,8 +615,9 @@ function renderConc(d){
       <div class="kpi green"><div class="label">Pagos detectados</div><div class="val">${d.pagosDetectados}</div><div class="hint">${money(d.totalCreditos)}</div></div>
       <div class="kpi"><div class="label">Con match</div><div class="val">${d.conMatch}</div><div class="hint">listos para consolidar</div></div>
       <div class="kpi warn"><div class="label">Requieren revisión</div><div class="val">${d.sinMatch}</div><div class="hint">asigna manualmente</div></div>
-      <div class="kpi coral"><div class="label">Duplicados omitidos</div><div class="val">${d.duplicados}</div><div class="hint">ya registrados</div></div>
+      <div class="kpi coral"><div class="label">Posibles duplicados</div><div class="val">${d.duplicados}</div><div class="hint">desmarcados · revísalos</div></div>
     </div>
+    ${d.duplicados?`<div class="notice" style="margin-bottom:12px;background:#fff5f2;border-color:#f4d9c8">⚠ Hay <b>${d.duplicados}</b> pago(s) que ya parecen estar registrados (mismo propietario, monto y fecha ±3 días). Quedan <b>desmarcados</b>; márcalos solo si de verdad son pagos distintos.</div>`:''}
     <div class="card"><div class="hd"><h2>Revisar pagos entrantes</h2><div class="spacer" style="flex:1"></div>
       <label class="muted" style="font-size:.85rem"><input type="checkbox" id="sendMails"> Enviar estado de cuenta al consolidar</label>
       <button class="btn green" onclick="consolidar()">Consolidar seleccionados</button></div>
@@ -625,6 +633,20 @@ async function consolidar(){
   if(!sel.length) return alert('Selecciona al menos un pago con cuenta asignada.');
   try{ const r=await post('consolidarPagos',{pagos:sel,enviarCorreos:document.getElementById('sendMails').checked});
     alert('Consolidados: '+r.insertados+' pagos.'); renderDash(); }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
+}
+async function auditarDup(btn){
+  const box=document.getElementById('auditResult'); box.innerHTML='<div class="muted">Buscando…</div>';
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Revisando…';
+  let d; try{ d=await jsonp('auditarDuplicados',{}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(onAuthError(e))return; box.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  btn.disabled=false; btn.textContent=t;
+  if(!d.totalGrupos){ box.innerHTML='<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ No se encontraron pagos duplicados en el histórico.</div>'; return; }
+  box.innerHTML=`<div class="notice" style="margin-bottom:12px;background:#fff5f2;border-color:#f4d9c8">Se encontraron <b>${d.totalGrupos}</b> grupo(s) de posibles duplicados (mismo propietario, monto y fecha ±${d.tolDias} días). Revísalos; si alguno sobra, elimínalo desde la hoja <b>Pagos</b>.</div>
+    <table><thead><tr><th>Propietario</th><th class="num">Monto</th><th>Pagos repetidos</th></tr></thead><tbody>${
+      d.grupos.map(g=>`<tr><td>${g.nombre||g.clave} <span class="muted">· L${g.lote||''}</span></td>
+        <td class="num">${money(g.monto)} <span class="pill red" style="font-size:.62rem">×${g.cantidad}</span></td>
+        <td style="white-space:normal;font-size:.78rem">${g.pagos.map(p=>`<div class="muted">${p.fecha} · <b>${p.origen||'—'}</b>${p.notas?' · '+p.notas.replace(/</g,'&lt;'):''}</div>`).join('')}</td></tr>`).join('')
+    }</tbody></table>`;
 }
 
 /* ───────── Opciones / Admin ───────── */
