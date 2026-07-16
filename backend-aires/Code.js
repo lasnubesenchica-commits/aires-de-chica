@@ -88,7 +88,7 @@ function doPost(e) {
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
-    else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo) };
+    else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
