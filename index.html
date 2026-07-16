@@ -1091,7 +1091,7 @@ function _resumenSheet(k, corte){
   const M=v=>({v:Number(v)||0,money:true}), P=v=>({v:(Number(v)||0),pct:true}), N=v=>({v:Number(v)||0});
   const blocks=[
     {sec:'Cartera', rows:[['Cuentas',N(k.cuentas)],['Al día',N(k.alDia)],['Pendientes (mes en curso)',N(k.pendientes)],['Morosos',N(k.morosos)],['Tasa de morosidad',P(k.tasaMorosidad)]]},
-    {sec:'Recaudación del año', rows:[['Facturado',M(k.totalFacturado)],['Cobrado',M(k.totalPagado)],['% Recaudación anual',P(k.tasaRecaudacionAnual)],['Cartera vencida',M(k.carteraVencida)],['Mora acumulada',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)]]},
+    {sec:'Recaudación del año', rows:[['Facturado',M(k.totalFacturado)],['Cobrado',M(k.totalPagado)],['% Recaudación anual',P(k.tasaRecaudacionAnual)],['Saldo pendiente (cuotas)',M(k.carteraVencida)],['Recargo por mora acumulado',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)]]},
     {sec:'Mes en curso', rows:[['Facturado del mes',M(k.facturadoMes)],['Cobrado del mes',M(k.pagadoMes)],['% Recaudación del mes',P(k.tasaRecaudacionMes)]]}
   ];
   const aoa=[['Aires de Chicá'],['Estado de cobros · Corte al '+corte],['']];
@@ -1118,14 +1118,14 @@ async function descargarCartera(){
   if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
   const k=DASH.kpis, corte=_corteStr();
   const ws1=_resumenSheet(k, corte);
-  const head=['Lote','Residencial','Propietario','Correo','Cuota/mes','Facturado','Pagado','Saldo','Mora','Total','Estado','Días venc.'];
+  const head=['Lote','Residencial','Propietario','Correo','Cuota/mes','Facturado','Pagado','Saldo cuotas','Mora pendiente','Total','Estado','Días venc.'];
   const cuentas=[...(DASH.cuentas||[])].sort((a,b)=>b.saldoConMora-a.saldoConMora);
   const rows=cuentas.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.email||'',c.cuota,c.facturado,c.pagado,c.saldo,c.mora,c.saldoConMora,c.estado,c.diasVencido]);
   const totRow=['','','TOTAL','','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'mora'),_sum(cuentas,'saldoConMora'),'',''];
-  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte, head, rows, [4,5,6,7,8,9], [8,13,24,26,10,11,11,11,10,11,11,9], {totalRow:totRow, estadoCol:10});
+  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte+' · Saldo cuotas = principal; la Mora es un recargo aparte que permanece aunque se pague la cuota. Total = Saldo cuotas + Mora.', head, rows, [4,5,6,7,8,9], [8,13,24,26,10,11,11,13,14,11,11,9], {totalRow:totRow, estadoCol:10});
   const r3=(DASH.porResidencial||[]).map(r=>[r.residencial,r.cuentas,r.facturado,r.pagado,r.saldo,r.mora]);
   const tot3=['TOTAL', _sum(DASH.porResidencial||[],'cuentas'), _sum(DASH.porResidencial||[],'facturado'),_sum(DASH.porResidencial||[],'pagado'),_sum(DASH.porResidencial||[],'saldo'),_sum(DASH.porResidencial||[],'mora')];
-  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3});
+  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo cuotas','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3});
   const ag=DASH.aging||{}, agm=DASH.agingMonto||{};
   const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
   const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
