@@ -512,6 +512,29 @@ function previsualizarComprobante(clave, monto) {
   };
 }
 
+/**
+ * Reprocesa un comprobante: borra su registro y vuelve a leer el correo con la
+ * lógica actual (regenera el PDF del aviso de banco, re-extrae monto/lote, etc.).
+ * No aplica a comprobantes ya aplicados (habría que borrar el pago primero).
+ */
+function reprocesarComprobante(id) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.COMPROB);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iEst = h.indexOf('estado'), iMsg = h.indexOf('msgId');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]) !== String(id)) continue;
+    if (String(vals[r][iEst]) === 'aplicado') throw new Error('Este comprobante ya fue aplicado; no se puede reprocesar (elimina el pago primero).');
+    var msgId = String(vals[r][iMsg] || '');
+    sh.deleteRow(r + 1);                 // quita el registro -> deja de estar deduplicado
+    var res = capturarComprobantes();    // vuelve a leer el buzón (re-lee ese correo)
+    var reLeido = false;
+    if (msgId) _sheetRows(SH.COMPROB).forEach(function (x) { if (String(x.msgId) === msgId) reLeido = true; });
+    return { ok: true, reprocesado: true, releido: reLeido, nuevos: res.nuevos, descartados: res.descartados };
+  }
+  throw new Error('Comprobante no encontrado: ' + id);
+}
+
 /** Ejecuta UNA vez en el editor: autoriza Gmail/Drive, activa la captura diaria y hace la primera lectura. */
 function activarCapturaComprobantes() {
   var cfg = _cfg(); cfg.capturaComprobantes = true;
