@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 * { box-sizing: border-box; }
+html { overflow-x: hidden; }  /* red de seguridad: ningún elemento fuerza scroll horizontal en móvil */
 body { margin:0; font-family: var(--ac-font); color: var(--ac-ink); background: var(--ac-bg); }
 a { color: var(--ac-teal-600); }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 18px 60px; }
@@ -827,13 +828,13 @@ async function renderOpts(){
           <div class="in"><input type="month" id="o_moradesde" value="${c.moraDesde}"></div>
           <div class="help">Las cuotas anteriores a este mes no generan recargo.</div></div>
         <div class="field"><label>Cálculo del recargo por mora</label>
-          <div class="in"><select id="o_moracrece" style="min-width:260px;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+          <div class="in"><select id="o_moracrece" style="width:100%;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
             <option value="fija" ${!c.moraCrece?'selected':''}>Cargo fijo una sola vez (no crece)</option>
             <option value="crece" ${c.moraCrece?'selected':''}>Crece cada mes de atraso (se congela al pagar)</option>
           </select></div>
           <div class="help"><b>Fija:</b> la cuota morosa genera un único recargo de ${c.moraPct}% y no crece con el tiempo. <b>Crece:</b> suma ${c.moraPct}% por cada mes de atraso y deja de crecer el día en que se salda esa cuota.</div></div>
         <div class="field"><label>Orden de aplicación del pago</label>
-          <div class="in"><select id="o_moraorden" style="min-width:260px;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+          <div class="in"><select id="o_moraorden" style="width:100%;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
             <option value="cuota" ${c.moraOrden!=='mora'?'selected':''}>Primero las cuotas, la mora de último</option>
             <option value="mora" ${c.moraOrden==='mora'?'selected':''}>Primero la mora, luego las cuotas</option>
           </select></div>
@@ -852,7 +853,7 @@ async function renderOpts(){
             <div class="t-body"><b>🧪 Modo prueba</b>
               <div class="t-sub">Mientras esté activo, <b>todos</b> los correos (incluido "Enviar por correo") se redirigen a la dirección de abajo. A los propietarios <b>no</b> les llega nada. Ideal para probarte a ti mismo.</div></div></label>
           <div class="field" style="margin-top:10px"><label>Correo de prueba</label>
-            <div class="in"><input type="email" id="o_correoprueba" placeholder="tu-correo@ejemplo.com" value="${c.correoPrueba||''}" style="min-width:220px"></div></div>
+            <div class="in"><input type="email" id="o_correoprueba" placeholder="tu-correo@ejemplo.com" value="${c.correoPrueba||''}" style="width:100%"></div></div>
         </div>
         <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
           <div class="t-body"><b>Al registrar un pago</b>
