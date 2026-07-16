@@ -1091,6 +1091,8 @@ async function renderComprob(){
   const opts=props.slice().sort((a,b)=>a.residencial.localeCompare(b.residencial)||String(a.lote).localeCompare(String(b.lote)))
     .map(p=>`<option value="${p.clave}">${p.residencial} · L${p.lote} · ${p.nombre}</option>`).join('');
   const pend=all.filter(c=>c.estado==='pendiente'), desc=all.filter(c=>c.estado==='descartado');
+  const aplAll=all.filter(c=>c.estado==='aplicado'), rechAll=all.filter(c=>c.estado==='rechazado');
+  const apl=aplAll.slice(0,50), rech=rechAll.slice(0,50);   // últimos 50 (getComprobantes viene ordenado por fecha desc)
   const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" class="cprev" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
   const pendHtml = !pend.length ? '<div class="muted" style="padding:16px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'
     : `<table class="stack-table"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${
@@ -1111,7 +1113,22 @@ async function renderComprob(){
         <td data-label="Motivo"><span class="muted">${c.motivo||'—'}</span></td>
         <td class="acts"><button class="link-btn" onclick="recuperarComprob('${c.id}',this)">Recuperar</button></td></tr>`).join('')
     }</tbody></table></details>`;
-  box.innerHTML=pendHtml+descHtml;
+  const aplHtml = !apl.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-ok);font-weight:600">Aplicados (${aplAll.length}${aplAll.length>50?' · últimos 50':''}) — pagos ya registrados</summary>
+    <table class="stack-table" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Propietario</th><th class="num">Monto</th><th>Método</th><th></th></tr></thead><tbody>${
+      apl.map(c=>`<tr data-id="${c.id}"><td data-label="Fecha">${_fx(c.fecha)}</td>
+        <td class="stack-col" data-label="Propietario"><div>${c.nombre||'—'}</div>${c.lote?`<div class="muted" style="font-size:.72rem">L${c.lote}</div>`:''}</td>
+        <td class="num" data-label="Monto"><b>${money(c.monto)}</b></td>
+        <td data-label="Método"><span class="muted" style="font-size:.78rem">${c.metodoPago||(c.referencia?'Ref: '+String(c.referencia).replace(/</g,'&lt;'):'—')}</span></td>
+        <td class="acts">${adj(c)}</td></tr>`).join('')
+    }</tbody></table></details>`;
+  const rechHtml = !rech.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-danger);font-weight:600">Rechazados (${rechAll.length}${rechAll.length>50?' · últimos 50':''})</summary>
+    <table class="stack-table" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th></th></tr></thead><tbody>${
+      rech.map(c=>`<tr data-id="${c.id}"><td data-label="Fecha">${_fx(c.fecha)}</td>
+        <td class="stack-col" data-label="Remitente"><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
+        <td class="stack-col" data-label="Asunto / adjunto" style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}</td>
+        <td class="acts"></td></tr>`).join('')
+    }</tbody></table></details>`;
+  box.innerHTML=pendHtml+descHtml+aplHtml+rechHtml;
   COMPROB_VERIF={}; all.forEach(c=>{ COMPROB_VERIF[c.id]=c.verif; });
   pend.forEach(c=>{ if(c.clave){ const tr=box.querySelector(`tr[data-id="${c.id}"]`); if(tr){ const s=tr.querySelector('.cCuenta'); if(s) s.value=c.clave; } } });
 }
