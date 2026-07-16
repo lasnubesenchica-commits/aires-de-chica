@@ -98,6 +98,7 @@ function doPost(e) {
     else if (action === 'resolverComprobante')  out = { ok: true, data: resolverComprobante(data) };
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else if (action === 'setMoraCondon')    out = { ok: true, data: setMoraCondon(data.clave, data.mes, !!data.condonar) };
+    else if (action === 'addPropietario')   out = { ok: true, data: addPropietario(data.prop) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err), stack: String(err && err.stack || '') };

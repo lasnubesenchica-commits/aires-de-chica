@@ -343,6 +343,52 @@ function setPropCuota(clave, valor) {
   throw new Error('No existe la cuenta ' + clave);
 }
 
+/**
+ * Agrega un nuevo propietario. Genera una clave única (prefijo del residencial +
+ * lote; sufijo numérico si ya existe). Requiere nombre, residencial y lote.
+ * data: { nombre, residencial, lote, email, celular, lotes, cabanas, cuotaMensual, inicioCobro, saldo2025, notas }
+ */
+function addPropietario(data) {
+  ensureSheets();
+  data = data || {};
+  var nombre = String(data.nombre || '').trim();
+  var residencial = String(data.residencial || '').trim();
+  var lote = String(data.lote || '').trim();
+  if (!nombre) throw new Error('Falta el nombre del propietario.');
+  if (!residencial) throw new Error('Falta el residencial.');
+  if (!lote) throw new Error('Falta el lote.');
+
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), header = vals[0].map(function (h) { return String(h).trim(); });
+  var ci = header.indexOf('clave');
+  var used = {};
+  for (var r = 1; r < vals.length; r++) used[String(vals[r][ci]).trim().toUpperCase()] = true;
+
+  var prefMap = { 'LOS LAURELES': 'L', 'EL QUIRA': 'Q', 'EL HIGUERON': 'H' };
+  var pref = prefMap[_normTxt(residencial)] || (residencial.charAt(0).toUpperCase() || 'X');
+  var loteKey = lote.toUpperCase().replace(/\s+/g, '');
+  var base = pref + '-' + loteKey;
+  var clave = base, n = 2;
+  while (used[clave.toUpperCase()]) { clave = base + '-' + n; n++; }
+
+  var loteNumM = loteKey.match(/[0-9]+[A-Z]?/);
+  var loteNum = loteNumM ? loteNumM[0] : loteKey;
+  var lotes = Math.max(1, Math.floor(Number(data.lotes) || 1));
+  var cabanas = Math.max(0, Math.floor(Number(data.cabanas) || 0));
+  var cuotaMensual = Number(data.cuotaMensual) > 0 ? _round2(Number(data.cuotaMensual)) : '';
+  var inicioCobro = /^\d{4}-\d{2}$/.test(String(data.inicioCobro || '')) ? String(data.inicioCobro) : '';
+  var saldo2025 = _round2(Number(data.saldo2025) || 0);
+  var cuota = cuotaDe({ cabanas: cabanas, cuotaMensual: cuotaMensual });
+
+  // fila alineada con COL_PROP
+  var row = [clave, residencial, lote, loteNum, nombre,
+    String(data.email || '').trim(), String(data.celular || '').trim(),
+    lotes, cabanas, cuota, saldo2025, 'si', String(data.notas || ''), '',
+    cuotaMensual, inicioCobro, ''];
+  sh.appendRow(row);
+  return { ok: true, clave: clave, nombre: nombre, residencial: residencial, lote: lote, cuota: cuota };
+}
+
 // Carga inicial de las cuotas fijas inferidas del Excel (los propietarios con
 // cabaña). Corre una vez sobre el Sheet ya sembrado; no toca a los demás.
 function aplicarCuotasInferidas() {
