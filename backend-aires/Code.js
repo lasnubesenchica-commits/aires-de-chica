@@ -54,7 +54,7 @@ function doGet(e) {
     if (action === 'ping')           out = { ok: true, negocio: CONFIG.NEGOCIO, ts: new Date().toISOString() };
     else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
     else if (action === 'getDashboard')    { requireAuth(p.token); out = { ok: true, data: buildDashboard(p.asOf || null) }; }
-    else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios() }; }
+    else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios(p.todos === '1') }; }
     else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
     else if (action === 'getComprobantes') { requireAuth(p.token); out = { ok: true, data: getComprobantes(p.estado || null) }; }
     else if (action === 'auditarDuplicados') { requireAuth(p.token); out = { ok: true, data: auditarDuplicados(p.tolDias) }; }
@@ -99,6 +99,8 @@ function doPost(e) {
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else if (action === 'setMoraCondon')    out = { ok: true, data: setMoraCondon(data.clave, data.mes, !!data.condonar) };
     else if (action === 'addPropietario')   out = { ok: true, data: addPropietario(data.prop) };
+    else if (action === 'setPropActivo')    out = { ok: true, data: setPropActivo(data.clave, !!data.activo) };
+    else if (action === 'eliminarPropietario') out = { ok: true, data: eliminarPropietario(data.clave) };
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err), stack: String(err && err.stack || '') };

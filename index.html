@@ -56,7 +56,7 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp col.c-lote { width:6%; } #tblProp col.c-resid { width:9%; }
 #tblProp col.c-prop { width:12%; } #tblProp col.c-mail { width:12%; }
 #tblProp col.c-cel { width:8%; } #tblProp col.c-lotes { width:6%; }
-#tblProp col.c-cab { width:6%; } #tblProp col.c-saldo { width:16%; } #tblProp col.c-ingreso { width:10%; } #tblProp col.c-cuota { width:15%; }
+#tblProp col.c-cab { width:5%; } #tblProp col.c-saldo { width:15%; } #tblProp col.c-ingreso { width:9%; } #tblProp col.c-cuota { width:13%; } #tblProp col.c-act { width:8%; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -338,10 +338,10 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         </details>
       </div>
       <div class="bd"><table id="tblProp">
-        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-ingreso"><col class="c-cuota"></colgroup>
+        <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-ingreso"><col class="c-cuota"><col class="c-act"></colgroup>
         <thead><tr>
         <th>Lote</th><th>Residencial</th><th>Propietario</th><th>Correo</th><th>Celular</th>
-        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Deuda arrastrada o crédito a favor de 2025">Saldo 2025</th><th title="Mes en que el propietario empieza a pagar cuota (si compró este año)">Ingreso</th><th class="num">Cuota/mes</th>
+        <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Deuda arrastrada o crédito a favor de 2025">Saldo 2025</th><th title="Mes en que el propietario empieza a pagar cuota (si compró este año)">Ingreso</th><th class="num">Cuota/mes</th><th></th>
       </tr></thead><tbody></tbody></table>
       <div id="propCards" class="cards prop-cards"></div></div></div>
   </section>
@@ -661,12 +661,16 @@ async function enviarPrueba(tipo,inputId,propId,btn){
 let PROPS=[];
 let PROP_OPEN=new Set();
 async function renderProp(){
-  try{ PROPS=await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
+  try{ PROPS=await jsonp('getPropietarios',{todos:1}); }catch(e){ if(onAuthError(e))return; return; }
   const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const mesOpts=p=>'<option value="">Todo el año</option>'+meses.map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('');
+  const actLinks=p=> p.activo!==false
+    ? `<button class="link-btn" style="color:var(--ac-muted);font-size:.78rem" title="Deja de facturarle; conserva el historial" onclick="toggleActivo('${p.clave}',false,this)">Desactivar</button>`
+    : `<button class="link-btn" style="font-size:.78rem" onclick="toggleActivo('${p.clave}',true,this)">Reactivar</button> <button class="link-btn" style="color:var(--ac-danger);font-size:.78rem;margin-left:8px" title="Solo si no tiene pagos" onclick="eliminarProp('${p.clave}',this)">Eliminar</button>`;
   const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
-    const list=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q));
-    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr><td><b>${p.lote}</b></td><td>${p.residencial}</td><td>${p.nombre}</td>
+    const list=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
+      .sort((a,b)=>(a.activo!==false)===(b.activo!==false)?0:((a.activo!==false)?-1:1));   // inactivos al final
+    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr style="${p.activo!==false?'':'opacity:.5'}"><td><b>${p.lote}</b>${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</td><td>${p.residencial}</td><td>${p.nombre}</td>
       <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num"><input type="number" min="1" step="1" value="${p.lotes||1}" title="Cantidad de lotes (informativo; no cambia la cuota)" onchange="setLotes('${p.clave}',this)" style="width:48px;text-align:right;padding:5px 5px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
       <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
@@ -681,9 +685,10 @@ async function renderProp(){
         ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('')}
       </select></td>
       <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-        <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td></tr>`).join('');
-    document.getElementById('propCards').innerHTML=list.map(p=>`<details class="pcard" ${PROP_OPEN.has(p.clave)?'open':''} ontoggle="this.open?PROP_OPEN.add('${p.clave}'):PROP_OPEN.delete('${p.clave}')">
-      <summary><div><div class="pc-lote">L${p.lote} · ${p.residencial}</div><div class="pc-name">${p.nombre}</div></div><span class="pc-chev">▾</span></summary>
+        <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td>
+      <td style="white-space:nowrap">${actLinks(p)}</td></tr>`).join('');
+    document.getElementById('propCards').innerHTML=list.map(p=>`<details class="pcard" style="${p.activo!==false?'':'opacity:.6'}" ${PROP_OPEN.has(p.clave)?'open':''} ontoggle="this.open?PROP_OPEN.add('${p.clave}'):PROP_OPEN.delete('${p.clave}')">
+      <summary><div><div class="pc-lote">L${p.lote} · ${p.residencial}${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</div><div class="pc-name">${p.nombre}</div></div><span class="pc-chev">▾</span></summary>
       <div class="pc-body">
       <div class="pc-contact muted">${p.email||'sin correo'}${p.celular?' · '+p.celular:''}</div>
       <div class="pc-fields">
@@ -692,7 +697,9 @@ async function renderProp(){
         <label class="pc-full">Saldo 2025<span class="pc-saldo"><input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" onchange="setSaldo('${p.clave}',this)" style="${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}"><select onchange="setSaldo('${p.clave}',this)"><option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option><option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option></select></span></label>
         <label class="pc-full">Ingreso (empieza a pagar)<select onchange="setInicio('${p.clave}',this)">${mesOpts(p)}</select></label>
         <label class="pc-full">Cuota/mes<input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" onchange="setCuota('${p.clave}',this)"><span class="pc-cuota-sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</span></label>
-      </div></div></details>`).join('');
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--ac-border);text-align:right">${actLinks(p)}</div>
+      </div></details>`).join('');
   };
   document.getElementById('pQ').oninput=draw; draw();
 }
@@ -717,6 +724,22 @@ function openAddProp(){
     </div>`;
   document.getElementById('modal').classList.add('show');
   setTimeout(()=>{ const el=document.getElementById('np_nombre'); if(el) el.focus(); }, 60);
+}
+async function toggleActivo(clave, activo, btn){
+  if(!activo && !confirm('¿Desactivar este propietario? Deja de facturarle y desaparece de la lista, pero se conserva su historial. Puedes reactivarlo después.')) return;
+  btn.disabled=true;
+  try{ await post('setPropActivo',{clave,activo});
+    toast(activo?'✓ Reactivado':'✓ Desactivado');
+    await renderProp(); if(typeof renderDash==='function') renderDash();
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function eliminarProp(clave, btn){
+  if(!confirm('¿ELIMINAR este propietario de forma permanente? Esto no se puede deshacer. Solo procede si lo agregaste por error (sin pagos registrados).')) return;
+  btn.disabled=true;
+  try{ await post('eliminarPropietario',{clave});
+    toast('✓ Eliminado');
+    await renderProp(); if(typeof renderDash==='function') renderDash();
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert(String(e)); }
 }
 async function guardarNuevoProp(btn){
   const g=id=>((document.getElementById(id)||{}).value||'').trim();

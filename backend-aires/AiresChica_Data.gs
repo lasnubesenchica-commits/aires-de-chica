@@ -138,7 +138,7 @@ function _sheetRows(name) {
 
 /* ─────────────── getters ─────────────── */
 
-function getPropietarios() {
+function getPropietarios(incluirInactivos) {
   return _sheetRows(SH.PROP).map(function (p) {
     p.clave    = String(p.clave || '').trim();
     // si Sheets coervió el lote a fecha, cae al loteNum (defensa; repararLotes lo corrige de raíz)
@@ -159,7 +159,7 @@ function getPropietarios() {
     p.activo   = !(String(p.activo).toLowerCase() === 'no' || p.activo === false);
     p.email    = String(p.email || '').trim();
     return p;
-  }).filter(function (p) { return p.clave && p.activo; });
+  }).filter(function (p) { return p.clave && (incluirInactivos || p.activo); });
 }
 
 function getPagos() {
@@ -387,6 +387,41 @@ function addPropietario(data) {
     cuotaMensual, inicioCobro, ''];
   sh.appendRow(row);
   return { ok: true, clave: clave, nombre: nombre, residencial: residencial, lote: lote, cuota: cuota };
+}
+
+/** Activa o desactiva un propietario (reversible; conserva su historial). */
+function setPropActivo(clave, activo) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var ci = h.indexOf('clave'), ai = h.indexOf('activo');
+  if (ci < 0 || ai < 0) throw new Error('No se encontró la columna clave/activo.');
+  var v = activo ? 'si' : 'no';
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === String(clave).trim()) {
+      sh.getRange(r + 1, ai + 1).setValue(v);
+      return { ok: true, clave: clave, activo: !!activo };
+    }
+  }
+  throw new Error('No existe la cuenta ' + clave);
+}
+
+/**
+ * Elimina físicamente un propietario. SOLO si no tiene pagos registrados (para
+ * no dejar registros huérfanos). Si tiene pagos, obliga a desactivar.
+ */
+function eliminarPropietario(clave) {
+  ensureSheets();
+  clave = String(clave).trim();
+  var pagos = getPagosByClave(clave);
+  if (pagos.length) throw new Error('Este propietario tiene ' + pagos.length + ' pago(s) registrado(s). Desactívalo en vez de eliminarlo (así conservas el historial).');
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var ci = h.indexOf('clave');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === clave) { sh.deleteRow(r + 1); return { ok: true, clave: clave, eliminado: true }; }
+  }
+  throw new Error('No existe la cuenta ' + clave);
 }
 
 // Carga inicial de las cuotas fijas inferidas del Excel (los propietarios con
