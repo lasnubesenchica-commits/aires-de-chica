@@ -77,6 +77,34 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
 .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+/* Tarjetas de cuentas (vista móvil) */
+.cards { display:none; flex-direction:column; gap:10px; padding:8px; }
+.acct-card { display:block; width:100%; text-align:left; border:1px solid var(--ac-border); border-radius:12px; background:#fff; padding:12px 14px; cursor:pointer; font:inherit; }
+.acct-card:active { background:var(--ac-teal-50); }
+.acct-card .ac-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.acct-card .ac-lote { font-weight:700; font-size:.92rem; }
+.acct-card .ac-name { margin:5px 0 8px; font-size:1rem; font-weight:600; color:var(--ac-ink); }
+.acct-card .ac-bot { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:.86rem; color:var(--ac-muted); }
+.acct-card .ac-bot b { color:var(--ac-ink); }
+@media (max-width:720px){
+  #tblCuentas { display:none; }
+  .cards { display:flex; }
+  .card .hd { flex-direction:column; align-items:stretch; gap:10px; }
+  .card .hd .spacer { display:none; }
+  #vistaSeg { display:flex; width:100%; }
+  #vistaSeg .seg-btn { flex:1; min-width:0; text-align:center; padding:10px 6px; }
+  .controls { display:flex; flex-direction:column; align-items:stretch; gap:8px; width:100%; }
+  .controls > * { width:100%; }
+  #ctrlPeriodo label { flex:1; }
+  #ctrlPeriodo select, #ctrlMes select, #fRes, #fEstado, #fMesEstado, #fQ { width:100%; }
+  .controls > div .btn { width:100%; }
+  #dlMenu { left:0; right:auto; width:100%; }
+  .legend { font-size:.76rem; gap:6px 12px; }
+  .modal-bg { padding:10px; }
+  .modal .mh, .modal .mb { padding:14px 14px; }
+  .modal .mb table { font-size:.78rem; }
+  .modal .mb th, .modal .mb td { padding:7px 5px; }
+}
 input[type=search], input[type=password], select { font:inherit; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
 .btn:hover { background:var(--ac-teal-600); } .btn.ghost { background:#fff; color:var(--ac-teal-700); border:1px solid var(--ac-border); }
@@ -211,7 +239,8 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         <th class="num">Mora <span class="hlp" title="Recargo del 10% mensual sobre cada cuota vencida, a partir de abril 2026 (se acumula por cada mes de atraso).">ⓘ</span></th>
         <th class="num">Total <span class="hlp" title="Total a cobrar = Saldo pendiente + Mora.">ⓘ</span></th>
         <th>Estado</th><th>Vence</th><th></th>
-      </tr></thead><tbody></tbody></table></div>
+      </tr></thead><tbody></tbody></table>
+      <div id="cuentasCards" class="cards"></div></div>
     </div>
   </section>
 
@@ -430,6 +459,7 @@ async function renderDash(){
 function renderTabla(){
   const q=document.getElementById('fQ').value.toLowerCase(), fr=document.getElementById('fRes').value;
   const head=document.getElementById('cuentasHead'), body=document.querySelector('#tblCuentas tbody');
+  const cardsEl=document.getElementById('cuentasCards');
   const base=c=>!( (fr && c.residencial!==fr) || (q && !(c.nombre.toLowerCase().includes(q)||String(c.lote).toLowerCase().includes(q))) );
   if(VISTA==='mes'){
     head.innerHTML=HEAD_MES;
@@ -444,6 +474,11 @@ function renderTabla(){
       <td>${pillMes(c.estadoMes)}</td>
       <td style="color:var(--ac-teal-600);font-weight:600">Ver →</td></tr>`).join('')
       || '<tr><td colspan="8" class="muted" style="padding:20px">Sin resultados.</td></tr>';
+    cardsEl.innerHTML = rows.map(c=>`<button class="acct-card" onclick="openEstado('${c.clave}')">
+      <div class="ac-top"><span class="ac-lote">L${c.lote} · ${c.residencial}</span>${pillMes(c.estadoMes)}</div>
+      <div class="ac-name">${c.nombre}</div>
+      <div class="ac-bot"><span>Cuota ${c.cuotaMes?money(c.cuotaMes):'—'}</span><span>${c.pendienteMes>0.009?('Pendiente <b style="color:var(--ac-danger)">'+money(c.pendienteMes)+'</b>'):'<b style="color:var(--ac-ok)">cubierta ✓</b>'}</span></div>
+    </button>`).join('') || '<div class="muted" style="padding:16px">Sin resultados.</div>';
     return;
   }
   head.innerHTML=HEAD_CARTERA;
@@ -462,6 +497,11 @@ function renderTabla(){
     <td>${fmtDate(c.fechaVencimiento)}</td>
     <td style="color:var(--ac-teal-600);font-weight:600">Ver →</td></tr>`).join('')
     || '<tr><td colspan="11" class="muted" style="padding:20px">Sin resultados.</td></tr>';
+  cardsEl.innerHTML = rows.map(c=>`<button class="acct-card" onclick="openEstado('${c.clave}')">
+    <div class="ac-top"><span class="ac-lote">L${c.lote} · ${c.residencial}</span>${pillFor(c.estado)}</div>
+    <div class="ac-name">${c.nombre}</div>
+    <div class="ac-bot"><span>Total <b>${money(c.saldoConMora)}</b>${c.mora>0.009?(' · mora '+money(c.mora)):''}</span><span class="muted">Vence ${fmtDate(c.fechaVencimiento)}</span></div>
+  </button>`).join('') || '<div class="muted" style="padding:16px">Sin resultados.</div>';
 }
 ['fQ','fRes','fEstado'].forEach(id=>document.getElementById(id).addEventListener('input',renderTabla));
 
