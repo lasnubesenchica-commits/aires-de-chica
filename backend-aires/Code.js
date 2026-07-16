@@ -20,8 +20,8 @@ var CONFIG = {
   REPLY_TO:       'admin@airesdechica.org',
   COMPROBANTES_EMAIL: 'comprobantes@airesdechica.org', // alias/reenvío a admin@
   // Logo servido desde GitHub Pages (dominio propio de Aires de Chicá).
-  LOGO_URL:       'https://admin.airesdechica.org/brand/logo.svg',
-  LOGO_PNG_URL:   'https://admin.airesdechica.org/brand/logo.png',
+  LOGO_URL:       'https://admin.airesdechica.org/logo-airesdechica.jpeg',
+  LOGO_PNG_URL:   'https://admin.airesdechica.org/logo-airesdechica.jpeg',
 
   // Datos de cobro
   BANCO:          'Banco General',
@@ -88,6 +88,7 @@ function doPost(e) {
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
+    else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };

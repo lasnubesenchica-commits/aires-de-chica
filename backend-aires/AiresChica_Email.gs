@@ -201,6 +201,47 @@ function autorizarCorreo() {
 
 /* ─────────────── correos ─────────────── */
 
+// Cuerpo HTML del correo de estado de cuenta (mismo formato para el envío real y la prueba).
+function _cuerpoEstado(est) {
+  var saldoTxt = est.saldoConMora > 0.009
+    ? 'Su saldo pendiente es <b style="color:' + AC_BRAND.coral + '">' + _money(est.saldoConMora) + '</b>' +
+      (est.mora > 0.009 ? ' (incluye ' + _money(est.mora) + ' de mora)' : '') + '.'
+    : 'Su cuenta está <b style="color:' + AC_BRAND.ok + '">al día</b>. ¡Gracias!';
+  return _emailShell(
+    '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
+    '<p>Adjuntamos su estado de cuenta de mantenimiento actualizado (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
+    '<p>' + saldoTxt + '</p>' +
+    (est.saldoConMora > 0.009 ?
+      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO +
+      ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '') +
+    _instructivoPago(est.lote)
+  );
+}
+
+/**
+ * Envía una PRUEBA del estado de cuenta a un correo del administrador, para
+ * verificar el formato antes de enviar a todos. Usa una cuenta de muestra (con
+ * mora si tipo='mora', si no con saldo). Es un envío explícito a una dirección
+ * dada, así que NO depende del interruptor maestro ni del modo prueba.
+ */
+function enviarPruebaEstado(email, tipo) {
+  email = String(email || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Ingresa un correo válido.');
+  var dash = buildDashboard(null);
+  var muestra = null;
+  if (tipo === 'mora') dash.cuentas.forEach(function (c) { if (!muestra && c.mora > 0.009) muestra = c; });
+  if (!muestra) dash.cuentas.forEach(function (c) { if (!muestra && c.saldoConMora > 0.009) muestra = c; });
+  if (!muestra) muestra = dash.cuentas[0];
+  if (!muestra) throw new Error('No hay propietarios para generar la muestra.');
+  var est = getEstadoCuentaByKey(muestra.clave);
+  var pdf = estadoCuentaPDF(est);
+  var asunto = '[PRUEBA] Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  GmailApp.sendEmail(email, asunto,
+    'Correo de prueba del estado de cuenta (verificación de formato).',
+    { name: CONFIG.NEGOCIO, replyTo: CONFIG.REPLY_TO, htmlBody: _cuerpoEstado(est), attachments: [pdf] });
+  return { enviado: true, email: email, muestra: est.nombre, lote: est.lote };
+}
+
 function enviarEstadoCuenta(clave) {
   var cfg = _cfg();
   if (!cfg.enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
@@ -212,19 +253,7 @@ function enviarEstadoCuenta(clave) {
   var pdf = estadoCuentaPDF(est);
   var asunto = (prueba ? '[PRUEBA→' + est.email + '] ' : '') +
     'Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
-  var saldoTxt = est.saldoConMora > 0.009
-    ? 'Su saldo pendiente es <b style="color:' + AC_BRAND.coral + '">' + _money(est.saldoConMora) + '</b>' +
-      (est.mora > 0.009 ? ' (incluye ' + _money(est.mora) + ' de mora)' : '') + '.'
-    : 'Su cuenta está <b style="color:' + AC_BRAND.ok + '">al día</b>. ¡Gracias!';
-  var cuerpo = _emailShell(
-    '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
-    '<p>Adjuntamos su estado de cuenta de mantenimiento actualizado (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
-    '<p>' + saldoTxt + '</p>' +
-    (est.saldoConMora > 0.009 ?
-      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO +
-      ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '') +
-    _instructivoPago(est.lote)
-  );
+  var cuerpo = _cuerpoEstado(est);
   // GmailApp (no MailApp): sale por el camino normal de Gmail, que las cuentas
   // nuevas de Workspace sí entregan (MailApp era rechazado por Gmail).
   GmailApp.sendEmail(destino, asunto, 'Adjuntamos su estado de cuenta de mantenimiento. Ver la versión con formato en su cliente de correo.', {
