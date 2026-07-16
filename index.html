@@ -102,8 +102,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   .legend { font-size:.76rem; gap:6px 12px; }
   .modal-bg { padding:10px; }
   .modal .mh, .modal .mb { padding:14px 14px; }
-  .modal .mb table { font-size:.78rem; }
+  .modal .mb table { font-size:.8rem; width:100%; }
   .modal .mb th, .modal .mb td { padding:7px 5px; }
+  /* Modal en móvil: ocultar columna Cuota (ya está en el encabezado) y el
+     "condonar" por fila (queda "Condonar toda la mora" abajo). */
+  .modal .mb .mCuota { display:none; }
+  .modal .mb .moraAcc { display:none; }
 }
 input[type=search], input[type=password], select { font:inherit; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
@@ -517,7 +521,7 @@ function _renderEstado(e){
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num">Cuota</th><th class="num">Pagado</th><th class="num">Saldo cuota</th><th class="num">Mora</th></tr></thead>
+    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Pagado</th><th class="num">Saldo cuota</th><th class="num">Mora</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
       const vs=b.vouchers||[];
       const pagadoCell = b.pagado
@@ -527,10 +531,10 @@ function _renderEstado(e){
         : (b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—');
       let moraCell='—';
       if(all && (b.mora>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
-      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a>`;
-      else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a>`;
+      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span><span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`;
+      else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span><span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`;
       return `<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
-      <td class="num">${b.cuota?money(b.cuota):'—'}</td>
+      <td class="num mCuota">${b.cuota?money(b.cuota):'—'}</td>
       <td class="num">${pagadoCell}</td>
       <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td>
       <td class="num">${moraCell}</td></tr>`;}).join('')}</tbody></table>
