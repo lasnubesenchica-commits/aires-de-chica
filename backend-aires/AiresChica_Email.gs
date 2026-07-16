@@ -224,16 +224,22 @@ function _cuerpoEstado(est) {
  * mora si tipo='mora', si no con saldo). Es un envío explícito a una dirección
  * dada, así que NO depende del interruptor maestro ni del modo prueba.
  */
-function enviarPruebaEstado(email, tipo) {
+function enviarPruebaEstado(email, tipo, clave) {
   email = String(email || '').trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Ingresa un correo válido.');
-  var dash = buildDashboard(null);
-  var muestra = null;
-  if (tipo === 'mora') dash.cuentas.forEach(function (c) { if (!muestra && c.mora > 0.009) muestra = c; });
-  if (!muestra) dash.cuentas.forEach(function (c) { if (!muestra && c.saldoConMora > 0.009) muestra = c; });
-  if (!muestra) muestra = dash.cuentas[0];
-  if (!muestra) throw new Error('No hay propietarios para generar la muestra.');
-  var est = getEstadoCuentaByKey(muestra.clave);
+  var est = null;
+  clave = String(clave || '').trim();
+  if (clave) { try { est = getEstadoCuentaByKey(clave); } catch (e) {} } // propietario elegido en el dropdown
+  if (!est) {
+    // sin selección válida: cae a una cuenta de muestra (con mora si aplica)
+    var dash = buildDashboard(null);
+    var muestra = null;
+    if (tipo === 'mora') dash.cuentas.forEach(function (c) { if (!muestra && c.mora > 0.009) muestra = c; });
+    if (!muestra) dash.cuentas.forEach(function (c) { if (!muestra && c.saldoConMora > 0.009) muestra = c; });
+    if (!muestra) muestra = dash.cuentas[0];
+    if (!muestra) throw new Error('No hay propietarios para generar la muestra.');
+    est = getEstadoCuentaByKey(muestra.clave);
+  }
   var pdf = estadoCuentaPDF(est);
   var asunto = '[PRUEBA] Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
   GmailApp.sendEmail(email, asunto,

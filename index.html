@@ -260,19 +260,25 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
         <div style="display:flex;gap:18px;flex-wrap:wrap">
           <div style="flex:1;min-width:290px;border:1px solid var(--ac-border);border-radius:10px;padding:14px">
             <button class="btn" style="width:100%" onclick="enviar('mensual')">Recordatorio a todos los que deben</button>
-            <div style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <input type="email" id="pruebaMensual" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:170px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-              <button class="link-btn" onclick="enviarPrueba('mensual','pruebaMensual',this)">Enviar prueba a mi correo</button>
+            <div style="margin-top:10px;display:grid;gap:6px">
+              <select id="pruebaPropMensual" style="padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"></select>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <input type="email" id="pruebaMensual" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:160px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+                <button class="link-btn" onclick="enviarPrueba('mensual','pruebaMensual','pruebaPropMensual',this)">Enviar prueba a mi correo</button>
+              </div>
             </div>
-            <div class="muted" style="font-size:.72rem;margin-top:5px">Muestra de un propietario con saldo. No avisa a nadie.</div>
+            <div class="muted" style="font-size:.72rem;margin-top:5px">Elige el propietario de muestra y tu correo. No avisa a nadie.</div>
           </div>
           <div style="flex:1;min-width:290px;border:1px solid var(--ac-border);border-radius:10px;padding:14px">
             <button class="btn" style="width:100%;background:var(--ac-coral)" onclick="enviar('mora')">Aviso de mora (solo morosos con recargo)</button>
-            <div style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <input type="email" id="pruebaMora" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:170px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-              <button class="link-btn" onclick="enviarPrueba('mora','pruebaMora',this)">Enviar prueba a mi correo</button>
+            <div style="margin-top:10px;display:grid;gap:6px">
+              <select id="pruebaPropMora" style="padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"></select>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <input type="email" id="pruebaMora" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:160px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+                <button class="link-btn" onclick="enviarPrueba('mora','pruebaMora','pruebaPropMora',this)">Enviar prueba a mi correo</button>
+              </div>
             </div>
-            <div class="muted" style="font-size:.72rem;margin-top:5px">Muestra de un propietario con mora. No avisa a nadie.</div>
+            <div class="muted" style="font-size:.72rem;margin-top:5px">Elige el propietario de muestra y tu correo. No avisa a nadie.</div>
           </div>
         </div>
         <div id="recorResult" style="margin-top:14px"></div>
@@ -520,11 +526,22 @@ async function enviar(tipo){ document.getElementById('recorResult').textContent=
   try{ const r=await post('enviarRecordatorios',{tipo}); document.getElementById('recorResult').innerHTML=`<div class="notice">Enviados: ${r.enviados}. Sin correo: ${(r.sinCorreo||[]).length}.</div>`; }
   catch(e){ if(!onAuthError(e)) document.getElementById('recorResult').innerHTML='<div class="notice">Error: '+e+'</div>'; }
 }
-async function enviarPrueba(tipo,inputId,btn){
+let RECOR_PROPS=null;
+async function renderRecor(){
+  let props;
+  try{ props = RECOR_PROPS || await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
+  RECOR_PROPS=props;
+  const sorted=props.slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+  const opts=sorted.map(p=>`<option value="${p.clave}">${p.nombre} · ${p.residencial} L${p.lote}</option>`).join('');
+  const def=sorted.find(p=>/doraida\s+castillo/i.test(p.nombre))||sorted.find(p=>/doraida/i.test(p.nombre));
+  ['pruebaPropMensual','pruebaPropMora'].forEach(id=>{ const s=document.getElementById(id); if(s){ s.innerHTML=opts; if(def) s.value=def.clave; } });
+}
+async function enviarPrueba(tipo,inputId,propId,btn){
   const email=(document.getElementById(inputId).value||'').trim();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return alert('Ingresa un correo válido.');
+  const clave=(document.getElementById(propId)||{}).value||'';
   btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
-  try{ const r=await post('enviarPruebaEstado',{email,tipo});
+  try{ const r=await post('enviarPruebaEstado',{email,tipo,clave});
     document.getElementById('recorResult').innerHTML=`<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ Prueba enviada a <b>${r.email}</b> (muestra: ${r.muestra} · L${r.lote}). Revisa tu bandeja (y spam).</div>`;
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ btn.disabled=false; btn.textContent=t; }
@@ -1119,6 +1136,7 @@ document.getElementById('tabs').addEventListener('click',e=>{
   ['dash','conc','comprob','prop','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comprob')renderComprob();
+  if(t==='recor')renderRecor();
   if(t==='opts')renderOpts();
 });
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });
