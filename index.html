@@ -319,6 +319,18 @@ input[type=search], input[type=password], select { font:inherit; padding:8px 12p
   <section id="tab-prop" style="display:none">
     <div class="card"><div class="hd"><h2>Directorio de propietarios</h2><div class="spacer" style="flex:1"></div>
       <input type="search" id="pQ" placeholder="Buscar…"/></div>
+      <div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+        Aquí administras los <b>datos de cobro</b> de cada propietario. Los campos <b>se editan directamente y se guardan solos</b> al cambiarlos; alimentan el <b>estado de cuenta</b> (cuota mensual, saldos y mora) y los correos.
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--ac-teal-600);font-weight:600">¿Qué puedo editar y para qué sirve?</summary>
+          <ul style="margin:8px 0 0;padding-left:18px;line-height:1.65">
+            <li><b>Lotes</b>: cantidad de lotes del propietario (informativo; no cambia la cuota).</li>
+            <li><b>Cabañas</b>: cada cabaña suma <b>30%</b> sobre la cuota base (ej: 45 → +30% = 58.50; con 2 cabañas = 72).</li>
+            <li><b>Saldo 2025</b>: lo que arrastra del año anterior — <i>Debe</i> (deuda) o <i>A favor</i> (crédito). Se va aplicando mes a mes a las cuotas.</li>
+            <li><b>Ingreso</b>: mes desde el que empieza a pagar cuota (si compró este año). Antes de ese mes no se le factura.</li>
+            <li><b>Cuota/mes</b>: déjala <b>vacía</b> para que se calcule automática (base + 30% por cabaña); escribe un valor solo para <b>casos especiales</b> (cuota fija).</li>
+          </ul>
+        </details>
+      </div>
       <div class="bd"><table id="tblProp">
         <colgroup><col class="c-lote"><col class="c-resid"><col class="c-prop"><col class="c-mail"><col class="c-cel"><col class="c-lotes"><col class="c-cab"><col class="c-saldo"><col class="c-ingreso"><col class="c-cuota"></colgroup>
         <thead><tr>
