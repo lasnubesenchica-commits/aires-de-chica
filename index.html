@@ -955,7 +955,39 @@ async function renderOpts(){
       <span id="optsMsg" class="muted"></span>
       <span class="spacer" style="flex:1"></span>
       <span class="muted" style="font-size:.8rem">Pago a: ${d.banco.banco} · ${d.banco.tipo} Nº ${d.banco.numero} · ${d.banco.nombre}</span>
-    </div></div>`;
+    </div></div>
+
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>🔒 Seguridad · Contraseña de acceso</h2></div>
+      <div class="bd" style="padding:18px;max-width:460px">
+        <div class="field"><label>Contraseña actual</label>
+          <div class="in"><input type="password" id="pw_actual" autocomplete="current-password" style="width:100%"></div></div>
+        <div class="field"><label>Nueva contraseña</label>
+          <div class="in"><input type="password" id="pw_nueva" autocomplete="new-password" style="width:100%"></div>
+          <div class="help">Mínimo 4 caracteres. Al cambiarla, los demás dispositivos deberán volver a ingresar.</div></div>
+        <div class="field"><label>Repite la nueva contraseña</label>
+          <div class="in"><input type="password" id="pw_nueva2" autocomplete="new-password" style="width:100%"></div></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn" onclick="cambiarContrasena()">Cambiar contraseña</button>
+          <span id="pwMsg" class="muted"></span>
+        </div>
+      </div></div>`;
+}
+async function cambiarContrasena(){
+  const act=document.getElementById('pw_actual').value;
+  const nue=document.getElementById('pw_nueva').value;
+  const nue2=document.getElementById('pw_nueva2').value;
+  const msg=document.getElementById('pwMsg'); msg.className='muted';
+  if(!nue || nue.length<4){ msg.textContent='La nueva contraseña debe tener al menos 4 caracteres.'; return; }
+  if(nue!==nue2){ msg.textContent='Las contraseñas nuevas no coinciden.'; return; }
+  msg.textContent='Guardando…';
+  try{
+    const r=await post('setPassword',{nueva:nue, actual:act});
+    if(r && r.token){ TOKEN=r.token; localStorage.setItem('ac_token',TOKEN); }
+    document.getElementById('pw_actual').value='';
+    document.getElementById('pw_nueva').value='';
+    document.getElementById('pw_nueva2').value='';
+    msg.innerHTML='<span class="ok-msg">✓ Contraseña actualizada</span>';
+  }catch(e){ if(!onAuthError(e)){ msg.textContent='Error: '+String(e); } }
 }
 async function guardarOpts(){
   const msg=document.getElementById('optsMsg'); msg.textContent='Guardando…'; msg.className='muted';
