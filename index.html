@@ -581,6 +581,7 @@ function openEstado(clave){
 }
 function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
+  const today = new Date().toISOString().slice(0,10);
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
@@ -613,7 +614,23 @@ function _renderEstado(e){
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       ${(e.moraCargada>0.009||all)?`<button class="link-btn" style="color:${all?'var(--ac-ok)':'var(--ac-coral)'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar toda la mora':'Condonar toda la mora'}</button>`:''}
       <span class="spacer" style="flex:1"></span>
+      <button class="btn ghost" onclick="togglePagoManual()">＋ Registrar pago</button>
       <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
+    </div>
+    <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
+      <div style="font-weight:600;margin-bottom:2px">Registrar pago manual</div>
+      <div class="muted" style="font-size:.78rem;margin-bottom:10px">Para pagos verificados directamente en la banca en línea, sin comprobante por correo.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Fecha del pago</label><input type="date" id="pgFecha" value="${today}" max="${today}" style="width:100%"></div>
+        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Monto</label><input type="number" id="pgMonto" step="0.01" min="0" placeholder="0.00" oninput="previewPagoManual('${e.clave}')" style="width:100%;text-align:right"></div>
+        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Referencia <span style="font-weight:400">(opcional)</span></label><input type="text" id="pgRef" placeholder="Nº transacción / ACH" style="width:100%"></div>
+      </div>
+      <div id="pgPrev"></div>
+      <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px">
+        <span id="pgMsg" class="muted" style="font-size:.8rem"></span>
+        <button class="btn ghost" onclick="togglePagoManual()">Cancelar</button>
+        <button class="btn green" id="pgSave" onclick="guardarPagoManual('${e.clave}')">Guardar pago</button>
+      </div>
     </div>`;
   document.getElementById('modal').classList.add('show');
 }
@@ -627,6 +644,54 @@ async function condonarMora(clave, mes, condonar, ev){
     _renderEstado(e);
     if(typeof renderDash==='function') renderDash();  // refresca KPIs (cache del dashboard)
   }catch(err){ if(!onAuthError(err)) alert('Error: '+err); }
+}
+function togglePagoManual(){
+  const f=document.getElementById('pgForm'); if(!f) return;
+  const show = f.style.display==='none'; f.style.display = show?'block':'none';
+  if(show){ const m=document.getElementById('pgMonto'); if(m) setTimeout(()=>m.focus(),30); }
+}
+function _prevManualHtml(d){
+  const filas = d.aplicacion.length
+    ? d.aplicacion.map(a=>`<div style="display:flex;justify-content:space-between;padding:1px 0"><span>${a.label}</span><span style="color:var(--ac-teal-600);font-weight:600">${_mny(a.aplicado)}</span></div>`).join('')
+    : '<div class="muted">No cubre cuotas pendientes; entra completo como crédito a favor.</div>';
+  const moraFilas = (d.aplicacionMora||[]).map(a=>`<div style="display:flex;justify-content:space-between;padding:1px 0"><span>${a.label} · mora</span><span style="color:var(--ac-coral);font-weight:600">${_mny(a.aplicado)}</span></div>`).join('');
+  const credito=d.creditoResultante>0.009, pend=d.pendienteResultante>0.009;
+  const res = credito?`<span style="color:#16a34a;font-weight:700">Crédito a favor: ${_mny(d.creditoResultante)}</span>`
+    :(pend?`<span style="color:#b45309;font-weight:700">Sigue pendiente: ${_mny(d.pendienteResultante)}</span>`:`<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
+  return `<div style="margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--ac-teal-50);font-size:.82rem">
+    <div style="font-weight:600;margin-bottom:4px">Así se aplicará</div>
+    ${filas}${moraFilas?`<div style="border-top:1px dashed var(--ac-border);margin:5px 0"></div>${moraFilas}`:''}
+    <div style="border-top:1px solid var(--ac-border);margin-top:6px;padding-top:5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span class="muted">Saldo: ${_mny(d.antes.saldoConMora)} → <b style="color:inherit">${_mny(d.despues.saldoConMora)}</b></span>${res}</div>
+  </div>`;
+}
+let _pgPrevT=null;
+function previewPagoManual(clave){
+  const monto=+document.getElementById('pgMonto').value;
+  const box=document.getElementById('pgPrev'); if(!box) return;
+  if(!(monto>0)){ box.innerHTML=''; return; }
+  clearTimeout(_pgPrevT);
+  box.innerHTML='<div class="muted" style="font-size:.78rem;margin-top:8px">Calculando…</div>';
+  _pgPrevT=setTimeout(async()=>{
+    try{ const d=await jsonp('previsualizarComprobante',{clave,monto}); box.innerHTML=_prevManualHtml(d); }
+    catch(e){ box.innerHTML='<span class="muted" style="font-size:.78rem">No se pudo calcular la vista previa.</span>'; }
+  },350);
+}
+async function guardarPagoManual(clave){
+  const fecha=document.getElementById('pgFecha').value;
+  const monto=+document.getElementById('pgMonto').value;
+  const ref=document.getElementById('pgRef').value.trim();
+  const msg=document.getElementById('pgMsg'); if(msg){ msg.className='muted'; msg.textContent=''; }
+  if(!(monto>0)){ if(msg) msg.textContent='Indica un monto válido.'; return; }
+  if(!fecha){ if(msg) msg.textContent='Indica la fecha del pago.'; return; }
+  const btn=document.getElementById('pgSave'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    // fecha a mediodía para que ninguna zona horaria la corra al día anterior
+    await post('registrarPago',{pago:{clave, monto, fecha:fecha+'T12:00:00', referencia:ref, origen:'manual', notas:'Registro manual (banca en línea)'}});
+    const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
+    if(typeof renderDash==='function') renderDash();
+    toast('Pago registrado');
+  }catch(err){ btn.disabled=false; btn.textContent=t; if(!onAuthError(err)) alert('Error: '+err); }
 }
 async function mailEstado(clave,btn){
   const t = btn ? btn.textContent : '';
