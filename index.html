@@ -152,8 +152,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   .stack-table td.stack-col select, .stack-table td.stack-col input { width:100%; }
   /* Reporte de auditoría y previews: permitir scroll interno si hiciera falta */
   #auditResult, .cdet > td { overflow-x:auto; }
-  /* KPIs de conciliación en 2 columnas en móvil */
-  .kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  /* KPIs de conciliación en 2 columnas en móvil (NO el tablero #kpis, que
+     usa sus propios bloques .kpis-hero / .kpis-row apilados) */
+  .kpis:not(#kpis) { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
 }
 input[type=search], input[type=password], select { font:inherit; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
