@@ -614,7 +614,7 @@ function _renderEstado(e){
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       ${(e.moraCargada>0.009||all)?`<button class="link-btn" style="color:${all?'var(--ac-ok)':'var(--ac-coral)'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar toda la mora':'Condonar toda la mora'}</button>`:''}
       <span class="spacer" style="flex:1"></span>
-      <button class="btn ghost" onclick="togglePagoManual()">＋ Registrar pago</button>
+      <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar / ver pagos</button>
       <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
     </div>
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
@@ -628,9 +628,10 @@ function _renderEstado(e){
       <div id="pgPrev"></div>
       <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px">
         <span id="pgMsg" class="muted" style="font-size:.8rem"></span>
-        <button class="btn ghost" onclick="togglePagoManual()">Cancelar</button>
+        <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">Cerrar</button>
         <button class="btn green" id="pgSave" onclick="guardarPagoManual('${e.clave}')">Guardar pago</button>
       </div>
+      <div id="pgList"></div>
     </div>`;
   document.getElementById('modal').classList.add('show');
 }
@@ -645,10 +646,39 @@ async function condonarMora(clave, mes, condonar, ev){
     if(typeof renderDash==='function') renderDash();  // refresca KPIs (cache del dashboard)
   }catch(err){ if(!onAuthError(err)) alert('Error: '+err); }
 }
-function togglePagoManual(){
+function togglePagoManual(clave){
   const f=document.getElementById('pgForm'); if(!f) return;
   const show = f.style.display==='none'; f.style.display = show?'block':'none';
-  if(show){ const m=document.getElementById('pgMonto'); if(m) setTimeout(()=>m.focus(),30); }
+  if(show){ const m=document.getElementById('pgMonto'); if(m) setTimeout(()=>m.focus(),30); loadPagoList(clave); }
+}
+async function loadPagoList(clave){
+  const box=document.getElementById('pgList'); if(!box) return;
+  box.innerHTML='<div class="muted" style="font-size:.78rem;border-top:1px dashed var(--ac-border);margin-top:12px;padding-top:10px">Cargando pagos…</div>';
+  let pagos;
+  try{ pagos=await jsonp('getPagos'); }
+  catch(e){ if(onAuthError(e))return; box.innerHTML='<span class="muted" style="font-size:.78rem">No se pudieron cargar los pagos.</span>'; return; }
+  const list=(pagos||[]).filter(p=>String(p.clave)===String(clave)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const oLbl={comprobante:'comprobante',manual:'manual','carga-inicial':'histórico',conciliacion:'conciliación',banco:'banco'};
+  const head=`<div style="border-top:1px dashed var(--ac-border);margin-top:12px;padding-top:10px"><div style="font-weight:600;font-size:.82rem;margin-bottom:6px">Pagos registrados (${list.length})</div>`;
+  if(!list.length){ box.innerHTML=head+'<div class="muted" style="font-size:.78rem">Sin pagos registrados todavía.</div></div>'; return; }
+  box.innerHTML=head+`<table style="width:100%;font-size:.8rem"><tbody>${list.map(p=>`<tr>
+    <td style="white-space:nowrap">${_fx(p.fecha)}</td>
+    <td style="text-align:right"><b>${money(p.monto)}</b></td>
+    <td class="muted" style="font-size:.72rem;padding-left:8px">${oLbl[p.origen]||p.origen||'—'}${p.referencia?' · '+String(p.referencia).replace(/</g,'&lt;'):''}</td>
+    <td style="text-align:right"><button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarPagoManual('${p.id}','${clave}',this)">Eliminar</button></td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+async function eliminarPagoManual(id, clave, btn){
+  if(!confirm('¿Eliminar este pago?\n\nSe recalcularán los saldos. Si el pago provenía de un comprobante, ese comprobante volverá a “Pendientes”. Esta acción no se puede deshacer.')) return;
+  btn.disabled=true;
+  try{
+    const r=await post('eliminarPago',{id});
+    const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
+    const f=document.getElementById('pgForm'); if(f) f.style.display='block';
+    loadPagoList(clave);
+    if(typeof renderDash==='function') renderDash();
+    toast('Pago eliminado'+((r&&r.comprobanteRevertido)?' · comprobante devuelto a pendientes':''));
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
 }
 function _prevManualHtml(d){
   const filas = d.aplicacion.length

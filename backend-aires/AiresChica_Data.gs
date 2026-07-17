@@ -503,6 +503,41 @@ function _eliminarPagoDeComprobante(clave, monto, comprobanteUrl) {
   return 0;
 }
 
+// Elimina un pago por id (acción de administrador). Si el pago provenía de un
+// comprobante, devuelve ese comprobante a 'pendiente' para no dejarlo huérfano.
+function eliminarPago(id) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el id del pago.');
+  var sh = _ss().getSheetByName(SH.PAGOS);
+  if (!sh) throw new Error('No existe la hoja de pagos.');
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  if (iId < 0) throw new Error('No se encontró la columna id.');
+  var row = -1;
+  for (var r = vals.length - 1; r >= 1; r--) { if (String(vals[r][iId]) === id) { row = r; break; } }
+  if (row < 0) throw new Error('Pago no encontrado: ' + id);
+  sh.deleteRow(row + 1);
+  var revert = _revertComprobantePorPago(id);
+  return { ok: true, id: id, comprobanteRevertido: revert };
+}
+
+// Devuelve a 'pendiente' el comprobante ligado a un pagoId (si lo hay).
+function _revertComprobantePorPago(pagoId) {
+  var sh = _ss().getSheetByName(SH.COMPROB);
+  if (!sh) return false;
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iPid = h.indexOf('pagoId'), iEst = h.indexOf('estado');
+  if (iPid < 0 || iEst < 0) return false;
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iPid]) === String(pagoId) && String(vals[r][iEst]) === 'aplicado') {
+      sh.getRange(r + 1, iEst + 1).setValue('pendiente');
+      sh.getRange(r + 1, iPid + 1).setValue('');
+      return true;
+    }
+  }
+  return false;
+}
+
 function registrarPago(pago) {
   if (!pago || !pago.clave || !(Number(pago.monto) > 0)) {
     throw new Error('Pago inválido (falta clave de cuenta o monto).');

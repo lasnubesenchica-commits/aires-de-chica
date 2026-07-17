@@ -84,6 +84,7 @@ function doPost(e) {
     if (action === 'ensureSheets')          out = { ok: true, data: ensureSheets() };
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
+    else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
     else if (action === 'conciliarBanco')   out = { ok: true, data: conciliarBanco(data.rows, data.filename) };
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
