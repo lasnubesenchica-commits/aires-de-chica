@@ -292,11 +292,15 @@ function buildDashboard(asOf) {
     facturadoMes += e.cuotaMes;
   });
 
-  // pagado del mes de corte (por fecha de pago, hasta la fecha de corte)
+  // pagado del mes de corte (por fecha de pago, hasta la fecha de corte) — global y por cuenta
   var _corteMs = asOf.getTime() + 86399999;
+  var pagadoMesByClave = {};
   pagos.forEach(function (p) {
     var d = new Date(p.fecha);
-    if (d.getFullYear() === year && (d.getMonth() + 1) === mesActual && d.getTime() <= _corteMs) pagadoMes += Number(p.monto) || 0;
+    if (d.getFullYear() === year && (d.getMonth() + 1) === mesActual && d.getTime() <= _corteMs) {
+      pagadoMes += Number(p.monto) || 0;
+      pagadoMesByClave[p.clave] = _round2((pagadoMesByClave[p.clave] || 0) + (Number(p.monto) || 0));
+    }
   });
 
   var topMorosos = cuentas.filter(function (e) { return e.saldoConMora > 0.009; })
@@ -350,6 +354,7 @@ function buildDashboard(asOf) {
                celular: e.celular, cuota: e.cuota, lotes: e.lotes, cabanas: e.cabanas, airbnb: e.airbnb,
                inicioCobro: e.inicioCobro,
                cuotaMes: e.cuotaMes, cubiertoMes: e.cubiertoMes, pendienteMes: e.pendienteMes, estadoMes: e.estadoMes,
+               pagadoMes: _round2(pagadoMesByClave[e.clave] || 0),
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,

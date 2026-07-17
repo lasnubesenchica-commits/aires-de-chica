@@ -1061,6 +1061,9 @@ function _tableSheet(title, subtitle, headers, rows, moneyCols, widths, opts){
   ws['!rows']=[{hpt:22},{hpt:15},{hpt:20}];
   _s(ws,0,0,ST.title); _s(ws,1,0,ST.sub);
   for(let c=0;c<ncol;c++) _s(ws,2,c,ST.th);
+  if(opts.notes){ for(let c=0;c<ncol;c++){ const t=opts.notes[c]; if(!t) continue;
+    const a=XLSX.utils.encode_cell({r:2,c}); if(!ws[a]) continue;
+    ws[a].c=[{a:'Aires de Chicá',t:t}]; ws[a].c.hidden=true; } }
   for(let i=0;i<rows.length;i++){ const r=3+i, zeb=(i%2===1);
     for(let c=0;c<ncol;c++){ let base=money.has(c)?{...ST.money}:{...ST.cell}; if(zeb) base.fill={fgColor:{rgb:BR.zebra}}; _s(ws,r,c,base); }
     if(opts.estadoCol!=null) _s(ws,r,opts.estadoCol,_estadoStyle(rows[i][opts.estadoCol],zeb));
@@ -1122,20 +1125,24 @@ async function descargarCartera(){
   const cuentas=[...(DASH.cuentas||[])].sort((a,b)=>b.saldoConMora-a.saldoConMora);
   const rows=cuentas.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.email||'',c.cuota,c.facturado,c.pagado,c.saldo,c.mora,c.saldoConMora,c.estado,c.diasVencido]);
   const totRow=['','','TOTAL','','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'mora'),_sum(cuentas,'saldoConMora'),'',''];
-  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte+' · Saldo cuotas = principal; la Mora es un recargo aparte que permanece aunque se pague la cuota. Total = Saldo cuotas + Mora.', head, rows, [4,5,6,7,8,9], [8,13,24,26,10,11,11,13,14,11,11,9], {totalRow:totRow, estadoCol:10});
+  const notes2=['Lote o número de finca del propietario.','Residencial al que pertenece el lote (Las Nubes / Quintas / Haras).','Nombre del propietario.','Correo donde se envía el estado de cuenta.','Cuota mensual de mantenimiento vigente para este propietario.','Total facturado en el año hasta la fecha de corte (cuotas devengadas + saldo inicial 2025).','Total cobrado en el año hasta la fecha de corte.','Saldo de cuotas pendiente (solo principal, sin mora).','Recargo por mora acumulado y aún no pagado. Permanece aunque se pague la cuota.','Total por cobrar = Saldo cuotas + Mora pendiente.','Estado del propietario al corte (Al día / Pendiente / Moroso).','Días transcurridos desde el vencimiento más antiguo sin pagar.'];
+  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte+' · Saldo cuotas = principal; la Mora es un recargo aparte que permanece aunque se pague la cuota. Total = Saldo cuotas + Mora.', head, rows, [4,5,6,7,8,9], [8,13,24,26,10,11,11,13,14,11,11,9], {totalRow:totRow, estadoCol:10, notes:notes2});
   const r3=(DASH.porResidencial||[]).map(r=>[r.residencial,r.cuentas,r.facturado,r.pagado,r.saldo,r.mora]);
   const tot3=['TOTAL', _sum(DASH.porResidencial||[],'cuentas'), _sum(DASH.porResidencial||[],'facturado'),_sum(DASH.porResidencial||[],'pagado'),_sum(DASH.porResidencial||[],'saldo'),_sum(DASH.porResidencial||[],'mora')];
-  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo cuotas','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3});
+  const notes3=['Residencial (Las Nubes / Quintas / Haras).','Cantidad de cuentas activas en el residencial.','Total facturado del residencial en el año hasta el corte.','Total cobrado del residencial en el año hasta el corte.','Saldo de cuotas pendiente del residencial (solo principal).','Recargo por mora acumulado del residencial.'];
+  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo cuotas','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3, notes:notes3});
   const ag=DASH.aging||{}, agm=DASH.agingMonto||{};
   const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
   const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
-  const ws4=_tableSheet('Aging (antigüedad de saldos)','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {});
+  const notes4=['Tramo de antigüedad del saldo vencido, contado desde su vencimiento.','Cantidad de cuentas en este tramo de antigüedad.','Monto total por cobrar en el tramo (saldo de cuotas + mora).'];
+  const ws4=_tableSheet('Aging (antigüedad de saldos)','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {notes:notes4});
   // Cobros del mes de corte
   const elbl={pagado:'Pagó',parcial:'Parcial',pendiente:'Pendiente',na:'—'};
   const cmes=[...(DASH.cuentas||[])].filter(c=>c.cuotaMes>0).sort((a,b)=>(b.pendienteMes||0)-(a.pendienteMes||0));
-  const r5=cmes.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.cuotaMes,c.cubiertoMes,c.pendienteMes, elbl[c.estadoMes]||'—']);
-  const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pendienteMes'),''];
-  const ws5=_tableSheet('Cobros del mes','Corte al '+corte, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Falta','Estado del mes'], r5, [3,4,5], [8,13,26,13,12,11,14], {totalRow:tot5});
+  const r5=cmes.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.cuotaMes,c.cubiertoMes,Number(c.pagadoMes)||0,c.pendienteMes, elbl[c.estadoMes]||'—']);
+  const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pagadoMes'),_sum(cmes,'pendienteMes'),''];
+  const notes5=['Lote o número de finca.','Residencial (Las Nubes / Quintas / Haras).','Nombre del propietario.','Cuota de mantenimiento correspondiente al mes de corte.','Parte de la cuota del mes que quedó cubierta (incluye crédito a favor aplicado). Puede diferir de "Cobrado" si se usó saldo de meses anteriores.','Dinero efectivamente recibido de este propietario durante el mes de corte. La suma de esta columna coincide con "Cobrado del mes" en la hoja Resumen.','Parte de la cuota del mes que aún falta por cubrir.','Estado de la cuota del mes (Pagó / Parcial / Pendiente).'];
+  const ws5=_tableSheet('Cobros del mes','Corte al '+corte, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Cobrado','Falta','Estado del mes'], r5, [3,4,5,6], [8,13,26,13,12,12,11,14], {totalRow:tot5, notes:notes5});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
   XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
