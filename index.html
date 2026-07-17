@@ -159,6 +159,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
      (Safari amplía cualquier input con fuente < 16px). No cambia el tamaño del
      modal; solo evita el salto de zoom. */
   input, select, textarea { font-size:16px !important; }
+  /* Acciones del modal apiladas a lo ancho en móvil */
+  .modal-actions { flex-direction:column; }
+  .modal-actions .btn { width:100%; }
 }
 input[type=search], input[type=password], input[type=text], input[type=number], input[type=email], input[type=tel], input[type=date], input[type=month], select, textarea {
   font:inherit; font-size:16px; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; color:var(--ac-ink); }
@@ -168,6 +171,11 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
 .btn:hover { background:var(--ac-teal-600); } .btn.ghost { background:#fff; color:var(--ac-teal-700); border:1px solid var(--ac-border); }
 .btn.green { background:var(--ac-green-600); } .btn:disabled { opacity:.5; cursor:not-allowed; }
+/* Barra de acciones del modal de estado de cuenta: 3 botones consistentes,
+   fila alineada a la derecha en escritorio, apilados a lo ancho en móvil. */
+.modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px; }
+.modal-actions .is-condonar { color:var(--ac-coral); border-color:var(--ac-coral); }
+.modal-actions .is-reactivar { color:var(--ac-green-600); border-color:var(--ac-green-600); }
 .modal-bg { position:fixed; inset:0; background:rgba(16,48,57,.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:50; }
 .modal-bg.show { display:flex; }
 .modal { background:#fff; border-radius:14px; max-width:640px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
@@ -619,10 +627,9 @@ function _renderEstado(e){
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
         <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoConMora)}</b></div>
     </div></div>
-    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-      ${(e.moraCargada>0.009||all)?`<button class="link-btn" style="color:${all?'var(--ac-ok)':'var(--ac-coral)'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar toda la mora':'Condonar toda la mora'}</button>`:''}
-      <span class="spacer" style="flex:1"></span>
-      <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar / ver pagos</button>
+    <div class="modal-actions">
+      ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
+      <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar pago</button>
       <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
     </div>
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
