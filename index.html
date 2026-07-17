@@ -1116,6 +1116,54 @@ function _resumenSheet(k, corte){
   });
   return ws;
 }
+// Hoja pivote: Cobros (caja real) por mes, propietarios en filas agrupados por residencial.
+function _cobrosMensualSheet(cuentas, corte, nMonths){
+  const MM=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const n=Math.max(1,Math.min(12,nMonths||12));
+  const monLbls=MM.slice(0,n);
+  const headers=['Lote','Propietario',...monLbls,'Total'];
+  const ncol=headers.length, totalCol=ncol-1;
+  const order=['Las Nubes','Quintas','Haras'];
+  const groups={};
+  cuentas.forEach(c=>{ const rn=c.residencial||'—'; (groups[rn]=groups[rn]||[]).push(c); });
+  const resNames=Object.keys(groups).sort((a,b)=>{ const ia=order.indexOf(a),ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib) || a.localeCompare(b); });
+  const aoa=[['Aires de Chicá — Cobros por mes (caja real)'],['Corte al '+corte+' · Ingresos recibidos por propietario y mes, agrupados por residencial'],headers];
+  const meta=[];
+  const grand=new Array(n+1).fill(0);
+  resNames.forEach(rn=>{
+    const list=groups[rn].slice().sort((a,b)=>(a.loteNum||0)-(b.loteNum||0) || String(a.lote||'').localeCompare(String(b.lote||'')));
+    aoa.push([rn,...new Array(ncol-1).fill('')]); meta.push({r:aoa.length-1,type:'sec'});
+    const sub=new Array(n+1).fill(0);
+    list.forEach((c,i)=>{
+      const cm=(c.cobradoMensual||[]).slice(0,n).map(x=>Number(x)||0);
+      while(cm.length<n) cm.push(0);
+      const tot=Math.round(cm.reduce((s,x)=>s+x,0)*100)/100;
+      aoa.push([String(c.lote||''),c.nombre||'',...cm,tot]); meta.push({r:aoa.length-1,type:'row',zeb:(i%2===1)});
+      cm.forEach((x,j)=>{ sub[j]=Math.round((sub[j]+x)*100)/100; }); sub[n]=Math.round((sub[n]+tot)*100)/100;
+    });
+    aoa.push(['','Subtotal '+rn,...sub]); meta.push({r:aoa.length-1,type:'sub'});
+    for(let j=0;j<=n;j++) grand[j]=Math.round((grand[j]+sub[j])*100)/100;
+  });
+  aoa.push(['','TOTAL GENERAL',...grand]); meta.push({r:aoa.length-1,type:'grand'});
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:8},{wch:26},...monLbls.map(()=>({wch:11})),{wch:13}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:ncol-1}},{s:{r:1,c:0},e:{r:1,c:ncol-1}}];
+  meta.filter(m=>m.type==='sec').forEach(m=>ws['!merges'].push({s:{r:m.r,c:0},e:{r:m.r,c:ncol-1}}));
+  ws['!rows']=[{hpt:22},{hpt:15},{hpt:20}];
+  _s(ws,0,0,ST.title); _s(ws,1,0,ST.sub);
+  for(let c=0;c<ncol;c++) _s(ws,2,c,ST.th);
+  meta.forEach(m=>{
+    if(m.type==='sec'){ for(let c=0;c<ncol;c++) _s(ws,m.r,c,ST.section); }
+    else if(m.type==='row'){ for(let c=0;c<ncol;c++){ let base=(c>=2)?{...ST.money}:{...ST.cell}; if(m.zeb) base.fill={fgColor:{rgb:BR.zebra}}; _s(ws,m.r,c,base); } }
+    else { for(let c=0;c<ncol;c++) _s(ws,m.r,c,(c>=2)?ST.totalMoney:ST.total); }
+  });
+  const note=(c,t)=>{ const a=XLSX.utils.encode_cell({r:2,c}); if(ws[a]){ ws[a].c=[{a:'Aires de Chicá',t}]; ws[a].c.hidden=true; } };
+  note(1,'Propietario. Las filas están agrupadas por residencial, con subtotal por grupo.');
+  note(totalCol,'Total cobrado del propietario en el año hasta el corte (suma de los meses mostrados).');
+  for(let j=0;j<n;j++) note(2+j, 'Dinero efectivamente recibido en '+AC_MESES_LARGO_L(j)+' (caja real).');
+  return ws;
+}
+function AC_MESES_LARGO_L(i){ return ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i]||''; }
 async function descargarCartera(){
   document.getElementById('dlMenu').style.display='none';
   if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
@@ -1143,12 +1191,17 @@ async function descargarCartera(){
   const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pagadoMes'),_sum(cmes,'pendienteMes'),''];
   const notes5=['Lote o número de finca.','Residencial (Las Nubes / Quintas / Haras).','Nombre del propietario.','Cuota de mantenimiento correspondiente al mes de corte.','Parte de la cuota del mes que quedó cubierta (incluye crédito a favor aplicado). Puede diferir de "Cobrado" si se usó saldo de meses anteriores.','Dinero efectivamente recibido de este propietario durante el mes de corte. La suma de esta columna coincide con "Cobrado del mes" en la hoja Resumen.','Parte de la cuota del mes que aún falta por cubrir.','Estado de la cuota del mes (Pagó / Parcial / Pendiente).'];
   const ws5=_tableSheet('Cobros del mes','Corte al '+corte, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Cobrado','Falta','Estado del mes'], r5, [3,4,5,6], [8,13,26,13,12,12,11,14], {totalRow:tot5, notes:notes5});
+  // Cobros por mes (pivote: propietarios × meses, agrupado por residencial)
+  const cy=parseInt(corte.slice(0,4),10), cmo=parseInt(corte.slice(5,7),10)||12;
+  const nMonths = (cy>(DASH.anio||cy)) ? 12 : Math.max(1,Math.min(12,cmo));
+  const ws6=_cobrosMensualSheet(DASH.cuentas||[], corte, nMonths);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
   XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
   XLSX.utils.book_append_sheet(wb,ws3,'Por residencial');
   XLSX.utils.book_append_sheet(wb,ws4,'Aging');
   XLSX.utils.book_append_sheet(wb,ws5,'Cobros del mes');
+  XLSX.utils.book_append_sheet(wb,ws6,'Cobros por mes');
   XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
 }
 

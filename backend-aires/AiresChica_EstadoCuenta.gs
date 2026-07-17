@@ -293,11 +293,17 @@ function buildDashboard(asOf) {
   });
 
   // pagado del mes de corte (por fecha de pago, hasta la fecha de corte) — global y por cuenta
+  // y matriz de caja real por mes (Ene..Dic) por cuenta, para la hoja "Cobros por mes"
   var _corteMs = asOf.getTime() + 86399999;
   var pagadoMesByClave = {};
+  var cobradoMensualByClave = {};
   pagos.forEach(function (p) {
     var d = new Date(p.fecha);
-    if (d.getFullYear() === year && (d.getMonth() + 1) === mesActual && d.getTime() <= _corteMs) {
+    if (d.getFullYear() !== year || d.getTime() > _corteMs) return;
+    var mIdx = d.getMonth(); // 0..11
+    var arr = cobradoMensualByClave[p.clave] || (cobradoMensualByClave[p.clave] = [0,0,0,0,0,0,0,0,0,0,0,0]);
+    arr[mIdx] = _round2(arr[mIdx] + (Number(p.monto) || 0));
+    if ((mIdx + 1) === mesActual) {
       pagadoMes += Number(p.monto) || 0;
       pagadoMesByClave[p.clave] = _round2((pagadoMesByClave[p.clave] || 0) + (Number(p.monto) || 0));
     }
@@ -355,6 +361,7 @@ function buildDashboard(asOf) {
                inicioCobro: e.inicioCobro,
                cuotaMes: e.cuotaMes, cubiertoMes: e.cubiertoMes, pendienteMes: e.pendienteMes, estadoMes: e.estadoMes,
                pagadoMes: _round2(pagadoMesByClave[e.clave] || 0),
+               cobradoMensual: cobradoMensualByClave[e.clave] || [0,0,0,0,0,0,0,0,0,0,0,0],
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
