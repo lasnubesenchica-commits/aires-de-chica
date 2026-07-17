@@ -155,8 +155,16 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   /* KPIs de conciliación en 2 columnas en móvil (NO el tablero #kpis, que
      usa sus propios bloques .kpis-hero / .kpis-row apilados) */
   .kpis:not(#kpis) { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  /* En móvil, todos los campos a 16px para que iOS NO haga zoom al enfocarlos
+     (Safari amplía cualquier input con fuente < 16px). No cambia el tamaño del
+     modal; solo evita el salto de zoom. */
+  input, select, textarea { font-size:16px !important; }
 }
-input[type=search], input[type=password], select { font:inherit; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
+input[type=search], input[type=password], input[type=text], input[type=number], input[type=email], input[type=tel], input[type=date], input[type=month], select, textarea {
+  font:inherit; font-size:16px; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; color:var(--ac-ink); }
+/* Normaliza los date/month para que no salgan como "pastilla" gris en iOS y
+   queden alineados a la izquierda como el resto de campos. */
+input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; min-height:38px; text-align:left; }
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
 .btn:hover { background:var(--ac-teal-600); } .btn.ghost { background:#fff; color:var(--ac-teal-700); border:1px solid var(--ac-border); }
 .btn.green { background:var(--ac-green-600); } .btn:disabled { opacity:.5; cursor:not-allowed; }
@@ -620,10 +628,10 @@ function _renderEstado(e){
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
       <div style="font-weight:600;margin-bottom:2px">Registrar pago manual</div>
       <div class="muted" style="font-size:.78rem;margin-bottom:10px">Para pagos verificados directamente en la banca en línea, sin comprobante por correo.</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
-        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Fecha del pago</label><input type="date" id="pgFecha" value="${today}" max="${today}" style="width:100%"></div>
-        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Monto</label><input type="number" id="pgMonto" step="0.01" min="0" placeholder="0.00" oninput="previewPagoManual('${e.clave}')" style="width:100%;text-align:right"></div>
-        <div><label class="muted" style="font-size:.76rem;display:block;margin-bottom:3px">Referencia <span style="font-weight:400">(opcional)</span></label><input type="text" id="pgRef" placeholder="Nº transacción / ACH" style="width:100%"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px;align-items:end">
+        <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha del pago</span><input type="date" id="pgFecha" value="${today}" max="${today}" style="width:100%"></label>
+        <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span><input type="number" id="pgMonto" step="0.01" min="0" placeholder="0.00" inputmode="decimal" oninput="previewPagoManual('${e.clave}')" style="width:100%;text-align:right"></label>
+        <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Referencia <span style="font-weight:400">(opcional)</span></span><input type="text" id="pgRef" placeholder="Nº de transacción / ACH" style="width:100%"></label>
       </div>
       <div id="pgPrev"></div>
       <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px">
