@@ -1291,7 +1291,7 @@ async function renderComprob(){
         <td class="stack-col" data-label="Propietario"><div>${c.nombre||'—'}</div>${c.lote?`<div class="muted" style="font-size:.72rem">L${c.lote}</div>`:''}</td>
         <td class="num" data-label="Monto"><b>${money(c.monto)}</b></td>
         <td data-label="Método"><span class="muted" style="font-size:.78rem">${c.metodoPago||(c.referencia?'Ref: '+String(c.referencia).replace(/</g,'&lt;'):'—')}</span></td>
-        <td class="acts">${adj(c)}</td></tr>`).join('')
+        <td class="acts">${adj(c)}<button class="link-btn" style="color:var(--ac-danger);margin-left:10px" onclick="desaplicarComprob('${c.id}',this)">Desaplicar</button></td></tr>`).join('')
     }</tbody></table></details>`;
   const rechHtml = !rech.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-danger);font-weight:600">Rechazados (${rechAll.length}${rechAll.length>50?' · últimos 50':''})</summary>
     <table class="stack-table" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th></th></tr></thead><tbody>${
@@ -1308,6 +1308,16 @@ async function recuperarComprob(id,btn){
   btn.disabled=true;
   try{ await post('resolverComprobante',{id,accion:'recuperar'}); renderComprob(); }
   catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function desaplicarComprob(id,btn){
+  if(!confirm('¿Desaplicar este comprobante?\n\nSe eliminará el pago que registró y el comprobante volverá a “Pendientes”, donde podrás reasignarlo a la cuenta correcta y volver a aplicarlo, o rechazarlo.')) return;
+  btn.disabled=true;
+  try{
+    const r=await post('resolverComprobante',{id,accion:'desaplicar'});
+    await renderComprob();
+    if(document.getElementById('tab-dash').style.display!=='none' && typeof renderDash==='function'){ try{ await renderDash(); }catch(_){} }
+    toast('Comprobante devuelto a pendientes'+((r&&r.pagoEliminado)?' · pago eliminado':''));
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function capturarAhora(btn){
   btn.disabled=true; const t=btn.textContent; btn.textContent='Revisando…';

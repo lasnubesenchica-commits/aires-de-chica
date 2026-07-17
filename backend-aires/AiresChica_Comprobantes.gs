@@ -447,6 +447,19 @@ function resolverComprobante(data) {
       var iMot = h.indexOf('motivo'); if (iMot >= 0) sh.getRange(r + 1, iMot + 1).setValue('');
       return { ok: true, estado: 'pendiente' };
     }
+    // desaplicar: revierte un comprobante ya aplicado — borra el pago que generó
+    // y lo devuelve a la cola de pendientes para reasignarlo o rechazarlo.
+    if (data.accion === 'desaplicar') {
+      if (String(vals[r][iEst]) !== 'aplicado') throw new Error('Solo se pueden desaplicar comprobantes aplicados.');
+      var iPid = h.indexOf('pagoId'), iUrlD = h.indexOf('adjuntoUrl');
+      var pid = iPid >= 0 ? String(vals[r][iPid] || '') : '';
+      var elim = pid ? (_eliminarPagoById(pid) ? 1 : 0) : 0;
+      if (!elim) elim = _eliminarPagoDeComprobante(vals[r][iCl], vals[r][iMo], iUrlD >= 0 ? vals[r][iUrlD] : '');
+      sh.getRange(r + 1, iEst + 1).setValue('pendiente');
+      if (iPid >= 0) sh.getRange(r + 1, iPid + 1).setValue('');
+      var iMotD = h.indexOf('motivo'); if (iMotD >= 0) sh.getRange(r + 1, iMotD + 1).setValue('');
+      return { ok: true, estado: 'pendiente', pagoEliminado: elim };
+    }
     if (String(vals[r][iEst]) !== 'pendiente') throw new Error('El comprobante ya fue ' + vals[r][iEst] + '.');
     if (data.accion === 'rechazar') { sh.getRange(r + 1, iEst + 1).setValue('rechazado'); return { ok: true, estado: 'rechazado' }; }
     // aplicar
@@ -457,7 +470,7 @@ function resolverComprobante(data) {
     var prop = _findProp(clave);
     if (!prop) throw new Error('No existe la cuenta ' + clave);
     var iUrl = h.indexOf('adjuntoUrl'), iRef = h.indexOf('referencia');
-    appendPago({
+    var pagoId = appendPago({
       fecha: new Date(vals[r][iFe]), clave: clave, lote: prop.lote, nombre: prop.nombre, monto: monto,
       origen: 'comprobante', referencia: (iRef >= 0 ? String(vals[r][iRef] || '') : ''),
       comprobanteUrl: (iUrl >= 0 ? String(vals[r][iUrl] || '') : ''),
@@ -467,6 +480,7 @@ function resolverComprobante(data) {
     sh.getRange(r + 1, iMo + 1).setValue(monto);
     sh.getRange(r + 1, iNo + 1).setValue(prop.nombre);
     sh.getRange(r + 1, iLo + 1).setValue(prop.lote);
+    var iPidA = h.indexOf('pagoId'); if (iPidA >= 0) sh.getRange(r + 1, iPidA + 1).setValue(pagoId);
     sh.getRange(r + 1, iEst + 1).setValue('aplicado');
     return { ok: true, estado: 'aplicado', clave: clave, monto: monto, cuota: prop.cuota };
   }

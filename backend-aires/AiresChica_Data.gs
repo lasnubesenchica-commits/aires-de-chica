@@ -25,7 +25,7 @@ var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','orig
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
 var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
                    'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo',
-                   'metodoPago','cuentaDestino','beneficiario'];
+                   'metodoPago','cuentaDestino','beneficiario','pagoId'];
 
 /* ─────────────── setup de pestañas ─────────────── */
 
@@ -56,6 +56,7 @@ function ensureSheets() {
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'metodoPago');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'cuentaDestino');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'beneficiario');
+  _ensureColumn(ss.getSheetByName(SH.COMPROB), 'pagoId');
   _ensureColumn(ss.getSheetByName(SH.PAGOS), 'comprobanteUrl');
   // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
   // convierta "6/7", "2026-05", etc. en fechas.
@@ -467,6 +468,39 @@ function appendPago(pago) {
     pago.comprobanteUrl || ''
   ]);
   return id;
+}
+
+// Elimina una fila de PAGOS por su id. Devuelve true si eliminó algo.
+function _eliminarPagoById(id) {
+  if (!id) return false;
+  var sh = _ss().getSheetByName(SH.PAGOS);
+  if (!sh) return false;
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  if (iId < 0) return false;
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][iId]) === String(id)) { sh.deleteRow(r + 1); return true; }
+  }
+  return false;
+}
+
+// Respaldo para comprobantes aplicados antes de que existiera pagoId:
+// elimina el pago de origen 'comprobante' que coincide por clave + monto
+// (y URL de comprobante si está disponible). Devuelve nº de filas eliminadas (0/1).
+function _eliminarPagoDeComprobante(clave, monto, comprobanteUrl) {
+  var sh = _ss().getSheetByName(SH.PAGOS);
+  if (!sh) return 0;
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iCl = h.indexOf('clave'), iMo = h.indexOf('monto'), iOr = h.indexOf('origen'), iUrl = h.indexOf('comprobanteUrl');
+  clave = String(clave || '').trim(); monto = _round2(monto);
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][iOr]) !== 'comprobante') continue;
+    if (String(vals[r][iCl]).trim() !== clave) continue;
+    if (_round2(vals[r][iMo]) !== monto) continue;
+    if (comprobanteUrl && iUrl >= 0 && String(vals[r][iUrl] || '') && String(vals[r][iUrl]) !== String(comprobanteUrl)) continue;
+    sh.deleteRow(r + 1); return 1;
+  }
+  return 0;
 }
 
 function registrarPago(pago) {
