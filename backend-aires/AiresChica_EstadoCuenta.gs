@@ -95,8 +95,15 @@ function calcEstado(prop, pagosArr, asOf) {
     buckets.push({ label: AC_MESES_LARGO[m - 1], year: year, month: m, idx: year * 12 + m, monto: cuota, tipo: 'cuota' });
   }
 
+  // Sólo pagos recibidos HASTA la fecha de corte (para que un corte histórico
+  // sea una foto real de esa fecha y no incluya pagos posteriores).
+  var _corteMs = asOf.getTime() + 86399999; // fin del día de corte (inclusivo)
+  var pagosArrC = (pagosArr || []).filter(function (p) {
+    var d = new Date(p.fecha); return isNaN(d.getTime()) ? true : d.getTime() <= _corteMs;
+  });
+
   var totalPagado = 0;
-  (pagosArr || []).forEach(function (p) { totalPagado += Number(p.monto) || 0; });
+  pagosArrC.forEach(function (p) { totalPagado += Number(p.monto) || 0; });
   totalPagado = _round2(totalPagado);
 
   // 2) fechado de pago (cronológico, principal más antiguo primero) para congelar la mora
@@ -104,7 +111,7 @@ function calcEstado(prop, pagosArr, asOf) {
   var thresholds = [], run = 0;
   buckets.forEach(function (b) { run = _round2(run + b.monto); thresholds.push(run); });
   var payoffIdx = buckets.map(function () { return Infinity; });
-  var pays = (pagosArr || []).map(function (p) { return { d: new Date(p.fecha), a: _round2(Number(p.monto) || 0) }; })
+  var pays = pagosArrC.map(function (p) { return { d: new Date(p.fecha), a: _round2(Number(p.monto) || 0) }; })
     .filter(function (x) { return x.a > 0 && !isNaN(x.d.getTime()); })
     .sort(function (a, b) { return a.d - b.d; });
   var acc = credito2025;
@@ -188,7 +195,7 @@ function calcEstado(prop, pagosArr, asOf) {
   // 4) desglose MENSUAL (caja real): cuota del mes + lo efectivamente pagado ese mes
   //    calendario + saldo acumulado. Es la vista que coincide con el Excel del cliente.
   var pagosMes = {}, vouchersMes = {};
-  (pagosArr || []).forEach(function (p) {
+  pagosArrC.forEach(function (p) {
     var d = new Date(p.fecha);
     if (d.getFullYear() === year) {
       var mi = d.getMonth() + 1;
@@ -285,10 +292,11 @@ function buildDashboard(asOf) {
     facturadoMes += e.cuotaMes;
   });
 
-  // pagado del mes en curso (por fecha de pago)
+  // pagado del mes de corte (por fecha de pago, hasta la fecha de corte)
+  var _corteMs = asOf.getTime() + 86399999;
   pagos.forEach(function (p) {
     var d = new Date(p.fecha);
-    if (d.getFullYear() === year && (d.getMonth() + 1) === mesActual) pagadoMes += Number(p.monto) || 0;
+    if (d.getFullYear() === year && (d.getMonth() + 1) === mesActual && d.getTime() <= _corteMs) pagadoMes += Number(p.monto) || 0;
   });
 
   var topMorosos = cuentas.filter(function (e) { return e.saldoConMora > 0.009; })
