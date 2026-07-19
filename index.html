@@ -1079,6 +1079,8 @@ async function renderOpts(){
           <div class="field" style="margin:0"><label>Número de cuenta</label><input type="text" id="o_cnum" value="${(d.banco.numero||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
           <div class="field" style="margin:0"><label>A nombre de</label><input type="text" id="o_cnom" value="${(d.banco.nombre||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
         </div>
+        <div class="field" style="margin:14px 0 0;max-width:280px"><label>Fondo inicial del año (B/.)</label><input type="number" id="o_fondoini" step="0.01" min="0" value="${c.fondoInicial||0}" style="width:100%">
+          <div class="help">Saldo disponible al 1 de enero. Se usa en el Informe Financiero para calcular el fondo disponible (fondo inicial + resultado del año). Déjalo en 0 si no aplica.</div></div>
       </div></div>
 
     <div class="card" style="margin-top:16px"><div class="bd" style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -1140,7 +1142,8 @@ async function guardarOpts(){
     banco:document.getElementById('o_banco').value.trim(),
     cuentaTipo:document.getElementById('o_ctipo').value.trim(),
     cuentaNum:document.getElementById('o_cnum').value.trim(),
-    cuentaNombre:document.getElementById('o_cnom').value.trim()
+    cuentaNombre:document.getElementById('o_cnom').value.trim(),
+    fondoInicial:+document.getElementById('o_fondoini').value||0
   };
   try{
     const r=await post('guardarConfig',{config:cfg});
@@ -1617,6 +1620,42 @@ function paintGastos(){
   const content = GASTOS_VISTA==='recurrentes' ? _gastosRecurrentes(d) : _gastosRegistro(d);
   body.innerHTML=header+banner+content;
 }
+async function descargarInformePL(btn){
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Generando…';
+  try{
+    const r=await post('descargarInformePL',{anio:GASTOS_ANIO, mesIni:FIN_MES_INI, mesFin:FIN_MES_FIN});
+    const bin=atob(r.base64), arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+    const a=document.createElement('a'); a.href=url; a.download=r.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    toast('Informe descargado');
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+function abrirEnviarInforme(){
+  const per=(FIN_MES_INI===1&&FIN_MES_FIN===12)?('año '+GASTOS_ANIO):(GMESES[FIN_MES_INI-1]+'–'+GMESES[FIN_MES_FIN-1]+' '+GASTOS_ANIO);
+  document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">Enviar informe a propietarios</div><div class="muted" style="font-size:.82rem">Informe Financiero · ${per}</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="muted" style="font-size:.85rem;margin-bottom:10px">Se enviará el <b>Informe Financiero</b> en PDF a todos los propietarios con correo. Respeta el interruptor maestro y el modo prueba de Opciones.</div>
+    <label class="muted" style="font-size:.78rem;display:block;margin-bottom:4px">Nota de la administración (opcional)</label>
+    <textarea id="inf_nota" rows="3" placeholder="Mensaje para incluir en el informe y el correo…" style="width:100%"></textarea>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px">
+      <span id="inf_msg" class="muted" style="font-size:.8rem"></span>
+      <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Ver PDF primero</button>
+      <button class="btn green" id="inf_send" onclick="enviarInformeUI()">Enviar a propietarios</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+async function enviarInformeUI(){
+  const nota=document.getElementById('inf_nota').value.trim();
+  const msg=document.getElementById('inf_msg'), btn=document.getElementById('inf_send');
+  msg.className='muted'; btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
+  try{
+    const r=await post('enviarInformePL',{anio:GASTOS_ANIO, mesIni:FIN_MES_INI, mesFin:FIN_MES_FIN, nota});
+    if(r.pausado){ msg.textContent='Envíos pausados (interruptor maestro apagado en Opciones).'; btn.disabled=false; btn.textContent=t; return; }
+    closeModal();
+    alert(r.prueba?`🧪 Modo prueba: enviado solo a ${r.destino} (1 correo).`:`✓ Informe enviado a ${r.enviados} propietario(s).`+((r.sinCorreo&&r.sinCorreo.length)?`\nSin correo: ${r.sinCorreo.length}.`:''));
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
+}
 function _gastosResultado(d){
   // rango de meses (filtro): FIN_MES_INI..FIN_MES_FIN
   const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
@@ -1667,7 +1706,9 @@ function _gastosResultado(d){
       <td class="num" data-label="Resultado" style="color:${rr>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(rr)}</td>
       <td class="num" data-label="Acumulado" style="color:${acc>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(acc)}</td></tr>`;
   }).join('');
-  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${periodoTxt}</h2></div>
+  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
+      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button></div>
     <div class="bd" style="padding:14px 18px">
       ${filtro}
       ${resumen}
