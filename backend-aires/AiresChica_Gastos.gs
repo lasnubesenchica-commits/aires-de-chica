@@ -97,14 +97,29 @@ function getGastosData(anio) {
   });
   var presupuestadoTotal = _round2(porCategoria.reduce(function (s, t) { return s + t.presupuestado; }, 0));
 
-  // ejecución por mes (Ene..Dic)
+  // ejecución (egresos) por mes (Ene..Dic)
   var porMes = [0,0,0,0,0,0,0,0,0,0,0,0];
   gastos.forEach(function (g) { var m = g.fecha.getMonth(); porMes[m] = _round2(porMes[m] + g.monto); });
+
+  // ingresos (cobros de cuotas — base caja) del año, por mes; para el Estado de Resultados
+  var pagos = getPagos();
+  var ingresosPorMes = [0,0,0,0,0,0,0,0,0,0,0,0], ingresosTotal = 0;
+  var ysetPag = {};
+  pagos.forEach(function (p) {
+    var fp = p.fecha instanceof Date ? p.fecha : new Date(p.fecha);
+    if (isNaN(fp.getTime())) return;
+    ysetPag[fp.getFullYear()] = 1;
+    if (fp.getFullYear() === anio) {
+      ingresosPorMes[fp.getMonth()] = _round2(ingresosPorMes[fp.getMonth()] + (Number(p.monto) || 0));
+      ingresosTotal = _round2(ingresosTotal + (Number(p.monto) || 0));
+    }
+  });
 
   // años disponibles (para el selector)
   var yset = {}; yset[anio] = 1; yset[hoy.getFullYear()] = 1;
   todos.forEach(function (g) { yset[g.fecha.getFullYear()] = 1; });
   presupRows.forEach(function (p) { if (p.anio) yset[Number(p.anio)] = 1; });
+  Object.keys(ysetPag).forEach(function (y) { yset[Number(y)] = 1; });
   var anios = Object.keys(yset).map(Number).sort(function (a, b) { return b - a; });
 
   return {
@@ -118,6 +133,9 @@ function getGastosData(anio) {
     presupuestadoTotal: presupuestadoTotal,
     disponibleTotal: _round2(presupuestadoTotal - ejecutadoTotal),
     porMes: porMes,
+    ingresosPorMes: ingresosPorMes,
+    ingresosTotal: ingresosTotal,
+    resultadoTotal: _round2(ingresosTotal - ejecutadoTotal),
     aniosDisponibles: anios
   };
 }
