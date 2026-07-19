@@ -31,7 +31,7 @@ var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','mo
                    'metodoPago','cuentaDestino','beneficiario','pagoId'];
 // Gastos (egresos) — registro diario por categoría
 var COL_GASTOS = ['id','fecha','mes','categoria','proveedor','detalle','monto','tipo',
-                  'metodoPago','comprobanteUrl','notas','creado'];
+                  'metodoPago','comprobanteUrl','notas','creado','grupoInforme'];
 // Plantillas de gastos recurrentes (fijos mensuales)
 var COL_GRECUR = ['id','categoria','proveedor','detalle','monto','activo','notas'];
 // Presupuesto anual por categoría
@@ -69,6 +69,7 @@ function ensureSheets() {
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'beneficiario');
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'pagoId');
   _ensureColumn(ss.getSheetByName(SH.PAGOS), 'comprobanteUrl');
+  _ensureColumn(ss.getSheetByName(SH.GASTOS), 'grupoInforme');
   // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);

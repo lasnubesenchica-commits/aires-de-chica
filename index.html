@@ -1643,10 +1643,18 @@ function _gastosResultado(d){
     ${cardKPI('Egresos (gastos)',money(egr),'coral')}
     <div class="kpi ${positivo?'green':'red'}" style="flex:1;min-width:200px"><div class="label">${positivo?'Superávit del periodo':'Déficit del periodo'}</div><div class="val" style="font-size:1.5rem;color:${resCol}">${money(res)}</div><div class="hint">Ingresos − Egresos</div></div>
   </div>`;
-  // egresos por categoría en el rango (recalculado desde los gastos)
-  const catMap={};
-  (d.gastos||[]).forEach(g=>{ const m=new Date(g.fecha).getMonth()+1; if(m>=mi&&m<=mf){ const c=g.categoria||'(sin categoría)'; catMap[c]=Math.round(((catMap[c]||0)+(Number(g.monto)||0))*100)/100; } });
-  const cats=Object.keys(catMap).map(c=>({categoria:c,ejecutado:catMap[c]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
+  // egresos agrupados en el rango — por categoría (presupuesto) o por esquema del informe (5 columnas)
+  const agrup=RES_AGRUP==='informe'?'informe':'categoria';
+  const gmap={};
+  (d.gastos||[]).forEach(g=>{ const m=new Date(g.fecha).getMonth()+1; if(m>=mi&&m<=mf){ const k=agrup==='informe'?(g.grupoInforme||'Otros'):(g.categoria||'(sin categoría)'); gmap[k]=Math.round(((gmap[k]||0)+(Number(g.monto)||0))*100)/100; } });
+  let cats;
+  if(agrup==='informe'){
+    const ORDER=['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'];
+    cats=ORDER.filter(k=>gmap[k]>0).map(k=>({categoria:k,ejecutado:gmap[k]}));
+    Object.keys(gmap).forEach(k=>{ if(ORDER.indexOf(k)<0 && gmap[k]>0) cats.push({categoria:k,ejecutado:gmap[k]}); });
+  } else {
+    cats=Object.keys(gmap).map(k=>({categoria:k,ejecutado:gmap[k]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
+  }
   const catRows=cats.map(t=>`<tr><td data-label="Categoría">${t.categoria}</td><td class="num" data-label="Monto">${money(t.ejecutado)}</td><td class="num" data-label="% de egresos">${egr>0?_ground1(t.ejecutado/egr*100):0}%</td></tr>`).join('');
   // tabla mensual (solo meses del rango)
   let acc=0;
@@ -1665,9 +1673,11 @@ function _gastosResultado(d){
       ${resumen}
       <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros de cuotas efectivos; egresos = gastos registrados.</div>
     </div></div>
-    <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos por categoría</h2></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos ${agrup==='informe'?'· esquema del informe':'por categoría'}</h2><div class="spacer" style="flex:1"></div>
+      <div class="seg"><button class="seg-btn ${agrup==='categoria'?'active':''}" onclick="RES_AGRUP='categoria';paintFinanzas()">Categoría</button><button class="seg-btn ${agrup==='informe'?'active':''}" onclick="RES_AGRUP='informe';paintFinanzas()">Esquema informe</button></div></div>
     <div class="bd" style="padding:12px 18px">
-      ${cats.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th class="num">Monto</th><th class="num">% de egresos</th></tr></thead><tbody>${catRows}
+      ${agrup==='informe'?'<div class="muted" style="font-size:.78rem;margin-bottom:8px">Mismas 5 columnas del informe de la junta (Serv. Prof., Alq. Equipo, Acueducto, Legales/Imp./Munic./CxP, Otros).</div>':''}
+      ${cats.length?`<table class="stack-table"><thead><tr><th>${agrup==='informe'?'Grupo':'Categoría'}</th><th class="num">Monto</th><th class="num">% de egresos</th></tr></thead><tbody>${catRows}
         <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Categoría">TOTAL EGRESOS</td><td class="num" data-label="Monto">${money(egr)}</td><td class="num" data-label="% de egresos">100%</td></tr></tbody></table>`
         :'<div class="muted" style="padding:12px 0">Sin egresos registrados en el periodo.</div>'}
     </div></div>
@@ -1728,11 +1738,12 @@ function _gastoFormModal(g){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha</span><input type="date" id="ga_fecha" value="${fecha}" style="width:100%"></label>
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span><input type="number" id="ga_monto" step="0.01" min="0" inputmode="decimal" value="${g.monto||''}" placeholder="0.00" style="width:100%;text-align:right"></label>
-      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Categoría</span><select id="ga_cat" style="width:100%"><option value="">— selecciona —</option>${cats.map(c=>`<option ${g.categoria===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Categoría</span><select id="ga_cat" onchange="var s=document.getElementById('ga_grupo'); if(s&&!s.dataset.touched) s.value=_grupoDeCat(this.value)" style="width:100%"><option value="">— selecciona —</option>${cats.map(c=>`<option ${g.categoria===c?'selected':''}>${c}</option>`).join('')}</select></label>
       <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Proveedor / beneficiario</span><input type="text" id="ga_prov" value="${esc(g.proveedor)}" placeholder="A quién se le pagó" style="width:100%"></label>
       <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Detalle</span><input type="text" id="ga_det" value="${esc(g.detalle)}" placeholder="Concepto / Nº de factura" style="width:100%"></label>
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Tipo</span><select id="ga_tipo" style="width:100%"><option value="puntual" ${g.tipo!=='recurrente'?'selected':''}>Puntual (una vez)</option><option value="recurrente" ${g.tipo==='recurrente'?'selected':''}>Recurrente (fijo mensual)</option></select></label>
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Método de pago</span><input type="text" id="ga_met" value="${esc(g.metodoPago)}" placeholder="Transferencia, ACH…" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Grupo del informe <span style="font-weight:400">(esquema de 5 columnas de la junta)</span></span><select id="ga_grupo" onchange="this.dataset.touched='1'" ${g.grupoInforme?'data-touched="1"':''} style="width:100%">${['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'].map(x=>`<option ${g.grupoInforme===x?'selected':''}>${x}</option>`).join('')}</select></label>
     </div>
     <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px">
       <span id="ga_msg" class="muted" style="font-size:.8rem"></span>
@@ -1740,6 +1751,12 @@ function _gastoFormModal(g){
       <button class="btn green" id="ga_save" onclick="guardarGastoUI('${g.id||''}')">${g.id?'Guardar cambios':'Registrar gasto'}</button>
     </div>`;
   document.getElementById('modal').classList.add('show');
+}
+function _grupoDeCat(cat){
+  if(cat==='Acueducto') return 'Acueducto';
+  if(['Gastos legales','Línea de crédito / préstamo','Contabilidad (CPA)'].indexOf(cat)>=0) return 'Legales, Imp., Munic., CxP';
+  if(['Portón, luminarias y cámaras','Banca en línea','Gastos varios y previsiones'].indexOf(cat)>=0) return 'Otros';
+  return 'Serv. Prof. / Contratistas';
 }
 function nuevoGasto(){ _gastoFormModal({}); }
 function editarGasto(id){ const g=(GASTOS_DATA.gastos||[]).find(x=>String(x.id)===String(id)); if(g)_gastoFormModal(g); }
@@ -1751,7 +1768,8 @@ async function guardarGastoUI(id){
     proveedor:document.getElementById('ga_prov').value.trim(),
     detalle:document.getElementById('ga_det').value.trim(),
     tipo:document.getElementById('ga_tipo').value,
-    metodoPago:document.getElementById('ga_met').value.trim()
+    metodoPago:document.getElementById('ga_met').value.trim(),
+    grupoInforme:document.getElementById('ga_grupo').value
   };
   const msg=document.getElementById('ga_msg'); msg.className='muted';
   if(!(gasto.monto>0)){ msg.textContent='Indica un monto válido.'; return; }
@@ -1914,7 +1932,7 @@ async function guardarPresupuestoUI(){
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
-let FIN_VISTA='presupuesto', FIN_MES_INI=1, FIN_MES_FIN=12;
+let FIN_VISTA='presupuesto', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria';
 async function renderFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';

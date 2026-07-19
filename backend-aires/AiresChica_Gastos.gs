@@ -35,6 +35,36 @@ function _gastoMes(fecha) {
   return d.getFullYear() + '-' + (m < 10 ? '0' + m : '' + m);
 }
 
+// Esquema del informe de la junta: 5 grupos originales del Excel.
+var GRUPOS_INFORME = ['Serv. Prof. / Contratistas', 'Alq. Equipo Pesado', 'Acueducto',
+                      'Legales, Imp., Munic., CxP', 'Otros'];
+
+// Mapeo por defecto categoría (presupuesto) -> grupo del informe.
+function _grupoDeCategoria(cat) {
+  switch (String(cat || '').trim()) {
+    case 'Acueducto': return 'Acueducto';
+    case 'Gastos legales':
+    case 'Línea de crédito / préstamo':
+    case 'Contabilidad (CPA)': return 'Legales, Imp., Munic., CxP';
+    case 'Portón, luminarias y cámaras':
+    case 'Banca en línea':
+    case 'Gastos varios y previsiones': return 'Otros';
+    default: return 'Serv. Prof. / Contratistas'; // Calles, Baño, Administración, Cerca perimetral
+  }
+}
+
+// Grupo del informe deducido de categoría + proveedor + detalle. Reproduce al
+// centavo la clasificación de 5 columnas del Excel original (excepciones que
+// no calzan con el mapeo por categoría: alquiler de equipo, luminarias/portón
+// de Elías, y la concesión de agua del MiAmbiente).
+function _grupoInformeDe(cat, prov, det) {
+  var p = String(prov || ''), d = String(det || '').toLowerCase();
+  if (/luis\s*molina/i.test(p) || /\bretro\b|equipo pesado/.test(d)) return 'Alq. Equipo Pesado';
+  if (/ministerio de ambiente/i.test(p)) return 'Legales, Imp., Munic., CxP';
+  if (/el[ií]as/i.test(p) && /port[oó]n/.test(d)) return 'Serv. Prof. / Contratistas';
+  return _grupoDeCategoria(cat);
+}
+
 function getGastoCategorias() {
   var raw = PropertiesService.getScriptProperties().getProperty(GASTO_CATS_PROP);
   if (raw) { try { var a = JSON.parse(raw); if (Array.isArray(a) && a.length) return a; } catch (e) {} }
@@ -64,6 +94,8 @@ function getGastosData(anio) {
   var todos = _sheetRows(SH.GASTOS).map(function (g) {
     g.monto = Number(g.monto) || 0;
     g.fecha = g.fecha instanceof Date ? g.fecha : new Date(g.fecha);
+    // grupo del informe: usa el guardado o lo deduce (para filas ya cargadas sin el campo)
+    g.grupoInforme = String(g.grupoInforme || '').trim() || _grupoInformeDe(g.categoria, g.proveedor, g.detalle);
     return g;
   });
   var gastos = todos.filter(function (g) { return g.fecha.getFullYear() === anio; })
@@ -146,10 +178,11 @@ function _appendGasto(g) {
   var sh = _ss().getSheetByName(SH.GASTOS);
   var fecha = g.fecha instanceof Date ? g.fecha : new Date(g.fecha || _today());
   var id = g.id || ('G' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000));
+  var grupo = String(g.grupoInforme || '').trim() || _grupoInformeDe(g.categoria, g.proveedor, g.detalle);
   sh.appendRow([
     id, fecha, _gastoMes(fecha), String(g.categoria || '').trim(), g.proveedor || '', g.detalle || '',
     _round2(g.monto), (g.tipo === 'recurrente' ? 'recurrente' : 'puntual'),
-    g.metodoPago || '', g.comprobanteUrl || '', g.notas || '', new Date()
+    g.metodoPago || '', g.comprobanteUrl || '', g.notas || '', new Date(), grupo
   ]);
   return id;
 }
@@ -189,6 +222,7 @@ function actualizarGasto(id, data) {
       if (data.tipo !== undefined) set('tipo', data.tipo === 'recurrente' ? 'recurrente' : 'puntual');
       if (data.metodoPago !== undefined) set('metodoPago', data.metodoPago);
       if (data.notas !== undefined) set('notas', data.notas);
+      if (data.grupoInforme !== undefined) set('grupoInforme', String(data.grupoInforme).trim());
       return { ok: true, id: id };
     }
   }
@@ -389,7 +423,8 @@ function seedGastos2026(force) {
   var rows = G.map(function (e, i) {
     var fecha = new Date(2026, e[0] - 1, 15, 12, 0, 0);
     return ['SEED-G26-' + (i + 1), fecha, _gastoMes(fecha), e[1], e[2], e[3], _round2(e[4]),
-            (e[5] === 'recurrente' ? 'recurrente' : 'puntual'), '', '', 'Carga inicial 2026 (Excel)', new Date()];
+            (e[5] === 'recurrente' ? 'recurrente' : 'puntual'), '', '', 'Carga inicial 2026 (Excel)', new Date(),
+            _grupoInformeDe(e[1], e[2], e[3])];
   });
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, COL_GASTOS.length).setValues(rows);
   var total = _round2(rows.reduce(function (s, r) { return s + Number(r[6]); }, 0));
