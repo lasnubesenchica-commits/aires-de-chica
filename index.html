@@ -1063,10 +1063,13 @@ async function renderOpts(){
           <div class="t-body"><b>Aviso de mora</b>
             <div class="t-sub">Solo a quien tenga <input type="number" id="o_moraavisomeses" min="1" max="12" value="${c.moraAvisoMeses||2}" style="width:52px"> o más <b>meses de mora</b> · el día <input type="number" id="o_moradia" min="1" max="28" value="${c.moraDia}"> de cada mes.</div>
             <div class="t-sub" style="margin-top:3px">Se envía cada mes hasta que el propietario pague y baje a <b>${(c.moraAvisoMeses||2)-1} mes(es)</b> de mora; ahí deja de recibirlo.</div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_inftrim" ${c.notifInformeTrim?'checked':''}>
+          <div class="t-body"><b>Informe financiero trimestral</b>
+            <div class="t-sub">Envía el <b>Informe Financiero</b> del trimestre cerrado a todos los propietarios · el día <input type="number" id="o_inftrimdia" min="1" max="28" value="${c.informeTrimDia||5}"> de <b>enero, abril, julio y octubre</b>.</div></div></div>
         <div class="toggle" style="border-top:1px dashed var(--ac-border);margin-top:8px;padding-top:12px"><input type="checkbox" id="o_captura" ${c.capturaComprobantes?'checked':''}>
           <div class="t-body"><b>Captura de comprobantes por email</b>
             <div class="t-sub">Lee <b>comprobantes@airesdechica.org</b> una vez al día y deja los pagos <b>pendientes de revisión</b> en la pestaña Comprobantes. Solo <b>lee</b> correo entrante — no envía nada (independiente del interruptor de envíos).</div></div></div>
-        <div class="help" style="margin-top:10px">Tareas programadas: <b>${(d.triggers||[]).length? d.triggers.map(t=>({recordatorioMensual:'Recordatorio',avisoDeMora:'Aviso de mora',capturarComprobantes:'Captura de comprobantes'}[t.funcion]||t.funcion)).join(', ') : 'ninguna'}</b>.</div>
+        <div class="help" style="margin-top:10px">Tareas programadas: <b>${(d.triggers||[]).length? d.triggers.map(t=>({recordatorioMensual:'Recordatorio',avisoDeMora:'Aviso de mora',capturarComprobantes:'Captura de comprobantes',informeTrimestral:'Informe trimestral'}[t.funcion]||t.funcion)).join(', ') : 'ninguna'}</b>.</div>
       </div></div>
     </div>
 
@@ -1138,6 +1141,8 @@ async function guardarOpts(){
     notifMora:document.getElementById('o_avmora').checked,
     moraDia:+document.getElementById('o_moradia').value,
     moraAvisoMeses:+document.getElementById('o_moraavisomeses').value,
+    notifInformeTrim:document.getElementById('o_inftrim').checked,
+    informeTrimDia:+document.getElementById('o_inftrimdia').value,
     capturaComprobantes:document.getElementById('o_captura').checked,
     banco:document.getElementById('o_banco').value.trim(),
     cuentaTipo:document.getElementById('o_ctipo').value.trim(),

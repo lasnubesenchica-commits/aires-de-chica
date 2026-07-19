@@ -31,6 +31,8 @@ function _cfgDefaults() {
     notifMora:         false,
     moraDia:           5,
     moraAvisoMeses:    2,        // avisar solo a quien tenga >= N meses de mora (para al bajar a N-1)
+    notifInformeTrim:  false,    // envío trimestral del Informe Financiero a los propietarios
+    informeTrimDia:    5,        // día del mes (ene/abr/jul/oct) en que se envía el informe trimestral
     fondoInicial:      0,        // saldo/fondo disponible al inicio del año (para el Informe Financiero)
     capturaComprobantes: false,  // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
     // Cuenta de cobro (editable). Se usa en correos, instructivo de pago y verificación de comprobantes.
@@ -89,6 +91,8 @@ function guardarConfig(nueva) {
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
   clean.moraAvisoMeses = Math.min(12, Math.max(1, Math.floor(Number(clean.moraAvisoMeses) || 2)));
+  clean.notifInformeTrim = !!clean.notifInformeTrim;
+  clean.informeTrimDia = Math.min(28, Math.max(1, Number(clean.informeTrimDia) || 5));
   clean.fondoInicial = _round2(Math.max(0, Number(clean.fondoInicial) || 0));
   clean.enviosActivos = !!clean.enviosActivos;
   clean.modoPrueba = !!clean.modoPrueba;
@@ -123,7 +127,7 @@ function reconcileTriggers(cfg) {
   cfg = cfg || _cfg();
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var h = t.getHandlerFunction();
-    if (h === 'recordatorioMensual' || h === 'avisoDeMora' || h === 'capturarComprobantes') ScriptApp.deleteTrigger(t);
+    if (h === 'recordatorioMensual' || h === 'avisoDeMora' || h === 'capturarComprobantes' || h === 'informeTrimestral') ScriptApp.deleteTrigger(t);
   });
   if (cfg.notifRecordatorio) {
     ScriptApp.newTrigger('recordatorioMensual').timeBased().onMonthDay(cfg.recordatorioDia).atHour(8).create();
@@ -133,6 +137,10 @@ function reconcileTriggers(cfg) {
   }
   if (cfg.capturaComprobantes) {
     ScriptApp.newTrigger('capturarComprobantes').timeBased().everyDays(1).atHour(7).create();
+  }
+  if (cfg.notifInformeTrim) {
+    // corre cada mes; el handler solo actúa en ene/abr/jul/oct (cierre de trimestre)
+    ScriptApp.newTrigger('informeTrimestral').timeBased().onMonthDay(cfg.informeTrimDia).atHour(9).create();
   }
 }
 
@@ -147,7 +155,7 @@ function avisoDeMora()         { return enviarRecordatorios('mora'); }
 
 function _listNotifTriggers() {
   return ScriptApp.getProjectTriggers()
-    .filter(function (t) { return ['recordatorioMensual', 'avisoDeMora', 'capturarComprobantes'].indexOf(t.getHandlerFunction()) >= 0; })
+    .filter(function (t) { return ['recordatorioMensual', 'avisoDeMora', 'capturarComprobantes', 'informeTrimestral'].indexOf(t.getHandlerFunction()) >= 0; })
     .map(function (t) {
       return { funcion: t.getHandlerFunction() };
     });
