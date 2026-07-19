@@ -275,9 +275,11 @@ function enviarRecordatorios(tipo, lotes) {
   if (!_cfg().enviosActivos) return { enviados: 0, pausado: true, sinCorreo: [], motivo: 'Envíos pausados (interruptor maestro apagado).' };
   tipo = tipo || 'mensual'; // 'mensual' | 'mora'
   var dash = buildDashboard(null);
+  var minMeses = Math.max(1, Number(_cfg().moraAvisoMeses) || 2);
   var objetivo = dash.cuentas.filter(function (c) {
     if (lotes && lotes.length) return lotes.indexOf(c.clave) !== -1;
-    if (tipo === 'mora') return c.mora > 0.009;
+    // aviso de mora: solo a quien tenga >= N meses de mora (deja de recibir al bajar a N-1)
+    if (tipo === 'mora') return (c.mesesMora || 0) >= minMeses;
     return c.saldoConMora > 0.009; // recordatorio a todos con saldo
   });
   var enviados = [], sinCorreo = [];

@@ -30,6 +30,7 @@ function _cfgDefaults() {
     recordatorioDia:   1,
     notifMora:         false,
     moraDia:           5,
+    moraAvisoMeses:    2,        // avisar solo a quien tenga >= N meses de mora (para al bajar a N-1)
     capturaComprobantes: false,  // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
     // Cuenta de cobro (editable). Se usa en correos, instructivo de pago y verificación de comprobantes.
     banco:             CONFIG.BANCO,
@@ -86,6 +87,7 @@ function guardarConfig(nueva) {
   clean.moraOrden = (clean.moraOrden === 'mora') ? 'mora' : 'cuota';
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
+  clean.moraAvisoMeses = Math.min(12, Math.max(1, Math.floor(Number(clean.moraAvisoMeses) || 2)));
   clean.enviosActivos = !!clean.enviosActivos;
   clean.modoPrueba = !!clean.modoPrueba;
   clean.correoPrueba = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(clean.correoPrueba || '').trim())

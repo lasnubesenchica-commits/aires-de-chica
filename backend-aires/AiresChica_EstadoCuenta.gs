@@ -152,13 +152,15 @@ function calcEstado(prop, pagosArr, asOf) {
 
   // 5) totales
   var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
-  var oldestUnpaid = null, bucketMes = null;
+  var oldestUnpaid = null, bucketMes = null, mesesMora = 0;
   buckets.forEach(function (b) {
     facturado += b.monto;
     moraCargada = _round2(moraCargada + b.mora);
     if (b.saldo > 0.009) { saldoTotal = _round2(saldoTotal + b.saldo); if (!oldestUnpaid) oldestUnpaid = b; }
     if (b.moraSaldo > 0.009) moraPendiente = _round2(moraPendiente + b.moraSaldo);
     if (b.tipo === 'cuota' && b.month === mesActual) bucketMes = b;
+    // meses de mora: cuotas vencidas (que generan recargo, no condonadas) con cuota aún pendiente
+    if (b.tipo === 'cuota' && b.moraMeses > 0 && b.saldo > 0.009) mesesMora++;
   });
 
   // cobertura de la cuota del MES DE CORTE (principal)
@@ -236,6 +238,7 @@ function calcEstado(prop, pagosArr, asOf) {
     moraOrden: moraOrden, moraCrece: moraCrece,
     moraCondon: String(prop.moraCondon || ''), moraCondonAll: condon.all,
     diasVencido: diasVencido,
+    mesesMora: mesesMora,          // nº de cuotas vencidas con recargo aún pendientes de pago
     aging: aging,
     estado: estado,
     fechaVencimiento: venceProx,
@@ -365,7 +368,7 @@ function buildDashboard(asOf) {
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, creditoAFavor: e.creditoAFavor,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
-               estado: e.estado, aging: e.aging, diasVencido: e.diasVencido,
+               estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
                fechaVencimiento: e.fechaVencimiento,
                // desglose mensual (caja real) para que el modal abra al instante (sin otra llamada)
                mensual: e.mensual };
