@@ -378,3 +378,37 @@ function seedGastos2026(force) {
   return { ok: true, gastos: rows.length, presupuesto: Object.keys(PRESUP).length, total: total };
 }
 
+/* ─────────────── plantillas recurrentes sugeridas (una vez) ───────────────
+ * Precarga las plantillas de gastos fijos mensuales de Aires de Chicá.
+ * Los fijos llevan monto; los variables (Rodrigo, Cornelio, Naturgy) van con
+ * monto 0 para ajustarlo al registrar cada mes. Exige force si ya hay plantillas.
+ */
+function seedRecurrentes(force) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.GRECUR);
+  if (sh.getLastRow() > 1 && !force) throw new Error('Ya hay plantillas recurrentes. Usa force=true para reemplazarlas.');
+  if (sh.getLastRow() > 1 && force) sh.deleteRows(2, sh.getLastRow() - 1);
+  guardarGastoCategorias(DEFAULT_GASTO_CATS);
+  var AC = 'Acueducto', CA = 'Calles, senderos y áreas comunes', PO = 'Portón, luminarias y cámaras',
+      BA = 'Baño comunal', AD = 'Administración', CP = 'Contabilidad (CPA)',
+      BL = 'Banca en línea', LC = 'Línea de crédito / préstamo';
+  var T = [
+    [BA, 'Zoila Castrejón', 'limpieza baño común', 45],
+    [AD, 'Doraida Castillo', 'honorarios administrativos', 250],
+    [LC, 'Doraida Castillo', 'abono a préstamo', 200],
+    [PO, 'Starlink', 'portón (internet)', 40],
+    [PO, 'Más Móvil', 'portón (datos)', 10.7],
+    [PO, 'Javier Della Cella', 'Nube portón (cámaras)', 11.99],
+    [BL, 'Banco General', 'banca en línea', 5.35],
+    [CP, 'CPA', 'honorarios contables (150 + ITBMS)', 160.5],
+    [CA, 'Rodrigo Valdés', 'contr. mant. general (variable)', 0],
+    [CA, 'Cornelio Sánchez', 'contrato limpieza maleza (variable)', 0],
+    [PO, 'Naturgy', 'electricidad portón (variable)', 0]
+  ];
+  var rows = T.map(function (e, i) {
+    return ['SEED-R26-' + (i + 1), e[0], e[1], e[2], _round2(e[3]), 'si', ''];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, COL_GRECUR.length).setValues(rows);
+  return { ok: true, plantillas: rows.length };
+}
+

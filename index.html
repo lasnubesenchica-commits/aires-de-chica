@@ -1712,7 +1712,7 @@ function _gastosRecurrentes(d){
       <button class="btn" onclick="nuevoRecurrente()">＋ Agregar plantilla</button></div>
     <div class="bd" style="padding:12px 18px">
       <div class="muted" style="font-size:.82rem;margin-bottom:8px">Define una vez tus gastos fijos mensuales. En los variables (ej. mantenimiento general) deja el monto vacío y lo ajustas al registrar.</div>
-      ${rec.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th>Proveedor / detalle</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="muted" style="padding:12px 0">Aún no hay plantillas.</div>'}
+      ${rec.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th>Proveedor / detalle</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:`<div style="padding:8px 0"><div class="muted" style="margin-bottom:10px">Aún no hay plantillas. Puedes cargar de un clic las recurrentes típicas (Zoila, Doraida, Starlink, Más Móvil, Nube, Banca en línea, CPA, Rodrigo, Cornelio, Naturgy) y luego editarlas o desactivar las que no apliquen.</div><button class="btn green" onclick="importarRecurrentes(this)">Cargar plantillas recurrentes sugeridas</button></div>`}
     </div></div>
     ${activos.length?`<div class="card" style="margin-top:14px"><div class="hd"><h2>Registrar recurrentes del mes</h2></div>
       <div class="bd" style="padding:12px 18px">
@@ -1749,6 +1749,12 @@ async function guardarRecurrenteUI(id){
   const btn=document.getElementById('gr_save'); btn.disabled=true;
   try{ await post('guardarGastoRecurrente',{plantilla:p}); closeModal(); await renderGastos(); toast('Plantilla guardada'); }
   catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function importarRecurrentes(btn){
+  if(!confirm('¿Cargar las plantillas de gastos recurrentes típicas de Aires de Chicá?\n\nSon 11 plantillas (las fijas con su monto; Rodrigo, Cornelio y Naturgy quedan variables). Podrás editarlas o desactivarlas.')) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Cargando…';
+  try{ const r=await post('seedRecurrentes',{}); GASTOS_DATA=null; await renderGastos(); toast(`${r.plantillas} plantillas cargadas`); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function eliminarRecurrenteUI(id,btn){
   if(!confirm('¿Eliminar esta plantilla? No borra los gastos ya registrados.')) return;
