@@ -23,6 +23,7 @@ header.top { background: linear-gradient(120deg,#0B7A98,#0E8FB0 55%,#12A2C4); co
 nav.tabs { display:flex; gap:4px; border-bottom:1px solid var(--ac-border); margin:22px 0 20px; flex-wrap:wrap; }
 nav.tabs button { border:0; background:none; font:inherit; font-weight:600; color:var(--ac-muted); padding:10px 16px; cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; }
 nav.tabs button.active { color:var(--ac-teal-700); border-bottom-color:var(--ac-teal); background:var(--ac-teal-50); }
+nav.tabs .tab-div { align-self:center; width:1px; height:18px; background:var(--ac-border); margin:0 6px; }
 .kpis-hero { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 .kpis-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
 @media (max-width:820px){ .kpis-hero{grid-template-columns:1fr} .kpis-row{grid-template-columns:repeat(2,1fr)} }
@@ -119,9 +120,8 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   .cards { display:flex; }
   .card .hd { flex-direction:column; align-items:stretch; gap:10px; }
   .card .hd .spacer { display:none; }
-  #vistaSeg, #gastosSeg { display:flex; width:100%; }
-  #vistaSeg .seg-btn, #gastosSeg .seg-btn { flex:1; min-width:0; text-align:center; padding:10px 4px; font-size:.82rem; }
-  #gastosSeg .seg-btn { padding:10px 2px; font-size:.72rem; }
+  #vistaSeg, #gastosSeg, #finSeg { display:flex; width:100%; }
+  #vistaSeg .seg-btn, #gastosSeg .seg-btn, #finSeg .seg-btn { flex:1; min-width:0; text-align:center; padding:10px 4px; font-size:.82rem; }
   .controls { display:flex; flex-direction:column; align-items:stretch; gap:8px; width:100%; }
   .controls > * { width:100%; }
   #ctrlPeriodo label { flex:1; }
@@ -251,11 +251,15 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 <div class="wrap">
   <nav class="tabs" id="tabs">
     <button data-tab="dash" class="active">Estado de cuentas</button>
-    <button data-tab="prop">Propietarios</button>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
-    <button data-tab="gastos">Gastos</button>
     <button data-tab="recor">Recordatorios</button>
+    <span class="tab-div" aria-hidden="true"></span>
+    <button data-tab="gastos">Gastos</button>
+    <span class="tab-div" aria-hidden="true"></span>
+    <button data-tab="finanzas">Finanzas</button>
+    <span class="tab-div" aria-hidden="true"></span>
+    <button data-tab="prop">Propietarios</button>
     <button data-tab="opts">⚙ Opciones</button>
   </nav>
 
@@ -403,6 +407,10 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
   <!-- OPCIONES / ADMIN -->
   <section id="tab-gastos" style="display:none">
     <div id="gastosBody" class="muted">Cargando…</div>
+  </section>
+
+  <section id="tab-finanzas" style="display:none">
+    <div id="finanzasBody" class="muted">Cargando…</div>
   </section>
 
   <section id="tab-opts" style="display:none">
@@ -1586,7 +1594,7 @@ function paintGastos(){
       <div style="font-weight:700;font-size:1.1rem">Gastos</div>
       <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
       <span class="spacer" style="flex:1"></span>
-      <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}${seg('presupuesto','Presupuesto')}${seg('resultado','Resultado')}</div>
+      <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}</div>
     </div></div>`;
   let banner='';
   if(d.anio===2026 && !d.gastos.length && !Object.keys(d.presupuesto||{}).length){
@@ -1596,11 +1604,7 @@ function paintGastos(){
       <button class="btn green" onclick="importarGastos2026(this)">Importar presupuesto y gastos 2026</button>
     </div></div>`;
   }
-  let content='';
-  if(GASTOS_VISTA==='recurrentes') content=_gastosRecurrentes(d);
-  else if(GASTOS_VISTA==='presupuesto') content=_gastosPresupuesto(d);
-  else if(GASTOS_VISTA==='resultado') content=_gastosResultado(d);
-  else content=_gastosRegistro(d);
+  const content = GASTOS_VISTA==='recurrentes' ? _gastosRecurrentes(d) : _gastosRegistro(d);
   body.innerHTML=header+banner+content;
 }
 function _gastosResultado(d){
@@ -1879,18 +1883,45 @@ async function guardarPresupuestoUI(){
   try{
     await post('guardarGastoCategorias',{categorias:cats});
     await post('guardarPresupuesto',{anio:GASTOS_DATA.anio, presupuesto:mapa});
-    await renderGastos(); toast('Presupuesto guardado');
+    GASTOS_DATA=null; await renderFinanzas(); toast('Presupuesto guardado');
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
+}
+/* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
+let FIN_VISTA='presupuesto';
+async function renderFinanzas(){
+  const body=document.getElementById('finanzasBody'); if(!body) return;
+  if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';
+  let d;
+  try{ d=await jsonp('getGastosData', GASTOS_ANIO?{anio:GASTOS_ANIO}:{}); }
+  catch(e){ if(onAuthError(e))return; body.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  GASTOS_DATA=d; GASTOS_ANIO=d.anio;
+  paintFinanzas();
+}
+function paintFinanzas(){
+  const d=GASTOS_DATA; if(!d) return;
+  const body=document.getElementById('finanzasBody'); if(!body) return;
+  const anios=(d.aniosDisponibles&&d.aniosDisponibles.length)?d.aniosDisponibles:[d.anio];
+  const yearSel=`<select onchange="GASTOS_ANIO=+this.value;renderFinanzas()">${anios.map(y=>`<option value="${y}" ${y===d.anio?'selected':''}>${y}</option>`).join('')}</select>`;
+  const seg=(v,l)=>`<button class="seg-btn ${FIN_VISTA===v?'active':''}" onclick="FIN_VISTA='${v}';paintFinanzas()">${l}</button>`;
+  const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:1.1rem">Finanzas</div>
+      <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
+      <span class="spacer" style="flex:1"></span>
+      <div class="seg" id="finSeg">${seg('presupuesto','Presupuesto')}${seg('resultado','Resultado')}</div>
+    </div></div>`;
+  const content = FIN_VISTA==='resultado' ? _gastosResultado(d) : _gastosPresupuesto(d);
+  body.innerHTML=header+content;
 }
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','comprob','prop','gastos','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','comprob','prop','gastos','finanzas','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comprob')renderComprob();
   if(t==='gastos')renderGastos();
+  if(t==='finanzas')renderFinanzas();
   if(t==='recor')renderRecor();
   if(t==='opts')renderOpts();
 });
