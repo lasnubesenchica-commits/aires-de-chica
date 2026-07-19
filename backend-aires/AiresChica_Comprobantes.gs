@@ -190,7 +190,7 @@ function _esPago(texto) {
 //   nivel: 'ok' (coincide) | 'bad' (no coincide / medio no válido) | 'warn' (no se pudo verificar)
 // Aires de Chicá SOLO recibe por su cuenta de Banco General; no tiene Yappy/Nequi.
 function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
-  var acct = String(CONFIG.CUENTA_NUM || '').replace(/\D/g, '');
+  var acct = String(_cfg().cuentaNum || '').replace(/\D/g, '');
   var mp = _normTxt(metodoPago || '');
   var cd = String(cuentaDestino || '').replace(/\D/g, '');
   var ben = _normTxt(beneficiario || '');
@@ -199,7 +199,7 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
   // Medios que Aires de Chicá NO usa
   if (/YAPPY|NEQUI/.test(mp)) {
     return { nivel: 'bad', metodo: metodoPago,
-      mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Solo recibe por su cuenta de ' + CONFIG.BANCO + '. Verifica a dónde se envió.' };
+      mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Solo recibe por su cuenta de ' + _cfg().banco + '. Verifica a dónde se envió.' };
   }
 
   // Comparación por número de cuenta destino
@@ -208,9 +208,9 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
       (cd.length >= 5 && acct.indexOf(cd) >= 0) ||
       (acct.length >= 5 && cd.indexOf(acct) >= 0) ||
       (cd.length >= 3 && cd.length <= 4 && acct.slice(-cd.length) === cd); // "terminación de producto" (últimos dígitos)
-    if (coincide) return { nivel: 'ok', mensaje: 'Transferencia a la cuenta de Aires de Chicá (' + CONFIG.CUENTA_NUM + ').' };
+    if (coincide) return { nivel: 'ok', mensaje: 'Transferencia a la cuenta de Aires de Chicá (' + _cfg().cuentaNum + ').' };
     return { nivel: 'bad',
-      mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con la de Aires de Chicá (' + CONFIG.CUENTA_NUM + '). Verifica antes de aplicar.' };
+      mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con la de Aires de Chicá (' + _cfg().cuentaNum + '). Verifica antes de aplicar.' };
   }
 
   // Sin número de cuenta: apóyate en el beneficiario
@@ -243,7 +243,7 @@ function _notifBancoPdf(nb, body, fecha) {
   var html = '<html><head><meta charset="utf-8"></head>' +
     '<body style="font-family:Helvetica,Arial,sans-serif;color:#143039;padding:36px">' +
     '<div style="font-size:20px;font-weight:700;color:#0E8FB0">Aviso de pago recibido</div>' +
-    '<div style="color:#5B7883;margin:2px 0 16px">Banca en Línea · ' + CONFIG.BANCO + ' · ' + f + '</div>' +
+    '<div style="color:#5B7883;margin:2px 0 16px">Banca en Línea · ' + _cfg().banco + ' · ' + f + '</div>' +
     '<div style="font-size:34px;font-weight:800;color:#0E8FB0;margin:6px 0 18px">' + _money(nb.monto || 0) + '</div>' +
     '<table style="border-collapse:collapse;font-size:14px">' +
       _pdfRow('Pagador', esc(nb.pagador)) +
@@ -338,7 +338,7 @@ function capturarComprobantes(maxThreads) {
         if (nb.pagador) nombreMatch = nb.pagador;
         metodoPago = 'Banca en Línea (Banco General)';
         cuentaDestino = nb.cuentaTerm || '';
-        beneficiario = CONFIG.CUENTA_NOMBRE; // BG sólo notifica sobre la cuenta de Aires de Chicá
+        beneficiario = _cfg().cuentaNombre; // BG sólo notifica sobre la cuenta de Aires de Chicá
         // Guarda el aviso como PDF con formato en Drive (miniatura legible + enlace "Ver comprobante").
         try {
           var pdf = _notifBancoPdf(nb, body, msg.getDate())

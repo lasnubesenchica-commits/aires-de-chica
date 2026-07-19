@@ -30,7 +30,12 @@ function _cfgDefaults() {
     recordatorioDia:   1,
     notifMora:         false,
     moraDia:           5,
-    capturaComprobantes: false   // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
+    capturaComprobantes: false,  // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
+    // Cuenta de cobro (editable). Se usa en correos, instructivo de pago y verificación de comprobantes.
+    banco:             CONFIG.BANCO,
+    cuentaTipo:        CONFIG.CUENTA_TIPO,
+    cuentaNum:         CONFIG.CUENTA_NUM,
+    cuentaNombre:      CONFIG.CUENTA_NOMBRE
   };
 }
 
@@ -63,7 +68,7 @@ function getConfig() {
   var c = _cfg();
   return {
     config: c,
-    banco: { banco: CONFIG.BANCO, tipo: CONFIG.CUENTA_TIPO, numero: CONFIG.CUENTA_NUM, nombre: CONFIG.CUENTA_NOMBRE },
+    banco: { banco: c.banco, tipo: c.cuentaTipo, numero: c.cuentaNum, nombre: c.cuentaNombre },
     triggers: _listNotifTriggers(),
     moneda: CONFIG.MONEDA
   };
@@ -89,6 +94,10 @@ function guardarConfig(nueva) {
   clean.notifRecordatorio = !!clean.notifRecordatorio;
   clean.notifMora = !!clean.notifMora;
   clean.capturaComprobantes = !!clean.capturaComprobantes;
+  clean.banco = String(clean.banco || '').trim() || d.banco;
+  clean.cuentaTipo = String(clean.cuentaTipo || '').trim() || d.cuentaTipo;
+  clean.cuentaNum = String(clean.cuentaNum || '').trim() || d.cuentaNum;
+  clean.cuentaNombre = String(clean.cuentaNombre || '').trim() || d.cuentaNombre;
 
   PropertiesService.getScriptProperties().setProperty(CFG_PROP, JSON.stringify(clean));
   _cfgCache = null;

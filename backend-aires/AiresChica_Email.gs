@@ -117,8 +117,8 @@ function estadoCuentaHTML(est) {
   // Datos de pago
   '<div style="margin-top:24px;padding:14px 16px;border:1px solid ' + B.border + ';border-radius:8px;background:#fbfeff">' +
     '<div style="font-weight:700;color:' + B.teal700 + ';margin-bottom:4px">Datos para el pago</div>' +
-    '<div class="muted">' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO + ' Nº ' + CONFIG.CUENTA_NUM + '</div>' +
-    '<div class="muted">A nombre de ' + CONFIG.CUENTA_NOMBRE + '</div>' +
+    '<div class="muted">' + _cfg().banco + ' · ' + _cfg().cuentaTipo + ' Nº ' + _cfg().cuentaNum + '</div>' +
+    '<div class="muted">A nombre de ' + _cfg().cuentaNombre + '</div>' +
     '<div class="muted" style="margin-top:6px;font-size:11.5px">Nota: a partir de la cuota de ' + moraDesdeTxt + ' se aplica un recargo del ' + cfg.moraPct + '% mensual sobre el mes o meses morosos (Reglamento de copropietarios).</div>' +
   '</div>' +
 
@@ -147,8 +147,8 @@ function _instructivoPago(loteTxt) {
     '<div style="font-weight:700;color:' + B.teal700 + ';font-size:14px;margin-bottom:10px">Cómo registrar su pago en la Banca en Línea de Banco General</div>' +
     '<ol style="margin:0;padding-left:18px;line-height:1.65">' +
       '<li>Ingrese a su <b>Banca en Línea de Banco General</b> (página web o app móvil) y seleccione <b>Transferencias</b>.</li>' +
-      '<li>Elija o agregue como beneficiario la cuenta de <b>' + CONFIG.CUENTA_NOMBRE + '</b>:<br>' +
-        CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO + ' N.º <b>' + CONFIG.CUENTA_NUM + '</b>.</li>' +
+      '<li>Elija o agregue como beneficiario la cuenta de <b>' + _cfg().cuentaNombre + '</b>:<br>' +
+        _cfg().banco + ' · ' + _cfg().cuentaTipo + ' N.º <b>' + _cfg().cuentaNum + '</b>.</li>' +
       '<li>Indique el <b>monto</b> de su cuota y, en la <b>descripción / concepto</b>, escriba su número de <b>lote ' + loteTxt + '</b>.</li>' +
       '<li>En el campo de <b>correo electrónico para enviar el comprobante</b>, agregue:<br>' +
         '<span style="display:inline-block;margin-top:4px;padding:4px 10px;background:#fff;border:1px solid ' + B.teal + ';border-radius:6px;font-weight:700;color:' + B.teal700 + '">' + comp + '</span></li>' +
@@ -212,8 +212,8 @@ function _cuerpoEstado(est) {
     '<p>Adjuntamos su estado de cuenta de mantenimiento actualizado (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
     '<p>' + saldoTxt + '</p>' +
     (est.saldoConMora > 0.009 ?
-      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + CONFIG.BANCO + ' · ' + CONFIG.CUENTA_TIPO +
-      ' Nº ' + CONFIG.CUENTA_NUM + '<br>' + CONFIG.CUENTA_NOMBRE + '</p>' : '') +
+      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + _cfg().banco + ' · ' + _cfg().cuentaTipo +
+      ' Nº ' + _cfg().cuentaNum + '<br>' + _cfg().cuentaNombre + '</p>' : '') +
     _instructivoPago(est.lote)
   );
 }

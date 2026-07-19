@@ -258,8 +258,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
     <span class="tab-div" aria-hidden="true"></span>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
-    <button data-tab="recor">Recordatorios</button>
-    <button data-tab="opts" class="tab-gear" title="Opciones" aria-label="Opciones">⚙</button>
+    <button data-tab="opts">⚙ Opciones</button>
   </nav>
 
   <section id="tab-dash">
@@ -371,8 +370,18 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
       <div id="propCards" class="cards prop-cards"></div></div></div>
   </section>
 
-  <section id="tab-recor" style="display:none">
-    <div class="card"><div class="hd"><h2>Envío de recordatorios y estados de cuenta</h2></div>
+  <!-- OPCIONES / ADMIN -->
+  <section id="tab-gastos" style="display:none">
+    <div id="gastosBody" class="muted">Cargando…</div>
+  </section>
+
+  <section id="tab-finanzas" style="display:none">
+    <div id="finanzasBody" class="muted">Cargando…</div>
+  </section>
+
+  <section id="tab-opts" style="display:none">
+    <div id="optsBody" class="muted">Cargando…</div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>Envío de recordatorios y estados de cuenta</h2></div>
       <div class="bd" style="padding:18px">
         <p class="muted">Envía a cada propietario su estado de cuenta en PDF por correo. Antes de enviar a todos, puedes <b>enviarte una prueba a tu correo</b> para verificar el formato.</p>
         <div style="display:flex;gap:18px;flex-wrap:wrap">
@@ -401,19 +410,6 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
         </div>
         <div id="recorResult" style="margin-top:14px"></div>
       </div></div>
-  </section>
-
-  <!-- OPCIONES / ADMIN -->
-  <section id="tab-gastos" style="display:none">
-    <div id="gastosBody" class="muted">Cargando…</div>
-  </section>
-
-  <section id="tab-finanzas" style="display:none">
-    <div id="finanzasBody" class="muted">Cargando…</div>
-  </section>
-
-  <section id="tab-opts" style="display:none">
-    <div id="optsBody" class="muted">Cargando…</div>
   </section>
 </div>
 
@@ -1073,11 +1069,20 @@ async function renderOpts(){
       </div></div>
     </div>
 
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>Cuenta de cobro (Aires de Chicá)</h2></div>
+      <div class="bd" style="padding:18px">
+        <div class="muted" style="font-size:.82rem;margin-bottom:12px">Estos datos aparecen en los estados de cuenta, el instructivo de pago y se usan para <b>verificar a qué cuenta llegó cada comprobante</b>. Al editarlos aquí, se aplican en todo el sistema.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px">
+          <div class="field" style="margin:0"><label>Banco</label><input type="text" id="o_banco" value="${(d.banco.banco||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+          <div class="field" style="margin:0"><label>Tipo de cuenta</label><input type="text" id="o_ctipo" value="${(d.banco.tipo||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+          <div class="field" style="margin:0"><label>Número de cuenta</label><input type="text" id="o_cnum" value="${(d.banco.numero||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+          <div class="field" style="margin:0"><label>A nombre de</label><input type="text" id="o_cnom" value="${(d.banco.nombre||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
+        </div>
+      </div></div>
+
     <div class="card" style="margin-top:16px"><div class="bd" style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button class="btn green" onclick="guardarOpts()">Guardar cambios</button>
       <span id="optsMsg" class="muted"></span>
-      <span class="spacer" style="flex:1"></span>
-      <span class="muted" style="font-size:.8rem">Pago a: ${d.banco.banco} · ${d.banco.tipo} Nº ${d.banco.numero} · ${d.banco.nombre}</span>
     </div></div>
 
     <div class="card" style="margin-top:16px"><div class="hd"><h2>🔒 Seguridad · Contraseña de acceso</h2></div>
@@ -1129,7 +1134,11 @@ async function guardarOpts(){
     recordatorioDia:+document.getElementById('o_recordia').value,
     notifMora:document.getElementById('o_avmora').checked,
     moraDia:+document.getElementById('o_moradia').value,
-    capturaComprobantes:document.getElementById('o_captura').checked
+    capturaComprobantes:document.getElementById('o_captura').checked,
+    banco:document.getElementById('o_banco').value.trim(),
+    cuentaTipo:document.getElementById('o_ctipo').value.trim(),
+    cuentaNum:document.getElementById('o_cnum').value.trim(),
+    cuentaNombre:document.getElementById('o_cnom').value.trim()
   };
   try{
     const r=await post('guardarConfig',{config:cfg});
@@ -1916,13 +1925,12 @@ document.getElementById('tabs').addEventListener('click',e=>{
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','comprob','prop','gastos','finanzas','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','comprob','prop','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comprob')renderComprob();
   if(t==='gastos')renderGastos();
   if(t==='finanzas')renderFinanzas();
-  if(t==='recor')renderRecor();
-  if(t==='opts')renderOpts();
+  if(t==='opts'){ renderOpts(); renderRecor(); }
 });
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });
 boot();
