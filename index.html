@@ -20,10 +20,11 @@ header.top { background: linear-gradient(120deg,#0B7A98,#0E8FB0 55%,#12A2C4); co
 .top .sub { font-size:.78rem; opacity:.85; }
 .top .spacer { flex:1; }
 .logout { background:rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
-nav.tabs { display:flex; gap:4px; border-bottom:1px solid var(--ac-border); margin:22px 0 20px; flex-wrap:wrap; }
-nav.tabs button { border:0; background:none; font:inherit; font-weight:600; color:var(--ac-muted); padding:10px 16px; cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; }
+nav.tabs { display:flex; gap:2px; border-bottom:1px solid var(--ac-border); margin:22px 0 20px; flex-wrap:wrap; }
+nav.tabs button { border:0; background:none; font:inherit; font-weight:600; color:var(--ac-muted); padding:10px 12px; cursor:pointer; border-bottom:3px solid transparent; border-radius:8px 8px 0 0; }
 nav.tabs button.active { color:var(--ac-teal-700); border-bottom-color:var(--ac-teal); background:var(--ac-teal-50); }
 nav.tabs .tab-div { align-self:center; width:1px; height:18px; background:var(--ac-border); margin:0 6px; }
+nav.tabs .tab-gear { font-size:1.15rem; line-height:1; }
 .kpis-hero { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 .kpis-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
 @media (max-width:820px){ .kpis-hero{grid-template-columns:1fr} .kpis-row{grid-template-columns:repeat(2,1fr)} }
@@ -251,16 +252,14 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 <div class="wrap">
   <nav class="tabs" id="tabs">
     <button data-tab="dash" class="active">Estado de cuentas</button>
+    <button data-tab="gastos">Gastos</button>
+    <button data-tab="finanzas">Finanzas</button>
+    <button data-tab="prop">Propietarios</button>
+    <span class="tab-div" aria-hidden="true"></span>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
     <button data-tab="recor">Recordatorios</button>
-    <span class="tab-div" aria-hidden="true"></span>
-    <button data-tab="gastos">Gastos</button>
-    <span class="tab-div" aria-hidden="true"></span>
-    <button data-tab="finanzas">Finanzas</button>
-    <span class="tab-div" aria-hidden="true"></span>
-    <button data-tab="prop">Propietarios</button>
-    <button data-tab="opts">⚙ Opciones</button>
+    <button data-tab="opts" class="tab-gear" title="Opciones" aria-label="Opciones">⚙</button>
   </nav>
 
   <section id="tab-dash">
