@@ -1572,9 +1572,15 @@ async function renderGastos(){
   try{ d=await jsonp('getGastosData', GASTOS_ANIO?{anio:GASTOS_ANIO}:{}); }
   catch(e){ if(onAuthError(e))return; body.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
   GASTOS_DATA=d; GASTOS_ANIO=d.anio;
+  paintGastos();
+}
+// pinta la vista desde los datos ya cargados (sin volver a consultar el servidor)
+function paintGastos(){
+  const d=GASTOS_DATA; if(!d) return;
+  const body=document.getElementById('gastosBody'); if(!body) return;
   const anios=(d.aniosDisponibles&&d.aniosDisponibles.length)?d.aniosDisponibles:[d.anio];
   const yearSel=`<select id="gAnio" onchange="GASTOS_ANIO=+this.value;renderGastos()">${anios.map(y=>`<option value="${y}" ${y===d.anio?'selected':''}>${y}</option>`).join('')}</select>`;
-  const seg=(v,l)=>`<button class="seg-btn ${GASTOS_VISTA===v?'active':''}" onclick="GASTOS_VISTA='${v}';renderGastos()">${l}</button>`;
+  const seg=(v,l)=>`<button class="seg-btn ${GASTOS_VISTA===v?'active':''}" onclick="GASTOS_VISTA='${v}';paintGastos()">${l}</button>`;
   const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <div style="font-weight:700;font-size:1.1rem">Gastos</div>
       <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
@@ -1608,9 +1614,9 @@ function _gastosRegistro(d){
       <button class="btn" onclick="nuevoGasto()">＋ Agregar gasto</button></div>
     <div class="bd" style="padding:12px 18px">
       <div class="controls" style="margin-bottom:10px">
-        <select id="gfMes" onchange="GASTOS_FILTRO.mes=this.value;renderGastos()">${mesOpts}</select>
-        <select id="gfCat" onchange="GASTOS_FILTRO.cat=this.value;renderGastos()">${catOpts}</select>
-        <select id="gfTipo" onchange="GASTOS_FILTRO.tipo=this.value;renderGastos()"><option value="">Recurrentes y puntuales</option><option value="recurrente" ${f.tipo==='recurrente'?'selected':''}>Solo recurrentes</option><option value="puntual" ${f.tipo==='puntual'?'selected':''}>Solo puntuales</option></select>
+        <select id="gfMes" onchange="GASTOS_FILTRO.mes=this.value;paintGastos()">${mesOpts}</select>
+        <select id="gfCat" onchange="GASTOS_FILTRO.cat=this.value;paintGastos()">${catOpts}</select>
+        <select id="gfTipo" onchange="GASTOS_FILTRO.tipo=this.value;paintGastos()"><option value="">Recurrentes y puntuales</option><option value="recurrente" ${f.tipo==='recurrente'?'selected':''}>Solo recurrentes</option><option value="puntual" ${f.tipo==='puntual'?'selected':''}>Solo puntuales</option></select>
         <span class="spacer" style="flex:1"></span>
         <div class="muted" style="align-self:center">${list.length} gasto(s) · Total <b>${money(total)}</b></div>
       </div>
