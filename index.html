@@ -1618,9 +1618,24 @@ function paintGastos(){
   body.innerHTML=header+banner+content;
 }
 function _gastosResultado(d){
-  const ing=d.ingresosTotal||0, egr=d.ejecutadoTotal||0, res=d.resultadoTotal!=null?d.resultadoTotal:(ing-egr);
+  // rango de meses (filtro): FIN_MES_INI..FIN_MES_FIN
+  const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
+  const rango=!(mi===1&&mf===12);
+  const im=d.ingresosPorMes||[], em=d.porMes||[];
+  let ing=0, egr=0;
+  for(let i=mi-1;i<=mf-1;i++){ ing=Math.round((ing+(im[i]||0))*100)/100; egr=Math.round((egr+(em[i]||0))*100)/100; }
+  const res=Math.round((ing-egr)*100)/100;
   const positivo=res>=-0.009;
   const resCol=positivo?'var(--ac-green-600)':'var(--ac-danger)';
+  const periodoTxt=rango?`${GMESES[mi-1]}–${GMESES[mf-1]} ${d.anio}`:`${d.anio}`;
+  // filtro de periodo
+  const mopts=sel=>GMESES.map((m,i)=>`<option value="${i+1}" ${sel===i+1?'selected':''}>${m}</option>`).join('');
+  const filtro=`<div style="display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--ac-border)">
+    <span style="font-weight:600;font-size:.85rem">Periodo</span>
+    <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Desde <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; paintFinanzas()">${mopts(mi)}</select></label>
+    <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Hasta <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; paintFinanzas()">${mopts(mf)}</select></label>
+    ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;paintFinanzas()">Año completo</button>`:'<span class="muted" style="font-size:.78rem">(año completo)</span>'}
+  </div>`;
   // tarjetas resumen
   const cardKPI=(l,v,c,sub)=>`<div class="kpi ${c}" style="flex:1;min-width:200px"><div class="label">${l}</div><div class="val" style="font-size:1.5rem">${v}</div>${sub?`<div class="hint">${sub}</div>`:''}</div>`;
   const resumen=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
@@ -1628,37 +1643,39 @@ function _gastosResultado(d){
     ${cardKPI('Egresos (gastos)',money(egr),'coral')}
     <div class="kpi ${positivo?'green':'red'}" style="flex:1;min-width:200px"><div class="label">${positivo?'Superávit del periodo':'Déficit del periodo'}</div><div class="val" style="font-size:1.5rem;color:${resCol}">${money(res)}</div><div class="hint">Ingresos − Egresos</div></div>
   </div>`;
-  // egresos por categoría
-  const cats=d.porCategoria.filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
+  // egresos por categoría en el rango (recalculado desde los gastos)
+  const catMap={};
+  (d.gastos||[]).forEach(g=>{ const m=new Date(g.fecha).getMonth()+1; if(m>=mi&&m<=mf){ const c=g.categoria||'(sin categoría)'; catMap[c]=Math.round(((catMap[c]||0)+(Number(g.monto)||0))*100)/100; } });
+  const cats=Object.keys(catMap).map(c=>({categoria:c,ejecutado:catMap[c]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
   const catRows=cats.map(t=>`<tr><td data-label="Categoría">${t.categoria}</td><td class="num" data-label="Monto">${money(t.ejecutado)}</td><td class="num" data-label="% de egresos">${egr>0?_ground1(t.ejecutado/egr*100):0}%</td></tr>`).join('');
-  // tabla mensual: mes | ingresos | egresos | resultado
-  const im=d.ingresosPorMes||[], em=d.porMes||[];
+  // tabla mensual (solo meses del rango)
   let acc=0;
   const mesRows=GMESES.map((m,i)=>{
+    if(i+1<mi||i+1>mf) return '';
     const ii=im[i]||0, ee=em[i]||0, rr=Math.round((ii-ee)*100)/100; acc=Math.round((acc+rr)*100)/100;
-    if(ii===0&&ee===0) return '';
     return `<tr><td data-label="Mes">${m}</td>
       <td class="num" data-label="Ingresos">${money(ii)}</td>
       <td class="num" data-label="Egresos">${money(ee)}</td>
       <td class="num" data-label="Resultado" style="color:${rr>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(rr)}</td>
       <td class="num" data-label="Acumulado" style="color:${acc>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(acc)}</td></tr>`;
   }).join('');
-  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${d.anio}</h2></div>
+  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${periodoTxt}</h2></div>
     <div class="bd" style="padding:14px 18px">
+      ${filtro}
       ${resumen}
-      <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros de cuotas efectivos; egresos = gastos registrados. Corte a la fecha de los datos.</div>
+      <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros de cuotas efectivos; egresos = gastos registrados.</div>
     </div></div>
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos por categoría</h2></div>
     <div class="bd" style="padding:12px 18px">
       ${cats.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th class="num">Monto</th><th class="num">% de egresos</th></tr></thead><tbody>${catRows}
         <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Categoría">TOTAL EGRESOS</td><td class="num" data-label="Monto">${money(egr)}</td><td class="num" data-label="% de egresos">100%</td></tr></tbody></table>`
-        :'<div class="muted" style="padding:12px 0">Sin egresos registrados este año.</div>'}
+        :'<div class="muted" style="padding:12px 0">Sin egresos registrados en el periodo.</div>'}
     </div></div>
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Mes a mes</h2></div>
     <div class="bd" style="padding:12px 18px">
       ${mesRows?`<table class="stack-table"><thead><tr><th>Mes</th><th class="num">Ingresos</th><th class="num">Egresos</th><th class="num">Resultado</th><th class="num">Acumulado</th></tr></thead><tbody>${mesRows}
         <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Mes">TOTAL</td><td class="num" data-label="Ingresos">${money(ing)}</td><td class="num" data-label="Egresos">${money(egr)}</td><td class="num" data-label="Resultado" style="color:${resCol}">${money(res)}</td><td class="num" data-label="Acumulado" style="color:${resCol}">${money(res)}</td></tr></tbody></table>`
-        :'<div class="muted" style="padding:12px 0">Sin movimientos este año.</div>'}
+        :'<div class="muted" style="padding:12px 0">Sin movimientos en el periodo.</div>'}
     </div></div>`;
 }
 async function importarGastos2026(btn){
@@ -1897,7 +1914,7 @@ async function guardarPresupuestoUI(){
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
-let FIN_VISTA='presupuesto';
+let FIN_VISTA='presupuesto', FIN_MES_INI=1, FIN_MES_FIN=12;
 async function renderFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';
