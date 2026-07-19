@@ -119,8 +119,8 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   .cards { display:flex; }
   .card .hd { flex-direction:column; align-items:stretch; gap:10px; }
   .card .hd .spacer { display:none; }
-  #vistaSeg { display:flex; width:100%; }
-  #vistaSeg .seg-btn { flex:1; min-width:0; text-align:center; padding:10px 6px; }
+  #vistaSeg, #gastosSeg { display:flex; width:100%; }
+  #vistaSeg .seg-btn, #gastosSeg .seg-btn { flex:1; min-width:0; text-align:center; padding:10px 4px; font-size:.82rem; }
   .controls { display:flex; flex-direction:column; align-items:stretch; gap:8px; width:100%; }
   .controls > * { width:100%; }
   #ctrlPeriodo label { flex:1; }
@@ -253,6 +253,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
     <button data-tab="prop">Propietarios</button>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
+    <button data-tab="gastos">Gastos</button>
     <button data-tab="recor">Recordatorios</button>
     <button data-tab="opts">⚙ Opciones</button>
   </nav>
@@ -399,6 +400,10 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
   </section>
 
   <!-- OPCIONES / ADMIN -->
+  <section id="tab-gastos" style="display:none">
+    <div id="gastosBody" class="muted">Cargando…</div>
+  </section>
+
   <section id="tab-opts" style="display:none">
     <div id="optsBody" class="muted">Cargando…</div>
   </section>
@@ -1555,14 +1560,262 @@ async function rechazarComprob(id,btn){
 })();
 
 /* Tabs + init */
+/* ───────── Gastos (egresos) ───────── */
+let GASTOS_DATA=null, GASTOS_VISTA='registro', GASTOS_ANIO=null, GASTOS_FILTRO={mes:'',cat:'',tipo:''};
+const GMESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function _ground1(n){ return Math.round((Number(n)||0)*10)/10; }
+async function renderGastos(){
+  const body=document.getElementById('gastosBody');
+  if(!body) return;
+  if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';
+  let d;
+  try{ d=await jsonp('getGastosData', GASTOS_ANIO?{anio:GASTOS_ANIO}:{}); }
+  catch(e){ if(onAuthError(e))return; body.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
+  GASTOS_DATA=d; GASTOS_ANIO=d.anio;
+  const anios=(d.aniosDisponibles&&d.aniosDisponibles.length)?d.aniosDisponibles:[d.anio];
+  const yearSel=`<select id="gAnio" onchange="GASTOS_ANIO=+this.value;renderGastos()">${anios.map(y=>`<option value="${y}" ${y===d.anio?'selected':''}>${y}</option>`).join('')}</select>`;
+  const seg=(v,l)=>`<button class="seg-btn ${GASTOS_VISTA===v?'active':''}" onclick="GASTOS_VISTA='${v}';renderGastos()">${l}</button>`;
+  const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:1.1rem">Gastos</div>
+      <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
+      <span class="spacer" style="flex:1"></span>
+      <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}${seg('presupuesto','Presupuesto')}</div>
+    </div></div>`;
+  let content='';
+  if(GASTOS_VISTA==='recurrentes') content=_gastosRecurrentes(d);
+  else if(GASTOS_VISTA==='presupuesto') content=_gastosPresupuesto(d);
+  else content=_gastosRegistro(d);
+  body.innerHTML=header+content;
+}
+function _gastosRegistro(d){
+  const f=GASTOS_FILTRO;
+  let list=d.gastos.slice();
+  if(f.mes) list=list.filter(g=>(new Date(g.fecha).getMonth()+1)===+f.mes);
+  if(f.cat) list=list.filter(g=>g.categoria===f.cat);
+  if(f.tipo) list=list.filter(g=>g.tipo===f.tipo);
+  const total=list.reduce((s,g)=>s+(+g.monto||0),0);
+  const catOpts=`<option value="">Todas las categorías</option>`+d.categorias.map(c=>`<option ${f.cat===c?'selected':''}>${c}</option>`).join('');
+  const mesOpts=`<option value="">Todo el año</option>`+GMESES.map((m,i)=>`<option value="${i+1}" ${+f.mes===i+1?'selected':''}>${m}</option>`).join('');
+  const rows=list.map(g=>`<tr data-id="${g.id}">
+    <td data-label="Fecha">${_fx(g.fecha)}</td>
+    <td data-label="Categoría">${g.categoria||'—'}</td>
+    <td class="stack-col" data-label="Proveedor / detalle"><div>${(g.proveedor||'').replace(/</g,'&lt;')||'—'}</div>${g.detalle?`<div class="muted" style="font-size:.72rem">${String(g.detalle).replace(/</g,'&lt;')}</div>`:''}</td>
+    <td data-label="Tipo"><span class="pill ${g.tipo==='recurrente'?'ok':'warn'}" style="font-size:.62rem">${g.tipo}</span></td>
+    <td class="num" data-label="Monto"><b>${money(g.monto)}</b></td>
+    <td class="acts"><button class="link-btn" onclick="editarGasto('${g.id}')">Editar</button> <button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarGastoUI('${g.id}',this)">Eliminar</button></td>
+  </tr>`).join('');
+  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Registro de gastos ${d.anio}</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn" onclick="nuevoGasto()">＋ Agregar gasto</button></div>
+    <div class="bd" style="padding:12px 18px">
+      <div class="controls" style="margin-bottom:10px">
+        <select id="gfMes" onchange="GASTOS_FILTRO.mes=this.value;renderGastos()">${mesOpts}</select>
+        <select id="gfCat" onchange="GASTOS_FILTRO.cat=this.value;renderGastos()">${catOpts}</select>
+        <select id="gfTipo" onchange="GASTOS_FILTRO.tipo=this.value;renderGastos()"><option value="">Recurrentes y puntuales</option><option value="recurrente" ${f.tipo==='recurrente'?'selected':''}>Solo recurrentes</option><option value="puntual" ${f.tipo==='puntual'?'selected':''}>Solo puntuales</option></select>
+        <span class="spacer" style="flex:1"></span>
+        <div class="muted" style="align-self:center">${list.length} gasto(s) · Total <b>${money(total)}</b></div>
+      </div>
+      ${list.length?`<table class="stack-table"><thead><tr><th>Fecha</th><th>Categoría</th><th>Proveedor / detalle</th><th>Tipo</th><th class="num">Monto</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="muted" style="padding:16px 0">Sin gastos con estos filtros.</div>'}
+    </div></div>`;
+}
+function _gastoFormModal(g){
+  g=g||{};
+  const today=new Date().toISOString().slice(0,10);
+  const fecha=g.fecha?new Date(g.fecha).toISOString().slice(0,10):today;
+  const cats=(GASTOS_DATA&&GASTOS_DATA.categorias)||[];
+  const esc=s=>String(s||'').replace(/"/g,'&quot;');
+  document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${g.id?'Editar gasto':'Agregar gasto'}</div><div class="muted" style="font-size:.82rem">Egreso de la Asociación</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha</span><input type="date" id="ga_fecha" value="${fecha}" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span><input type="number" id="ga_monto" step="0.01" min="0" inputmode="decimal" value="${g.monto||''}" placeholder="0.00" style="width:100%;text-align:right"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Categoría</span><select id="ga_cat" style="width:100%"><option value="">— selecciona —</option>${cats.map(c=>`<option ${g.categoria===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Proveedor / beneficiario</span><input type="text" id="ga_prov" value="${esc(g.proveedor)}" placeholder="A quién se le pagó" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Detalle</span><input type="text" id="ga_det" value="${esc(g.detalle)}" placeholder="Concepto / Nº de factura" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Tipo</span><select id="ga_tipo" style="width:100%"><option value="puntual" ${g.tipo!=='recurrente'?'selected':''}>Puntual (una vez)</option><option value="recurrente" ${g.tipo==='recurrente'?'selected':''}>Recurrente (fijo mensual)</option></select></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Método de pago</span><input type="text" id="ga_met" value="${esc(g.metodoPago)}" placeholder="Transferencia, ACH…" style="width:100%"></label>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px">
+      <span id="ga_msg" class="muted" style="font-size:.8rem"></span>
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" id="ga_save" onclick="guardarGastoUI('${g.id||''}')">${g.id?'Guardar cambios':'Registrar gasto'}</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+function nuevoGasto(){ _gastoFormModal({}); }
+function editarGasto(id){ const g=(GASTOS_DATA.gastos||[]).find(x=>String(x.id)===String(id)); if(g)_gastoFormModal(g); }
+async function guardarGastoUI(id){
+  const gasto={
+    fecha:document.getElementById('ga_fecha').value+'T12:00:00',
+    monto:+document.getElementById('ga_monto').value,
+    categoria:document.getElementById('ga_cat').value,
+    proveedor:document.getElementById('ga_prov').value.trim(),
+    detalle:document.getElementById('ga_det').value.trim(),
+    tipo:document.getElementById('ga_tipo').value,
+    metodoPago:document.getElementById('ga_met').value.trim()
+  };
+  const msg=document.getElementById('ga_msg'); msg.className='muted';
+  if(!(gasto.monto>0)){ msg.textContent='Indica un monto válido.'; return; }
+  if(!gasto.categoria){ msg.textContent='Selecciona una categoría.'; return; }
+  const btn=document.getElementById('ga_save'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    if(id) await post('actualizarGasto',{id, datos:gasto});
+    else await post('registrarGasto',{gasto});
+    closeModal(); await renderGastos(); toast(id?'Gasto actualizado':'Gasto registrado');
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function eliminarGastoUI(id,btn){
+  if(!confirm('¿Eliminar este gasto? No se puede deshacer.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarGasto',{id}); await renderGastos(); toast('Gasto eliminado'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+function _gastosRecurrentes(d){
+  const rec=d.recurrentes||[];
+  const activos=rec.filter(r=>r.activo);
+  const nowM=new Date().getMonth()+1;
+  const rows=rec.map(r=>`<tr data-id="${r.id}">
+    <td data-label="Categoría">${r.categoria}</td>
+    <td class="stack-col" data-label="Proveedor / detalle"><div>${(r.proveedor||'')||'—'}</div>${r.detalle?`<div class="muted" style="font-size:.72rem">${r.detalle}</div>`:''}</td>
+    <td class="num" data-label="Monto">${r.monto?money(r.monto):'<span class="muted">variable</span>'}</td>
+    <td data-label="Estado">${r.activo?'<span class="pill ok" style="font-size:.62rem">activo</span>':'<span class="pill" style="font-size:.62rem;background:#eee;color:#888">inactivo</span>'}</td>
+    <td class="acts"><button class="link-btn" onclick="editarRecurrente('${r.id}')">Editar</button> <button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarRecurrenteUI('${r.id}',this)">Eliminar</button></td>
+  </tr>`).join('');
+  const genRows=activos.map((r,i)=>`<tr>
+    <td data-label="Incluir"><input type="checkbox" class="grchk" data-i="${i}" checked></td>
+    <td data-label="Gasto">${r.categoria}<div class="muted" style="font-size:.72rem">${r.proveedor||''}</div></td>
+    <td class="num" data-label="Monto"><input type="number" class="grmonto" data-i="${i}" step="0.01" min="0" value="${r.monto||''}" placeholder="0.00" style="width:96px;text-align:right"></td>
+  </tr>`).join('');
+  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Plantillas de gastos recurrentes</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn" onclick="nuevoRecurrente()">＋ Agregar plantilla</button></div>
+    <div class="bd" style="padding:12px 18px">
+      <div class="muted" style="font-size:.82rem;margin-bottom:8px">Define una vez tus gastos fijos mensuales. En los variables (ej. mantenimiento general) deja el monto vacío y lo ajustas al registrar.</div>
+      ${rec.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th>Proveedor / detalle</th><th class="num">Monto</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="muted" style="padding:12px 0">Aún no hay plantillas.</div>'}
+    </div></div>
+    ${activos.length?`<div class="card" style="margin-top:14px"><div class="hd"><h2>Registrar recurrentes del mes</h2></div>
+      <div class="bd" style="padding:12px 18px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Mes <select id="grMes">${GMESES.map((m,i)=>`<option value="${i+1}" ${i+1===nowM?'selected':''}>${m} ${d.anio}</option>`).join('')}</select></label>
+          <span class="muted" style="font-size:.8rem">Marca los que aplican y ajusta montos.</span>
+        </div>
+        <table class="stack-table"><thead><tr><th>Incluir</th><th>Gasto</th><th class="num">Monto</th></tr></thead><tbody>${genRows}</tbody></table>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px"><span id="grMsg" class="muted" style="font-size:.8rem;align-self:center"></span><button class="btn green" id="grSave" onclick="registrarRecurrentesDelMes()">Registrar seleccionados</button></div>
+      </div></div>`:''}`;
+}
+function _recurrenteFormModal(r){
+  r=r||{};
+  const cats=(GASTOS_DATA&&GASTOS_DATA.categorias)||[];
+  const esc=s=>String(s||'').replace(/"/g,'&quot;');
+  document.getElementById('modalHd').innerHTML=`<div style="font-weight:700;font-size:1.1rem">${r.id?'Editar plantilla':'Nueva plantilla recurrente'}</div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Categoría</span><select id="gr_cat" style="width:100%"><option value="">— selecciona —</option>${cats.map(c=>`<option ${r.categoria===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Proveedor / beneficiario</span><input type="text" id="gr_prov" value="${esc(r.proveedor)}" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Detalle</span><input type="text" id="gr_det" value="${esc(r.detalle)}" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (vacío = variable)</span><input type="number" id="gr_monto" step="0.01" min="0" value="${r.monto||''}" inputmode="decimal" style="width:100%;text-align:right"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Estado</span><select id="gr_activo" style="width:100%"><option value="si" ${r.activo!==false?'selected':''}>Activo</option><option value="no" ${r.activo===false?'selected':''}>Inactivo</option></select></label>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px"><span id="gr_msg" class="muted" style="font-size:.8rem"></span><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn green" id="gr_save" onclick="guardarRecurrenteUI('${r.id||''}')">${r.id?'Guardar':'Crear plantilla'}</button></div>`;
+  document.getElementById('modal').classList.add('show');
+}
+function nuevoRecurrente(){ _recurrenteFormModal({}); }
+function editarRecurrente(id){ const r=(GASTOS_DATA.recurrentes||[]).find(x=>String(x.id)===String(id)); if(r)_recurrenteFormModal(r); }
+async function guardarRecurrenteUI(id){
+  const p={ id:id||undefined, categoria:document.getElementById('gr_cat').value, proveedor:document.getElementById('gr_prov').value.trim(), detalle:document.getElementById('gr_det').value.trim(), monto:+document.getElementById('gr_monto').value||0, activo:document.getElementById('gr_activo').value!=='no' };
+  const msg=document.getElementById('gr_msg'); msg.className='muted';
+  if(!p.categoria){ msg.textContent='Selecciona una categoría.'; return; }
+  const btn=document.getElementById('gr_save'); btn.disabled=true;
+  try{ await post('guardarGastoRecurrente',{plantilla:p}); closeModal(); await renderGastos(); toast('Plantilla guardada'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function eliminarRecurrenteUI(id,btn){
+  if(!confirm('¿Eliminar esta plantilla? No borra los gastos ya registrados.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarGastoRecurrente',{id}); await renderGastos(); toast('Plantilla eliminada'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function registrarRecurrentesDelMes(){
+  const mes=+document.getElementById('grMes').value, anio=GASTOS_DATA.anio;
+  const activos=(GASTOS_DATA.recurrentes||[]).filter(r=>r.activo);
+  const gastos=[];
+  [...document.querySelectorAll('.grchk')].forEach(chk=>{
+    if(!chk.checked)return; const i=+chk.dataset.i, r=activos[i];
+    const monto=+document.querySelector(`.grmonto[data-i="${i}"]`).value;
+    if(r&&monto>0) gastos.push({ fecha:`${anio}-${String(mes).padStart(2,'0')}-15T12:00:00`, monto, categoria:r.categoria, proveedor:r.proveedor, detalle:r.detalle, tipo:'recurrente', notas:'Generado desde plantilla recurrente' });
+  });
+  const msg=document.getElementById('grMsg'); msg.className='muted';
+  if(!gastos.length){ msg.textContent='Marca al menos uno con monto > 0.'; return; }
+  if(!confirm(`¿Registrar ${gastos.length} gasto(s) recurrente(s) de ${GMESES[mes-1]} ${anio}?`)) return;
+  const btn=document.getElementById('grSave'); btn.disabled=true; btn.textContent='Registrando…';
+  try{ const r=await post('registrarGastosBatch',{gastos}); await renderGastos(); toast(`${r.registrados} gasto(s) registrado(s)`); }
+  catch(e){ btn.disabled=false; btn.textContent='Registrar seleccionados'; if(!onAuthError(e)) alert('Error: '+e); }
+}
+function _gastosPresupuesto(d){
+  const cats=d.categorias||[];
+  const esc=s=>String(s||'').replace(/"/g,'&quot;');
+  const editRows=cats.map(c=>`<tr>
+    <td data-label="Categoría"><input type="text" class="pcat" value="${esc(c)}" style="width:100%"></td>
+    <td class="num" data-label="Presupuesto anual"><input type="number" class="pmonto" step="0.01" min="0" value="${d.presupuesto[c]||''}" placeholder="0.00" style="width:120px;text-align:right"></td>
+    <td class="acts"><button class="link-btn" style="color:var(--ac-danger)" onclick="this.closest('tr').remove()" title="Quitar">✕</button></td>
+  </tr>`).join('');
+  const cmp=d.porCategoria.filter(t=>t.presupuestado>0||t.ejecutado>0);
+  const bar=t=>{ const pct=Math.min(100,Math.max(0,t.pct||0)); const over=t.ejecutado>t.presupuestado+0.009&&t.presupuestado>0; const col=over?'var(--ac-danger)':(pct>=85?'var(--ac-warn)':'var(--ac-green-600)'); return `<div style="background:var(--ac-teal-50);border-radius:6px;height:8px;overflow:hidden;min-width:70px;flex:1"><span style="display:block;height:100%;width:${pct}%;background:${col}"></span></div>`; };
+  const cmpRows=cmp.map(t=>{ const over=t.ejecutado>t.presupuestado+0.009&&t.presupuestado>0; return `<tr>
+    <td data-label="Categoría">${t.categoria}</td>
+    <td class="num" data-label="Presupuesto">${money(t.presupuestado)}</td>
+    <td class="num" data-label="Ejecutado"><b>${money(t.ejecutado)}</b></td>
+    <td class="num" data-label="Disponible" style="color:${t.disponible<-0.009?'var(--ac-danger)':'inherit'}">${money(t.disponible)}</td>
+    <td class="stack-col" data-label="% ejecutado"><div style="display:flex;align-items:center;gap:8px">${bar(t)}<span style="font-size:.78rem;white-space:nowrap${over?';color:var(--ac-danger);font-weight:700':''}">${t.pct}%</span></div></td>
+  </tr>`; }).join('');
+  const totPct=d.presupuestadoTotal>0?_ground1(d.ejecutadoTotal/d.presupuestadoTotal*100)+'%':'—';
+  const totalRow=`<tr style="font-weight:700;border-top:2px solid var(--ac-teal)">
+    <td data-label="Categoría">TOTAL</td>
+    <td class="num" data-label="Presupuesto">${money(d.presupuestadoTotal)}</td>
+    <td class="num" data-label="Ejecutado">${money(d.ejecutadoTotal)}</td>
+    <td class="num" data-label="Disponible" style="color:${d.disponibleTotal<-0.009?'var(--ac-danger)':'inherit'}">${money(d.disponibleTotal)}</td>
+    <td data-label="% ejecutado">${totPct}</td></tr>`;
+  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Presupuesto ${d.anio} vs ejecución</h2></div>
+    <div class="bd" style="padding:12px 18px">
+      ${cmp.length?`<table class="stack-table"><thead><tr><th>Categoría</th><th class="num">Presupuesto</th><th class="num">Ejecutado</th><th class="num">Disponible</th><th>% ejecutado</th></tr></thead><tbody>${cmpRows}${totalRow}</tbody></table>`
+        :'<div class="muted" style="padding:12px 0">Aún no hay presupuesto ni gastos este año. Ingresa el presupuesto abajo.</div>'}
+    </div></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>Ingresar / editar presupuesto ${d.anio}</h2><div class="spacer" style="flex:1"></div><button class="btn ghost" onclick="agregarFilaPresup()">＋ Categoría</button></div>
+    <div class="bd" style="padding:12px 18px">
+      <div class="muted" style="font-size:.82rem;margin-bottom:8px">Escribe el monto anual proyectado por categoría. Puedes renombrar o agregar categorías; se usan también al registrar gastos.</div>
+      <table class="stack-table" id="presupTable"><thead><tr><th>Categoría</th><th class="num">Presupuesto anual</th><th></th></tr></thead><tbody>${editRows}</tbody></table>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px"><span id="presupMsg" class="muted" style="font-size:.8rem;align-self:center"></span><button class="btn green" id="presupSave" onclick="guardarPresupuestoUI()">Guardar presupuesto</button></div>
+    </div></div>`;
+}
+function agregarFilaPresup(){
+  const tb=document.querySelector('#presupTable tbody');
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td data-label="Categoría"><input type="text" class="pcat" value="" placeholder="Nueva categoría" style="width:100%"></td><td class="num" data-label="Presupuesto anual"><input type="number" class="pmonto" step="0.01" min="0" placeholder="0.00" style="width:120px;text-align:right"></td><td class="acts"><button class="link-btn" style="color:var(--ac-danger)" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tb.appendChild(tr);
+}
+async function guardarPresupuestoUI(){
+  const cats=[], mapa={};
+  [...document.querySelectorAll('#presupTable tbody tr')].forEach(tr=>{
+    const name=tr.querySelector('.pcat').value.trim(); if(!name)return;
+    if(cats.indexOf(name)<0) cats.push(name);
+    const m=+tr.querySelector('.pmonto').value||0; if(m>0) mapa[name]=m;
+  });
+  const msg=document.getElementById('presupMsg'); msg.className='muted';
+  if(!cats.length){ msg.textContent='Debe haber al menos una categoría.'; return; }
+  const btn=document.getElementById('presupSave'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    await post('guardarGastoCategorias',{categorias:cats});
+    await post('guardarPresupuesto',{anio:GASTOS_DATA.anio, presupuesto:mapa});
+    await renderGastos(); toast('Presupuesto guardado');
+  }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
+}
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','comprob','prop','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','comprob','prop','gastos','recor','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comprob')renderComprob();
+  if(t==='gastos')renderGastos();
   if(t==='recor')renderRecor();
   if(t==='opts')renderOpts();
 });

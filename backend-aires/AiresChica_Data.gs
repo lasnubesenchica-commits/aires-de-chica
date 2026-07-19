@@ -15,7 +15,10 @@ var SH = {
   PROP:  'Propietarios',
   PAGOS: 'Pagos',
   LOG:   'ConciliacionLog',
-  COMPROB: 'Comprobantes'
+  COMPROB: 'Comprobantes',
+  GASTOS: 'Gastos',
+  GRECUR: 'GastosRecurrentes',
+  PRESUP: 'Presupuesto'
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
@@ -26,13 +29,21 @@ var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','u
 var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
                    'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo',
                    'metodoPago','cuentaDestino','beneficiario','pagoId'];
+// Gastos (egresos) — registro diario por categoría
+var COL_GASTOS = ['id','fecha','mes','categoria','proveedor','detalle','monto','tipo',
+                  'metodoPago','comprobanteUrl','notas','creado'];
+// Plantillas de gastos recurrentes (fijos mensuales)
+var COL_GRECUR = ['id','categoria','proveedor','detalle','monto','activo','notas'];
+// Presupuesto anual por categoría
+var COL_PRESUP = ['anio','categoria','monto'];
 
 /* ─────────────── setup de pestañas ─────────────── */
 
 function ensureSheets() {
   var ss = _ss();
   var created = [];
-  [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB]].forEach(function (pair) {
+  [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
+   [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }

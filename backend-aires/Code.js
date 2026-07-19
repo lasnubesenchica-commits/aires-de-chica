@@ -61,6 +61,7 @@ function doGet(e) {
     else if (action === 'previsualizarComprobante') { requireAuth(p.token); out = { ok: true, data: previsualizarComprobante(p.clave, p.monto) }; }
     else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
+    else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
@@ -85,6 +86,14 @@ function doPost(e) {
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
+    else if (action === 'registrarGasto')   out = { ok: true, data: registrarGasto(data.gasto) };
+    else if (action === 'registrarGastosBatch') out = { ok: true, data: registrarGastosBatch(data.gastos) };
+    else if (action === 'actualizarGasto')  out = { ok: true, data: actualizarGasto(data.id, data.datos || {}) };
+    else if (action === 'eliminarGasto')    out = { ok: true, data: eliminarGasto(data.id) };
+    else if (action === 'guardarGastoRecurrente') out = { ok: true, data: guardarGastoRecurrente(data.plantilla) };
+    else if (action === 'eliminarGastoRecurrente') out = { ok: true, data: eliminarGastoRecurrente(data.id) };
+    else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
+    else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };
     else if (action === 'conciliarBanco')   out = { ok: true, data: conciliarBanco(data.rows, data.filename) };
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
