@@ -90,11 +90,14 @@ function _informePLHtml(D, nota) {
   }
   function th(t, align) { return '<th style="background:' + B.teal + ';color:#fff;padding:7px 9px;text-align:' + (align || 'left') + ';font-size:11px">' + t + '</th>'; }
   function td(t, align, extra) { return '<td style="padding:6px 9px;border-bottom:1px solid ' + B.border + ';text-align:' + (align || 'left') + ';font-size:11.5px;' + (extra || '') + '">' + t + '</td>'; }
+  // barra de ejecución robusta para PDF (tabla con bgcolor, no div)
   function bar(pct, over) {
-    var p = Math.max(0, Math.min(100, pct));
+    var p = Math.max(0, Math.min(100, Math.round(pct)));
     var col = over ? B.coral : (p >= 85 ? '#B7791F' : GREEN);
-    return '<div style="background:' + B.teal50 + ';border-radius:5px;height:7px;width:90px;display:inline-block;vertical-align:middle;overflow:hidden">' +
-      '<div style="height:7px;width:' + p + '%;background:' + col + '"></div></div>';
+    return '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:130px;display:inline-table;vertical-align:middle"><tr>' +
+      (p > 0 ? '<td bgcolor="' + col + '" style="width:' + p + '%;height:9px;background:' + col + '"></td>' : '') +
+      (p < 100 ? '<td bgcolor="' + B.teal50 + '" style="height:9px;background:' + B.teal50 + '"></td>' : '') +
+      '</tr></table>';
   }
 
   // Resumen
@@ -104,12 +107,17 @@ function _informePLHtml(D, nota) {
     stat(pos ? 'Superávit del período' : 'Déficit del período', _money(D.resultado), resCol, 'Ingresos − Egresos') +
     '</tr></table>';
 
-  // Fondo disponible (si hay fondo inicial)
-  var fondo = '';
+  // Fondo disponible a la fecha (KPI destacado arriba, si hay fondo inicial)
+  var fondoTop = '';
   if (D.fondoInicial > 0.009) {
-    fondo = '<div style="margin-top:12px;border:1px solid ' + B.border + ';border-radius:8px;background:' + B.teal50 + ';padding:11px 14px;font-size:12px">' +
-      '<b>Fondo disponible estimado:</b> ' + _money(D.fondoDisponible) +
-      ' <span style="color:' + B.muted + '">= Fondo inicial del año (' + _money(D.fondoInicial) + ') + Resultado acumulado a la fecha (' + _money(D.resYTD) + ')</span></div>';
+    fondoTop = '<table width="100%" cellspacing="0" cellpadding="0" style="margin:8px 0 4px"><tr>' +
+      '<td style="border:1px solid ' + B.border + ';border-left:5px solid ' + B.teal + ';border-radius:8px;background:' + B.teal50 + ';padding:12px 16px">' +
+        '<table width="100%" cellspacing="0" cellpadding="0"><tr>' +
+          '<td valign="middle"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:' + B.muted + ';font-weight:700">Fondo disponible a la fecha</div>' +
+          '<div style="font-size:10.5px;color:' + B.muted + ';margin-top:2px">Fondo inicial del año (' + _money(D.fondoInicial) + ') + Resultado acumulado (' + _money(D.resYTD) + ')</div></td>' +
+          '<td valign="middle" align="right"><span style="font-size:23px;font-weight:800;color:' + B.teal700 + '">' + _money(D.fondoDisponible) + '</span></td>' +
+        '</tr></table>' +
+      '</td></tr></table>';
   }
 
   // Mes a mes
@@ -183,9 +191,11 @@ function _informePLHtml(D, nota) {
           '<div style="font-size:10.5px;color:' + B.muted + '">Emitido el ' + fecha + '</div>' +
         '</td></tr></table>' +
       '<div style="height:4px;background:linear-gradient(90deg,' + B.teal + ',' + B.green + ' 60%,' + B.coral + ');margin:14px 0 8px;border-radius:2px"></div>' +
-      secTitle('Resumen ejecutivo') + resumen + fondo +
+      fondoTop +
+      secTitle('Resumen ejecutivo') + resumen +
       secTitle('Resultado mes a mes') + mesTabla +
       secTitle('Presupuesto vs ejecución') + presTabla +
+      '<div style="page-break-before:always"></div>' +
       secTitle('Gastos por categoría') + catTabla +
       secTitle('Estado de cobros') + cobros +
       notaHtml +

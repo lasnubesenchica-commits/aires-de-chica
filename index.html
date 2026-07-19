@@ -1973,7 +1973,7 @@ async function guardarPresupuestoUI(){
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
-let FIN_VISTA='presupuesto', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria';
+let FIN_VISTA='resultado', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria';
 async function renderFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';
@@ -1993,7 +1993,7 @@ function paintFinanzas(){
       <div style="font-weight:700;font-size:1.1rem">Finanzas</div>
       <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
       <span class="spacer" style="flex:1"></span>
-      <div class="seg" id="finSeg">${seg('presupuesto','Presupuesto')}${seg('resultado','Resultado')}</div>
+      <div class="seg" id="finSeg">${seg('resultado','Resultado')}${seg('presupuesto','Presupuesto')}</div>
     </div></div>`;
   const content = FIN_VISTA==='resultado' ? _gastosResultado(d) : _gastosPresupuesto(d);
   body.innerHTML=header+content;
