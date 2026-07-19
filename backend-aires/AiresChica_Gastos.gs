@@ -243,3 +243,138 @@ function guardarPresupuesto(anio, mapa) {
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, COL_PRESUP.length).setValues(rows);
   return { ok: true, anio: anio, lineas: rows.length };
 }
+
+/* ─────────────── carga inicial 2026 (desde el Excel) ───────────────
+ * Inserta el presupuesto 2026 y los gastos ya registrados (ene–jun).
+ * Total de gastos = B/.21,373.64 (cuadra con el GRAN TOTAL del Excel).
+ * Idempotente: si ya hay gastos de 2026 exige force (que primero los borra).
+ */
+function seedGastos2026(force) {
+  ensureSheets();
+  var sh = _ss().getSheetByName(SH.GASTOS);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var iF = h.indexOf('fecha');
+  var yaHay = false;
+  for (var r = 1; r < vals.length; r++) { var d = new Date(vals[r][iF]); if (d.getFullYear() === 2026) { yaHay = true; break; } }
+  if (yaHay && !force) throw new Error('Ya hay gastos de 2026 registrados. Usa force=true para recargar (borra primero los de 2026).');
+  if (yaHay && force) { for (var rr = vals.length - 1; rr >= 1; rr--) { if (new Date(vals[rr][iF]).getFullYear() === 2026) sh.deleteRow(rr + 1); } }
+
+  // categorías + presupuesto 2026 (total 37,917.00)
+  guardarGastoCategorias(DEFAULT_GASTO_CATS);
+  var PRESUP = {
+    'Acueducto': 9317, 'Calles, senderos y áreas comunes': 13250, 'Portón, luminarias y cámaras': 4320,
+    'Cerca perimetral': 200, 'Baño comunal': 540, 'Gastos legales': 800, 'Administración': 3000,
+    'Contabilidad (CPA)': 1926, 'Banca en línea': 64, 'Línea de crédito / préstamo': 2400, 'Gastos varios y previsiones': 2100
+  };
+  guardarPresupuesto(2026, PRESUP);
+
+  // gastos ene–jun 2026 — [mes, categoría, proveedor, detalle, monto, tipo]
+  var AC = 'Acueducto', CA = 'Calles, senderos y áreas comunes', PO = 'Portón, luminarias y cámaras',
+      BA = 'Baño comunal', LE = 'Gastos legales', AD = 'Administración', CP = 'Contabilidad (CPA)',
+      BL = 'Banca en línea', LC = 'Línea de crédito / préstamo', VA = 'Gastos varios y previsiones';
+  var R = 'recurrente', P = 'puntual';
+  var G = [
+    // ENERO
+    [1, CA, 'Rodrigo Valdéz', 'contr. mant. general', 400, R],
+    [1, CA, 'Cornelio Sánchez', 'abono contrato limpieza maleza', 250, R],
+    [1, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [1, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [1, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [1, AC, 'Elías Martínez', 'Fact. 573 - 2da adecuación tanque 1 (pozo)', 396, P],
+    [1, LE, 'Dalis de Vasconez', 'saldo 1ra fase honorarios legales (Resolución Asoc. de Prop.)', 250, P],
+    [1, PO, 'Starlink', 'portón', 40, R],
+    [1, PO, 'Más Móvil', 'portón', 10.7, R],
+    [1, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [1, BL, 'Banco General', 'banca en línea', 5.35, R],
+    [1, VA, 'Max Impresiones S.A.', 'Fact. 51966 - acrílico con nombre A. de Ch.', 139.1, P],
+    [1, VA, 'Aristides Guzmán', 'alq. sillas + transporte', 40, P],
+    [1, AC, 'Cochez', 'pvc para existencias', 39, P],
+    [1, AC, 'Do It Center', 'pvc para existencias', 45.9, P],
+    [1, CA, 'Luis Molina', 'alq. retro calle Paraíso 29/ene', 50, P],
+    // FEBRERO
+    [2, CA, 'Rodrigo Valdéz', 'contr. mant. general + despeje calles 4/feb', 430, R],
+    [2, CA, 'Cornelio Sánchez', 'saldo contrato limpieza maleza', 1000, R],
+    [2, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [2, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [2, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [2, PO, 'Starlink', 'portón', 40, R],
+    [2, PO, 'Más Móvil', 'portón', 10.7, R],
+    [2, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [2, BL, 'Banco General', 'banca en línea', 5.35, R],
+    [2, PO, 'Jerlis Anchico', 'tapa breakers portón', 45, P],
+    [2, CA, 'Jerlis Anchico', 'parrilla canal Cl. Paraíso', 350, P],
+    [2, PO, 'Cochez', 'candadito tapa breakers portón', 4, P],
+    [2, CA, 'Alexis Sánchez', 'mano de obra y material canal Cl. Paraíso', 880, P],
+    [2, LE, 'Notaría Segunda Panamá Oeste', 'protocolo escritura Asoc. Prop.', 225, P],
+    [2, LE, 'Dalis de Vasconez', 'abono 2da fase honorarios legales', 500, P],
+    [2, PO, 'Elías Martínez', 'Fact. 588 - correctivos luminarias portón', 32, P],
+    [2, AC, 'Elías Martínez', 'Fact. 592 - cableado y tubería captación 2', 93.25, P],
+    [2, PO, 'Cochez', 'candadito tapa breakers portón', 4, P],
+    // MARZO
+    [3, CA, 'Rodrigo Valdéz', 'contr. mant. general', 400, R],
+    [3, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [3, CA, 'Cornelio Sánchez', 'remoción de hierba Vereda calle Vía Los Sueños', 50, P],
+    [3, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [3, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [3, PO, 'Starlink', 'portón', 40, R],
+    [3, PO, 'Más Móvil', 'portón', 10.7, R],
+    [3, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [3, BL, 'Banco General', 'banca en línea', 5.35, R],
+    [3, LE, 'Registro Público', 'inscripción escritura Asoc. Prop.', 108, P],
+    [3, LE, 'Notaría Segunda Panamá Oeste', 'protocolo escritura Reglamento de Propietarios', 157, P],
+    [3, AC, 'Elías Martínez', 'Fact. 594 - mant. sistema pozo', 820, P],
+    [3, AC, 'Acueducto (obra)', '2 captaciones con filtro, 4 tanques 570 gal, extensión tubería El Higuerón', 3796, P],
+    // ABRIL
+    [4, CA, 'Rodrigo Valdés', 'contr. mant. general + trabajos captaciones acueducto', 500, R],
+    [4, AC, 'Rodrigo Valdés', 'soterrar tubos con cables acued.; desviar tramo tubería', 150, P],
+    [4, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [4, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [4, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [4, PO, 'Starlink', 'portón', 40, R],
+    [4, PO, 'Más Móvil', 'portón', 10.7, R],
+    [4, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [4, BL, 'Banco General', 'banca en línea', 5.35, R],
+    [4, AC, 'Casa Alex', 'tubos pvc para cubrir cables acueducto (captación 1 a tanques 4)', 407.62, P],
+    [4, AC, 'Elías Martínez', 'revisión instalación tanques 4', 20, P],
+    [4, AC, 'Elías Martínez', 'Fact. 600 - adecuación cables para soterramiento', 670, P],
+    [4, AC, 'Elías Martínez', 'Fact. 602 y 604 - mant. bombas captaciones 1 y 2', 310, P],
+    [4, LE, 'Registro Público', 'inscripción escritura Asoc. Prop. (3er reingreso)', 50, P],
+    [4, LE, 'Dalys de Vasconez', 'honorarios legales finales', 335, P],
+    // MAYO
+    [5, CA, 'Rodrigo Valdés', 'mant. general 400 + limpieza cunetas/senderos 500', 900, R],
+    [5, CA, 'Cornelio Sánchez', 'abono contrato mayo', 300, R],
+    [5, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [5, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [5, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [5, PO, 'Starlink', 'portón', 40, R],
+    [5, PO, 'Más Móvil', 'portón', 10.7, R],
+    [5, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [5, BL, 'Banco General', 'banca en línea', 5.35, R],
+    [5, LE, 'Dalys de Vasconez', 'reembolso envío escritura (Uno Express)', 6.5, P],
+    [5, AC, 'Ministerio de Ambiente', 'concesión de agua 2026', 77.03, P],
+    // JUNIO
+    [6, CA, 'Rodrigo Valdés', 'contr. mant.', 400, R],
+    [6, CA, 'Cornelio Sánchez', 'saldo contrato mayo', 950, R],
+    [6, CA, 'Cornelio Sánchez', 'abono inicial contrato julio', 250, R],
+    [6, CA, 'Fernando López', 'fumigación vereda calle (producto y m/o)', 50, P],
+    [6, BA, 'Zoila Castrejón', 'limpieza baño común', 45, R],
+    [6, PO, 'Elías Martínez', 'Fact. 612 - mant. portón', 165, P],
+    [6, AC, 'Elías Martínez', 'Fact. 618 - nueva bomba pozo', 1850, P],
+    [6, AD, 'Doraida Castillo', 'honorarios administrativos', 250, R],
+    [6, LC, 'Doraida Castillo', 'abono a préstamo', 200, R],
+    [6, CP, 'CPA Alex Núñez', 'certificación gastos e ingresos proyectados (Global Bank)', 100, P],
+    [6, PO, 'Starlink', 'portón', 40, R],
+    [6, PO, 'Más Móvil', 'portón', 10.7, R],
+    [6, PO, 'Javier Della Cella', 'Nube portón', 11.99, R],
+    [6, BL, 'Banco General', 'banca en línea', 5.35, R]
+  ];
+  var rows = G.map(function (e, i) {
+    var fecha = new Date(2026, e[0] - 1, 15, 12, 0, 0);
+    return ['SEED-G26-' + (i + 1), fecha, _gastoMes(fecha), e[1], e[2], e[3], _round2(e[4]),
+            (e[5] === 'recurrente' ? 'recurrente' : 'puntual'), '', '', 'Carga inicial 2026 (Excel)', new Date()];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, COL_GASTOS.length).setValues(rows);
+  var total = _round2(rows.reduce(function (s, r) { return s + Number(r[6]); }, 0));
+  return { ok: true, gastos: rows.length, presupuesto: Object.keys(PRESUP).length, total: total };
+}
+

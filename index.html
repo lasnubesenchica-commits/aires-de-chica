@@ -1587,11 +1587,28 @@ function paintGastos(){
       <span class="spacer" style="flex:1"></span>
       <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}${seg('presupuesto','Presupuesto')}</div>
     </div></div>`;
+  let banner='';
+  if(d.anio===2026 && !d.gastos.length && !Object.keys(d.presupuesto||{}).length){
+    banner=`<div class="card" style="margin-top:14px;border:1px solid var(--ac-teal-300);background:var(--ac-teal-50)"><div class="bd" style="padding:16px 18px">
+      <div style="font-weight:700;margin-bottom:4px">Cargar datos 2026 del Excel</div>
+      <div class="muted" style="font-size:.85rem;margin-bottom:10px">Importa de una vez el <b>presupuesto 2026</b> (11 categorías · B/.37,917.00) y los <b>gastos de enero a junio</b> ya registrados (87 gastos · B/.21,373.64). Solo tienes que hacerlo una vez; luego puedes editar todo a mano.</div>
+      <button class="btn green" onclick="importarGastos2026(this)">Importar presupuesto y gastos 2026</button>
+    </div></div>`;
+  }
   let content='';
   if(GASTOS_VISTA==='recurrentes') content=_gastosRecurrentes(d);
   else if(GASTOS_VISTA==='presupuesto') content=_gastosPresupuesto(d);
   else content=_gastosRegistro(d);
-  body.innerHTML=header+content;
+  body.innerHTML=header+banner+content;
+}
+async function importarGastos2026(btn){
+  if(!confirm('¿Cargar el presupuesto 2026 y los gastos de enero a junio desde el Excel?\n\n• Presupuesto: 11 categorías (B/.37,917.00)\n• Gastos ene–jun: 87 registros (B/.21,373.64)')) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Importando…';
+  try{
+    const r=await post('seedGastos2026',{});
+    GASTOS_DATA=null; await renderGastos();
+    toast(`Importado: ${r.gastos} gastos (${money(r.total)}) · presupuesto ${r.presupuesto} categorías`);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
 }
 function _gastosRegistro(d){
   const f=GASTOS_FILTRO;
