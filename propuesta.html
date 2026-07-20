@@ -65,8 +65,24 @@
   #doc:focus{outline:none;}
   #doc p:hover,#doc li:hover,#doc h1:hover,#doc h2:hover,#doc h3:hover,#doc h4:hover,#doc td:hover,#doc th:hover{
     outline:1px dashed rgba(14,143,176,.35);outline-offset:2px;border-radius:3px;}
+  /* Modal "Mostrar cambios" */
+  #diffModal{position:fixed;inset:0;z-index:100000;background:rgba(12,40,48,.55);
+    display:flex;align-items:center;justify-content:center;padding:24px;font-family:Helvetica,Arial,sans-serif;}
+  #diffModal .dm-card{background:#fff;border-radius:14px;width:min(860px,100%);max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;}
+  #diffModal .dm-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    padding:16px 20px;background:#0B7A98;color:#fff;}
+  #diffModal .dm-title{font-size:15px;font-weight:800;}
+  #diffModal .dm-sub{font-size:12.5px;opacity:.95;margin-top:3px;}
+  #diffModal .dm-x{border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.18);color:#fff;}
+  #diffModal .dm-legend{display:flex;gap:16px;padding:10px 20px;border-bottom:1px solid #e3edf0;font-size:12px;}
+  #diffModal .dm-body{padding:18px 22px;overflow:auto;line-height:1.6;font-size:13px;color:#143039;white-space:normal;}
+  .d-ins{background:#dff5e6;color:#12703f;text-decoration:none;border-radius:3px;padding:0 1px;}
+  .d-del{background:#fde3e0;color:#a5281c;text-decoration:line-through;border-radius:3px;padding:0 1px;}
+  #diffModal .dm-legend .d-ins,#diffModal .dm-legend .d-del{padding:2px 8px;}
   @media print{
     #toolbar{display:none!important;}
+    #diffModal{display:none!important;}
     body{padding-top:0;background:#fff;}
     #doc{max-width:none;margin:0;box-shadow:none;}
     #doc *:hover{outline:none!important;}
@@ -79,6 +95,7 @@
   <div class="tb-actions">
     <button class="tb-btn ghost" id="btnConectar" onclick="conectarEquipo()">🔒 Conectar equipo</button>
     <button class="tb-btn ghost" onclick="traerUltima(false)">↻ Traer última</button>
+    <button class="tb-btn ghost" onclick="mostrarCambios()">🔍 Mostrar cambios</button>
     <button class="tb-btn" onclick="descargarHTML()">💾 Descargar HTML</button>
     <button class="tb-btn primary" onclick="exportarPDF()">⬇ Exportar a PDF</button>
   </div>
@@ -235,6 +252,7 @@
 (function(){
   var GAS_URL='https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
   var doc=document.getElementById('doc');
+  var ORIGINAL=doc.innerHTML;   // versión original de fábrica (antes de cargar ediciones)
   var LKEY='ac_propuesta_edit_v1';
   var TOKEN=localStorage.getItem('ac_token')||'';
   var EDITOR=localStorage.getItem('ac_prop_editor')||'';
@@ -318,7 +336,7 @@
 
   window.descargarHTML=function(){
     var clone=document.documentElement.cloneNode(true);
-    ['#toolbar','#editor-css','#editor-js'].forEach(function(sel){ var el=clone.querySelector(sel); if(el) el.parentNode.removeChild(el); });
+    ['#toolbar','#editor-css','#editor-js','#diffModal'].forEach(function(sel){ var el=clone.querySelector(sel); if(el) el.parentNode.removeChild(el); });
     var d=clone.querySelector('#doc'); if(d){ d.removeAttribute('contenteditable'); d.removeAttribute('id'); }
     var out='<!doctype html>\n<html lang="es">'+clone.innerHTML+'</html>';
     var blob=new Blob([out],{type:'text/html'});
@@ -326,6 +344,64 @@
     a.download='Propuesta_AiresDeChica.html'; document.body.appendChild(a); a.click();
     setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); },1000);
   };
+
+  // ───────── Mostrar cambios (diff contra la versión original) ─────────
+  function _textDe(htmlStr){
+    var box=document.createElement('div');
+    box.style.cssText='position:absolute;left:-99999px;top:0;width:820px;white-space:normal;';
+    box.innerHTML=htmlStr;
+    document.body.appendChild(box);
+    var txt=box.innerText||box.textContent||'';
+    document.body.removeChild(box);
+    return txt.replace(/\r/g,'').replace(/\n{3,}/g,'\n\n').trim();
+  }
+  function _esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function _htmlDe(tok){ return _esc(tok).replace(/\n/g,'<br>'); }
+  // diff por "palabra + espacio" usando la subsecuencia común más larga (LCS)
+  function _diff(aStr,bStr){
+    var a=aStr.match(/\S+\s*/g)||[], b=bStr.match(/\S+\s*/g)||[];
+    var n=a.length, m=b.length;
+    // LCS con matriz de longitudes
+    var dp=[]; for(var i=0;i<=n;i++){ dp.push(new Uint16Array(m+1)); }
+    for(i=n-1;i>=0;i--){ for(var j=m-1;j>=0;j--){
+      dp[i][j]= (a[i]===b[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
+    }}
+    var out=[], p=0, q=0;
+    while(p<n && q<m){
+      if(a[p]===b[q]){ out.push({t:'eq',v:b[q]}); p++; q++; }
+      else if(dp[p+1][q]>=dp[p][q+1]){ out.push({t:'del',v:a[p]}); p++; }
+      else { out.push({t:'ins',v:b[q]}); q++; }
+    }
+    while(p<n){ out.push({t:'del',v:a[p++]}); }
+    while(q<m){ out.push({t:'ins',v:b[q++]}); }
+    return out;
+  }
+  window.mostrarCambios=function(){
+    var ops=_diff(_textDe(ORIGINAL), _textDe(doc.innerHTML));
+    var ins=0, del=0, body='';
+    ops.forEach(function(o){
+      if(o.t==='eq'){ body+=_htmlDe(o.v); }
+      else if(o.t==='ins'){ ins++; body+='<ins class="d-ins">'+_htmlDe(o.v)+'</ins>'; }
+      else { del++; body+='<del class="d-del">'+_htmlDe(o.v)+'</del>'; }
+    });
+    var resumen = (ins||del)
+      ? ('<b style="color:#BdF3CF">'+ins+'</b> fragmento(s) añadido(s) · <b style="color:#FFC7BD">'+del+'</b> eliminado(s)')
+      : 'No hay cambios respecto a la versión original.';
+    var old=document.getElementById('diffModal'); if(old) old.remove();
+    var wrap=document.createElement('div'); wrap.id='diffModal'; wrap.setAttribute('contenteditable','false');
+    wrap.innerHTML=
+      '<div class="dm-card">'+
+        '<div class="dm-head">'+
+          '<div><div class="dm-title">Cambios desde la versión original</div>'+
+            '<div class="dm-sub">'+resumen+'</div></div>'+
+          '<button class="dm-x" onclick="cerrarCambios()">✕ Cerrar</button>'+
+        '</div>'+
+        '<div class="dm-legend"><span class="d-ins">texto añadido</span><span class="d-del">texto eliminado</span></div>'+
+        '<div class="dm-body">'+ (body||'<span class="muted">—</span>') +'</div>'+
+      '</div>';
+    document.body.appendChild(wrap);
+  };
+  window.cerrarCambios=function(){ var m=document.getElementById('diffModal'); if(m) m.remove(); };
 
   // arranque: muestra local al instante y luego trae la versión compartida del servidor
   (function init(){
