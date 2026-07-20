@@ -149,10 +149,11 @@
   <div class="feat"><h4>3. Generación de reportes</h4>
     <ul>
       <li>Reportes de ingresos: acumulados, mensuales y anuales.</li>
-      <li>Comparativo de ingresos contra gastos por período, con el resultado y el acumulado mes a mes.</li>
+      <li><b>Estado de Resultados:</b> comparativo de ingresos contra gastos por período, con el resultado y el acumulado mes a mes.</li>
       <li>Reporte en PDF con la identidad de Aires de Chicá (resumen de resultados, presupuesto contra ejecución y gastos por categoría), descargable en cualquier momento.</li>
-      <li>Envíos automáticos: puede enviar el reporte o los avisos que la Asociación configure, con modo de prueba e interruptor general.</li>
+      <li>Envíos automáticos: el reporte se envía de forma <b>trimestral</b> y <b>anual</b>, además de los envíos que la Asociación configure. Incluye modo de prueba e interruptor general.</li>
     </ul>
+    <p class="muted" style="font-size:11.5px;margin-top:8px"><b>Nota:</b> el Estado de Resultados anual que genera el sistema es un reporte informativo. No constituye una auditoría ni una certificación por parte de un Contador Público Autorizado (CPA).</p>
   </div>
 </div>
 
@@ -203,8 +204,8 @@
   var GAS_URL='https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
   var doc=document.getElementById('doc');
   var ORIGINAL=doc.innerHTML;   // versión original de fábrica (antes de cargar ediciones)
-  var LKEY='ac_propuesta_edit_sce4880c9e6';
-  var DOC_VERSION='sce4880c9e6';
+  var LKEY='ac_propuesta_edit_s33d03b7c20';
+  var DOC_VERSION='s33d03b7c20';
   var TOKEN=localStorage.getItem('ac_token')||'';
   var EDITOR=localStorage.getItem('ac_prop_editor')||'';
   var LOGO=(document.querySelector('.cover img')||{}).src||'';
