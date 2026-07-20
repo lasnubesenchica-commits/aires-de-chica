@@ -51,6 +51,8 @@ thead th { color:var(--ac-muted); font-size:.72rem; text-transform:uppercase; le
 tbody tr { border-bottom:1px solid #eef5f8; }
 tbody tr:hover { background:var(--ac-teal-50); }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.mes-t th:first-child, .mes-t td:first-child { position:sticky; left:0; background:#fff; z-index:1; }
+.mes-t td:first-child { font-weight:600; }
 /* Directorio de propietarios: compacto para que quepa completo sin scroll horizontal */
 #tblProp { font-size:.8rem; table-layout:fixed; width:100%; }
 #tblProp th, #tblProp td { padding:7px 8px; }
@@ -1700,17 +1702,20 @@ function _gastosResultado(d){
     cats=Object.keys(gmap).map(k=>({categoria:k,ejecutado:gmap[k]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
   }
   const catRows=cats.map(t=>`<tr><td data-label="Categoría">${t.categoria}</td><td class="num" data-label="Monto">${money(t.ejecutado)}</td><td class="num" data-label="% de egresos">${egr>0?_ground1(t.ejecutado/egr*100):0}%</td></tr>`).join('');
-  // tabla mensual (solo meses del rango)
+  // tabla mensual transpuesta: conceptos en filas, meses en columnas (solo meses del rango)
   let acc=0;
-  const mesRows=GMESES.map((m,i)=>{
-    if(i+1<mi||i+1>mf) return '';
+  const mcols=[];
+  GMESES.forEach((m,i)=>{
+    if(i+1<mi||i+1>mf) return;
     const ii=im[i]||0, ee=em[i]||0, rr=Math.round((ii-ee)*100)/100; acc=Math.round((acc+rr)*100)/100;
-    return `<tr><td data-label="Mes">${m}</td>
-      <td class="num" data-label="Ingresos">${money(ii)}</td>
-      <td class="num" data-label="Egresos">${money(ee)}</td>
-      <td class="num" data-label="Resultado" style="color:${rr>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(rr)}</td>
-      <td class="num" data-label="Acumulado" style="color:${acc>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(acc)}</td></tr>`;
-  }).join('');
+    mcols.push({m,ii,ee,rr,acc});
+  });
+  const cCol=v=>v>=0?'var(--ac-green-600)':'var(--ac-danger)';
+  const mesHead=mcols.map(c=>`<th class="num">${c.m}</th>`).join('');
+  const rIng=mcols.map(c=>`<td class="num">${money(c.ii)}</td>`).join('');
+  const rEgr=mcols.map(c=>`<td class="num">${money(c.ee)}</td>`).join('');
+  const rRes=mcols.map(c=>`<td class="num" style="color:${cCol(c.rr)}">${money(c.rr)}</td>`).join('');
+  const rAcc=mcols.map(c=>`<td class="num" style="color:${cCol(c.acc)}">${money(c.acc)}</td>`).join('');
   return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
       <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
       <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button></div>
@@ -1729,8 +1734,12 @@ function _gastosResultado(d){
     </div></div>
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Mes a mes</h2></div>
     <div class="bd" style="padding:12px 18px">
-      ${mesRows?`<table class="stack-table"><thead><tr><th>Mes</th><th class="num">Ingresos</th><th class="num">Egresos</th><th class="num">Resultado</th><th class="num">Acumulado</th></tr></thead><tbody>${mesRows}
-        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Mes">TOTAL</td><td class="num" data-label="Ingresos">${money(ing)}</td><td class="num" data-label="Egresos">${money(egr)}</td><td class="num" data-label="Resultado" style="color:${resCol}">${money(res)}</td><td class="num" data-label="Acumulado" style="color:${resCol}">${money(res)}</td></tr></tbody></table>`
+      ${mcols.length?`<div style="overflow-x:auto"><table class="mes-t"><thead><tr><th>Concepto</th>${mesHead}<th class="num" style="border-left:1px solid var(--ac-border)">TOTAL</th></tr></thead><tbody>
+        <tr><td>Ingresos</td>${rIng}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(ing)}</td></tr>
+        <tr><td>Egresos</td>${rEgr}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(egr)}</td></tr>
+        <tr><td>Resultado</td>${rRes}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
+        <tr style="border-top:2px solid var(--ac-teal)"><td style="font-weight:700">Acumulado</td>${rAcc}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
+      </tbody></table></div>`
         :'<div class="muted" style="padding:12px 0">Sin movimientos en el periodo.</div>'}
     </div></div>`;
 }
