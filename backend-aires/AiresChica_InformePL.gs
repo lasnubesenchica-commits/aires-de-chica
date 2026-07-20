@@ -96,7 +96,8 @@ function _informePLHtml(D, nota) {
   // llenos (█): la parte ejecutada en color y el resto en gris claro.
   function bar(pct, over) {
     var p = Math.max(0, Math.min(100, Math.round(pct)));
-    var col = over ? B.coral : (p >= 85 ? '#B7791F' : GREEN);
+    var col = B.teal;         // un solo color de barra, el del logo de Aires de Chicá
+    var trackCol = '#F2F6F8'; // pista muy clara para que el avance se note
     var SEG = 14;
     var fill = over ? SEG : Math.max(0, Math.min(SEG, Math.round(SEG * p / 100)));
     var full = '', track = '', i;
@@ -104,7 +105,7 @@ function _informePLHtml(D, nota) {
     for (i = 0; i < SEG - fill; i++) track += '█';
     return '<span style="font-family:Arial,sans-serif;font-size:12px;letter-spacing:-0.5px;white-space:nowrap">' +
       (full ? '<span style="color:' + col + '">' + full + '</span>' : '') +
-      (track ? '<span style="color:#CFE4EC">' + track + '</span>' : '') + '</span>';
+      (track ? '<span style="color:' + trackCol + '">' + track + '</span>' : '') + '</span>';
   }
   // celda "% ejec." = barra + texto del porcentaje, en un layout de tabla
   function barCell(pct, over) {
