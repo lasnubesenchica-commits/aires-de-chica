@@ -90,13 +90,24 @@ function _informePLHtml(D, nota) {
   }
   function th(t, align) { return '<th style="background:' + B.teal + ';color:#fff;padding:7px 9px;text-align:' + (align || 'left') + ';font-size:11px">' + t + '</th>'; }
   function td(t, align, extra) { return '<td style="padding:6px 9px;border-bottom:1px solid ' + B.border + ';text-align:' + (align || 'left') + ';font-size:11.5px;' + (extra || '') + '">' + t + '</td>'; }
-  // barra de ejecución robusta para PDF (tabla con bgcolor, no div)
+  // barra de ejecución a prueba de PDF (Apps Script): tabla anidada, ancho en
+  // píxeles, color por atributo bgcolor y celdas con contenido para no colapsar.
   function bar(pct, over) {
     var p = Math.max(0, Math.min(100, Math.round(pct)));
     var col = over ? B.coral : (p >= 85 ? '#B7791F' : GREEN);
-    return '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:130px;display:inline-table;vertical-align:middle"><tr>' +
-      (p > 0 ? '<td bgcolor="' + col + '" style="width:' + p + '%;height:9px;background:' + col + '"></td>' : '') +
-      (p < 100 ? '<td bgcolor="' + B.teal50 + '" style="height:9px;background:' + B.teal50 + '"></td>' : '') +
+    var W = 120, fill = Math.round(W * p / 100), empty = W - fill;
+    var cel = 'style="font-size:1px;line-height:9px;mso-line-height-rule:exactly" height="9"';
+    var s = '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>';
+    if (fill > 0) s += '<td width="' + fill + '" bgcolor="' + col + '" ' + cel + '>&nbsp;</td>';
+    if (empty > 0) s += '<td width="' + empty + '" bgcolor="' + B.teal50 + '" ' + cel + '>&nbsp;</td>';
+    return s + '</tr></table>';
+  }
+  // celda "% ejec." = barra + texto del porcentaje, en un layout de tabla
+  function barCell(pct, over) {
+    var pc = over ? B.coral : B.muted, wght = over ? 'font-weight:700;' : '';
+    return '<table cellpadding="0" cellspacing="0" border="0"><tr>' +
+      '<td valign="middle">' + bar(pct, over) + '</td>' +
+      '<td valign="middle" style="padding-left:7px;font-size:10.5px;color:' + pc + ';' + wght + 'white-space:nowrap">' + pct + '%</td>' +
       '</tr></table>';
   }
 
@@ -141,7 +152,7 @@ function _informePLHtml(D, nota) {
     var over = t.ejecutado > t.presupuestado + 0.009 && t.presupuestado > 0;
     return '<tr>' + td(t.categoria) + td(_money(t.presupuestado), 'right') + td('<b>' + _money(t.ejecutado) + '</b>', 'right') +
       td(_money(t.disponible), 'right', t.disponible < -0.009 ? 'color:' + B.coral : '') +
-      td(bar(t.pct, over) + ' <span style="font-size:10.5px;' + (over ? 'color:' + B.coral + ';font-weight:700' : 'color:' + B.muted) + '">' + t.pct + '%</span>', 'left') + '</tr>';
+      td(barCell(t.pct, over), 'left') + '</tr>';
   }).join('');
   var presTabla = D.presupVs.length ? ('<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr>' +
     th('Categoría') + th('Presupuesto', 'right') + th('Ejecutado', 'right') + th('Disponible', 'right') + th('% ejec.') + '</tr>' +
