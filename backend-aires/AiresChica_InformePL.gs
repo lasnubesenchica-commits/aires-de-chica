@@ -90,17 +90,21 @@ function _informePLHtml(D, nota) {
   }
   function th(t, align) { return '<th style="background:' + B.teal + ';color:#fff;padding:7px 9px;text-align:' + (align || 'left') + ';font-size:11px">' + t + '</th>'; }
   function td(t, align, extra) { return '<td style="padding:6px 9px;border-bottom:1px solid ' + B.border + ';text-align:' + (align || 'left') + ';font-size:11.5px;' + (extra || '') + '">' + t + '</td>'; }
-  // barra de ejecución a prueba de PDF (Apps Script): tabla anidada, ancho en
-  // píxeles, color por atributo bgcolor y celdas con contenido para no colapsar.
+  // barra de ejecución a prueba del motor de PDF de Apps Script: ese motor
+  // descarta los colores de fondo, pero SÍ respeta el color de texto (los montos
+  // en verde/rojo lo confirman). Por eso la barra se dibuja con bloques de texto
+  // llenos (█): la parte ejecutada en color y el resto en gris claro.
   function bar(pct, over) {
     var p = Math.max(0, Math.min(100, Math.round(pct)));
     var col = over ? B.coral : (p >= 85 ? '#B7791F' : GREEN);
-    var W = 120, fill = Math.round(W * p / 100), empty = W - fill;
-    var cel = 'style="font-size:1px;line-height:9px;mso-line-height-rule:exactly" height="9"';
-    var s = '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>';
-    if (fill > 0) s += '<td width="' + fill + '" bgcolor="' + col + '" ' + cel + '>&nbsp;</td>';
-    if (empty > 0) s += '<td width="' + empty + '" bgcolor="' + B.teal50 + '" ' + cel + '>&nbsp;</td>';
-    return s + '</tr></table>';
+    var SEG = 14;
+    var fill = over ? SEG : Math.max(0, Math.min(SEG, Math.round(SEG * p / 100)));
+    var full = '', track = '', i;
+    for (i = 0; i < fill; i++) full += '█';
+    for (i = 0; i < SEG - fill; i++) track += '█';
+    return '<span style="font-family:Arial,sans-serif;font-size:12px;letter-spacing:-0.5px;white-space:nowrap">' +
+      (full ? '<span style="color:' + col + '">' + full + '</span>' : '') +
+      (track ? '<span style="color:#CFE4EC">' + track + '</span>' : '') + '</span>';
   }
   // celda "% ejec." = barra + texto del porcentaje, en un layout de tabla
   function barCell(pct, over) {
