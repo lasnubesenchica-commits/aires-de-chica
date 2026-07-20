@@ -105,7 +105,7 @@ function doPost(e) {
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
-    else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien) };
+    else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropSaldo2025') out = { ok: true, data: setPropSaldo2025(data.clave, data.saldo2025) };

@@ -22,18 +22,19 @@ var PROP_MAX = 450000;              // tope defensivo del contenido total
 function getPropuesta() {
   var props = PropertiesService.getScriptProperties();
   var rawMeta = props.getProperty(PROP_META);
-  if (!rawMeta) return { html: '', updatedAt: '', updatedBy: '' };
+  if (!rawMeta) return { html: '', updatedAt: '', updatedBy: '', version: '' };
   var meta = {};
-  try { meta = JSON.parse(rawMeta); } catch (e) { return { html: '', updatedAt: '', updatedBy: '' }; }
+  try { meta = JSON.parse(rawMeta); } catch (e) { return { html: '', updatedAt: '', updatedBy: '', version: '' }; }
   var n = Number(meta.n) || 0, html = '';
   for (var i = 0; i < n; i++) html += (props.getProperty(PROP_CHUNK + i) || '');
-  return { html: html, updatedAt: meta.updatedAt || '', updatedBy: meta.updatedBy || '' };
+  return { html: html, updatedAt: meta.updatedAt || '', updatedBy: meta.updatedBy || '', version: meta.version || '' };
 }
 
-function guardarPropuesta(html, quien) {
+function guardarPropuesta(html, quien, version) {
   html = String(html == null ? '' : html);
   if (html.length > PROP_MAX) throw new Error('El contenido es demasiado grande para guardarse.');
   var q = String(quien || '').slice(0, 40);
+  var ver = String(version || '').slice(0, 40);
   var props = PropertiesService.getScriptProperties();
 
   // borrar trozos previos (por si la nueva versión tiene menos)
@@ -44,8 +45,8 @@ function guardarPropuesta(html, quien) {
   var toSet = {};
   for (var i = 0; i < n; i++) toSet[PROP_CHUNK + i] = html.substr(i * PROP_CHUNK_SIZE, PROP_CHUNK_SIZE);
   var updatedAt = new Date().toISOString();
-  toSet[PROP_META] = JSON.stringify({ n: n, updatedAt: updatedAt, updatedBy: q, len: html.length });
+  toSet[PROP_META] = JSON.stringify({ n: n, updatedAt: updatedAt, updatedBy: q, version: ver, len: html.length });
   props.setProperties(toSet);
 
-  return { updatedAt: updatedAt, updatedBy: q, len: html.length };
+  return { updatedAt: updatedAt, updatedBy: q, version: ver, len: html.length };
 }
