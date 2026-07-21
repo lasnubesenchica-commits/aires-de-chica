@@ -101,6 +101,9 @@
   .feat-img img{width:100%;height:100%;object-fit:cover;}
   .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.9);gap:8px;text-align:center;padding:20px;font-size:14px;font-weight:600;}
   .ph small{opacity:.85;font-weight:400;}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--teal50);color:var(--teal700);
+    border:1px solid #bfe4ee;border-radius:999px;padding:9px 15px;font-size:14.5px;font-weight:700;}
 
   /* ---------- LOCATION ---------- */
   .loc-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch;}
@@ -195,6 +198,7 @@
       <a href="#naturaleza">Naturaleza</a>
       <a href="#ubicacion">Ubicación</a>
       <a href="#cascada">Cascada</a>
+      <a href="#seguridad">Seguridad</a>
       <a href="#alojamientos">Alojamientos</a>
       <a href="#lotes">Lotes</a>
       <a href="#contacto" class="nav-cta">Contáctanos</a>
@@ -284,6 +288,25 @@
     </div>
     <div class="feat-img" data-img="cascada">
       <div class="ph">💧 Foto de la cascada<small>Reemplázala con tu mejor toma de la cascada</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SEGURIDAD / COMUNIDAD CERRADA ================= -->
+<section id="seguridad">
+  <div class="wrap feat-grid">
+    <div class="feat-img" data-img="seguridad" style="aspect-ratio:4/3;background:linear-gradient(150deg,#086176,#0E8FB0)">
+      <div class="ph">🔒 Foto del portón<small>Portón eléctrico con cámaras</small></div>
+    </div>
+    <div class="feat-txt">
+      <span class="eyebrow">Tranquilidad</span>
+      <h2>Una comunidad cerrada y segura</h2>
+      <p>Aires de Chicá es una comunidad de acceso controlado. Su <b>portón eléctrico</b> y sus <b>cámaras de seguridad</b> cuidan la entrada, para que vivas, inviertas y disfrutes con total tranquilidad.</p>
+      <div class="chips">
+        <span class="chip">⚡ Portón eléctrico</span>
+        <span class="chip">📹 Cámaras de seguridad</span>
+        <span class="chip">🚧 Acceso controlado</span>
+      </div>
     </div>
   </div>
 </section>
@@ -423,10 +446,11 @@
   ];
   // Fotos de secciones (cascada + alojamientos)
   var IMG_MAP = {
-    cascada: "1unIK88UDDOVmEHYTfyQ1R7X4vvu6ZInm", // cascada1
-    stay1:   "1dvP5ubgM1SrDV2sMYFMGrBndnauz4dwd", // Las Nubes
-    stay2:   "1iZnIFSMLlg5gFEw5fLqldI5olcGZ2OoG", // Malaya
-    stay3:   ""                                    // Rincón Sereno (falta foto)
+    cascada:   "1unIK88UDDOVmEHYTfyQ1R7X4vvu6ZInm", // cascada1
+    seguridad: "1Yp_NVW6HEBHzpaxWHg6ChQTN4lx8jVYh", // porton
+    stay1:     "1dvP5ubgM1SrDV2sMYFMGrBndnauz4dwd", // Las Nubes
+    stay2:     "1iZnIFSMLlg5gFEw5fLqldI5olcGZ2OoG", // Malaya
+    stay3:     "1Mb1i1vCDOG4yIWd0aH1ODkULyY0_hfe6"  // Rincón Sereno
   };
   var driveUrl = function(id){ return "https://lh3.googleusercontent.com/d/" + id + "=w1920"; };
   var slidesEl = document.getElementById("slides");
