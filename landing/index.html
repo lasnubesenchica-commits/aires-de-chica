@@ -414,15 +414,20 @@
   // ---- Hero carousel: fotos de Google Drive (redimensionadas por el CDN de Google) ----
   // Para que carguen, la carpeta de Drive debe estar como "Cualquiera con el enlace: Lector".
   var HERO_IDS = [
-    "1LGVMr2Rd1o-Putxz48StSl9EBPuUkm1z", // IMG_7772
-    "1ZtK6JCrU3VxOxxjgPUk-BBGLTkFcjjZZ", // IMG_7011
-    "1eCLSFyoeRv1aKjvXJIZfrZ9KCdSoLXtP", // IMG_7002
-    "1ldahgj3bFG31drCKw_NoBUxfcBtMwJDb", // IMG_7600
-    "165EOjGC92UkTs8JslA4V2UgmkfKG1PFz", // IMG_6128
-    "1P_LIdGT8uhf2etVIzaZQLLLga2qM0Geb", // IMG_7132
-    "1I-PZNmZASMxjdgj9Txe2dbXiHdczC5sK", // IMG_0253
-    "12JiWsZYYkO--ke2cC1vtFF7v_I3Sb-pE"  // IMG_6130
+    "1nSgeBxi0qTtEEqTcEeJkMvRfAenh7mNf", // hero1
+    "1CkdJ2UaBErhLFg9MS-l7CXd6Rs1gFbTG", // hero2
+    "1ArOWLyZry7RFDahY4d4zbGigrfjp8qWG", // hero3
+    "1LGVMr2Rd1o-Putxz48StSl9EBPuUkm1z", // hero4
+    "1mqlIrXyIch2NPY_1nayITkfud-pkdh5W", // hero5
+    "1n9_vwL8xiOAugoWfYD4GXwesCwk310pB"  // hero6
   ];
+  // Fotos de secciones (cascada + alojamientos)
+  var IMG_MAP = {
+    cascada: "1unIK88UDDOVmEHYTfyQ1R7X4vvu6ZInm", // cascada1
+    stay1:   "1dvP5ubgM1SrDV2sMYFMGrBndnauz4dwd", // Las Nubes
+    stay2:   "1iZnIFSMLlg5gFEw5fLqldI5olcGZ2OoG", // Malaya
+    stay3:   ""                                    // Rincón Sereno (falta foto)
+  };
   var driveUrl = function(id){ return "https://lh3.googleusercontent.com/d/" + id + "=w1920"; };
   var slidesEl = document.getElementById("slides");
   var dotsEl = document.getElementById("dots");
@@ -440,6 +445,21 @@
     d.addEventListener("click", function(){ go(i); });
     dotsEl.appendChild(d);
   });
+  // Cargar fotos de cascada y alojamientos en sus tarjetas (con respaldo si fallan)
+  Object.keys(IMG_MAP).forEach(function(key){
+    var id = IMG_MAP[key]; if(!id) return;
+    document.querySelectorAll('[data-img="'+key+'"]').forEach(function(el){
+      var im = new Image();
+      im.onload = function(){
+        el.style.backgroundImage = "url('"+driveUrl(id)+"')";
+        el.style.backgroundSize = "cover";
+        el.style.backgroundPosition = "center";
+        var ph = el.querySelector('.ph'); if(ph) ph.style.display = "none";
+      };
+      im.src = driveUrl(id);
+    });
+  });
+
   var cur = 0, timer;
   function go(n){
     slides[cur].classList.remove("on"); dotsEl.children[cur].classList.remove("on");
