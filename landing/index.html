@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aires de Chicá · Comunidad ecológica en Buenos Aires, Chame</title>
+<meta name="description" content="Comunidad ecológica cerrada de 33 hectáreas en Buenos Aires, Chame. Agua de montaña, vistas panorámicas, clima fresco y cascada natural. Lotes desde 1,200 m² con agua potable, desde $70,000.">
+<meta property="og:title" content="Aires de Chicá · Comunidad ecológica">
+<meta property="og:description" content="33 hectáreas de naturaleza a minutos de todo. Lotes desde 1,200 m² con agua potable, desde $70,000.">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --teal:#0E8FB0; --teal700:#086176; --teal900:#063f4d; --teal50:#EAF6FA;
+    --green:#3E7C4F; --lime:#8DC63F; --sand:#EFE7D8; --coral:#E8804C;
+    --ink:#152a30; --muted:#5B7883; --line:#DCE9ED; --bg:#F7FBFC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;-webkit-font-smoothing:antialiased;}
+  img{max-width:100%;display:block;}
+  a{color:inherit;text-decoration:none;}
+  h1,h2,h3{line-height:1.15;font-weight:800;letter-spacing:-.02em;}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 22px;}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:#fff;font-weight:700;
+    padding:14px 24px;border-radius:999px;border:0;cursor:pointer;font-size:16px;transition:transform .12s,background .2s;box-shadow:0 8px 22px rgba(14,143,176,.28);}
+  .btn:hover{background:var(--teal700);transform:translateY(-1px);}
+  .btn.ghost{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.7);box-shadow:none;}
+  .btn.wa{background:#25D366;box-shadow:0 8px 22px rgba(37,211,102,.32);}
+  .btn.wa:hover{background:#1eb257;}
+  .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:12.5px;font-weight:800;color:var(--teal);}
+  section{padding:82px 0;}
+  .sec-head{max-width:720px;margin:0 auto 44px;text-align:center;}
+  .sec-head h2{font-size:clamp(28px,4.2vw,42px);color:var(--teal900);margin:10px 0 12px;}
+  .sec-head p{color:var(--muted);font-size:18px;}
+
+  /* ---------- NAV ---------- */
+  header{position:fixed;top:0;left:0;right:0;z-index:50;transition:background .3s,box-shadow .3s;}
+  header.scrolled{background:rgba(255,255,255,.94);backdrop-filter:blur(8px);box-shadow:0 1px 0 var(--line);}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:70px;}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;color:#fff;transition:color .3s;}
+  header.scrolled .brand{color:var(--teal900);}
+  .brand img{height:42px;width:42px;border-radius:11px;background:#fff;padding:3px;box-shadow:0 3px 12px rgba(0,0,0,.15);}
+  .brand b{font-size:18px;letter-spacing:-.01em;}
+  .nav-links{display:flex;align-items:center;gap:28px;}
+  .nav-links a{color:#fff;font-weight:600;font-size:15px;opacity:.92;transition:color .3s;}
+  header.scrolled .nav-links a{color:var(--ink);}
+  .nav-links a:hover{opacity:1;color:var(--lime);}
+  header.scrolled .nav-links a:hover{color:var(--teal);}
+  .nav-cta{background:#fff;color:var(--teal700)!important;padding:9px 18px;border-radius:999px;font-weight:800;box-shadow:0 4px 14px rgba(0,0,0,.15);}
+  .burger{display:none;background:none;border:0;cursor:pointer;padding:8px;}
+  .burger span{display:block;width:26px;height:2.5px;background:#fff;border-radius:2px;margin:5px 0;transition:.3s;}
+  header.scrolled .burger span{background:var(--ink);}
+
+  /* ---------- HERO ---------- */
+  .hero{position:relative;height:100vh;min-height:600px;display:flex;align-items:center;overflow:hidden;color:#fff;}
+  .slides{position:absolute;inset:0;z-index:0;background:linear-gradient(150deg,#0B7A98,#0E8FB0 55%,#12A2C4);}
+  .slide{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.4s ease-in-out;transform:scale(1.06);}
+  .slide.on{opacity:1;transform:scale(1);transition:opacity 1.4s ease-in-out,transform 7s ease-out;}
+  .hero::after{content:"";position:absolute;inset:0;z-index:1;
+    background:linear-gradient(180deg,rgba(6,40,50,.55) 0%,rgba(6,40,50,.25) 40%,rgba(6,40,50,.72) 100%);}
+  .hero-inner{position:relative;z-index:2;max-width:820px;}
+  .hero h1{font-size:clamp(38px,7vw,74px);text-shadow:0 3px 30px rgba(0,0,0,.35);}
+  .hero .lead{font-size:clamp(18px,2.4vw,23px);margin:18px 0 30px;max-width:640px;text-shadow:0 2px 16px rgba(0,0,0,.4);opacity:.97;}
+  .hero .tagpill{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);
+    padding:7px 16px;border-radius:999px;font-size:14px;font-weight:700;backdrop-filter:blur(4px);margin-bottom:22px;}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;}
+  .scroll-ind{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:2;color:#fff;opacity:.8;font-size:13px;text-align:center;animation:bob 2s infinite;}
+  @keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,7px)}}
+  .dots{position:absolute;bottom:26px;right:26px;z-index:2;display:flex;gap:8px;}
+  .dots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.45);cursor:pointer;transition:.3s;}
+  .dots i.on{background:#fff;width:26px;border-radius:6px;}
+
+  /* ---------- QUICK FACTS ---------- */
+  .facts{background:var(--teal900);color:#fff;}
+  .facts .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding-top:30px;padding-bottom:30px;}
+  .fact{text-align:center;padding:8px;}
+  .fact b{display:block;font-size:clamp(22px,3vw,30px);color:#fff;}
+  .fact span{font-size:13.5px;color:#bfe0ea;}
+
+  /* ---------- INTRO ---------- */
+  .intro p.big{font-size:clamp(20px,2.6vw,26px);color:var(--ink);text-align:center;max-width:820px;margin:0 auto;font-weight:500;}
+  .intro .accent{color:var(--teal);font-weight:800;}
+
+  /* ---------- TREASURES ---------- */
+  .treasures{background:#fff;}
+  .cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+  .tcard{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:28px 22px;transition:transform .15s,box-shadow .2s;}
+  .tcard:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(8,97,118,.10);}
+  .tcard .ic{width:54px;height:54px;border-radius:14px;background:var(--teal50);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--teal700);}
+  .tcard h3{font-size:19px;color:var(--teal900);margin-bottom:6px;}
+  .tcard p{font-size:15px;color:var(--muted);}
+
+  /* ---------- FEATURE (cascada) ---------- */
+  .feature{background:linear-gradient(180deg,#fff,var(--teal50));}
+  .feat-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:46px;align-items:center;}
+  .feat-txt h2{font-size:clamp(26px,3.6vw,38px);color:var(--teal900);margin-bottom:14px;}
+  .feat-txt p{color:var(--muted);font-size:17px;margin-bottom:12px;}
+  .feat-img{border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(8,97,118,.20);aspect-ratio:4/5;
+    background:linear-gradient(150deg,#2e8b8b,#8DC63F);position:relative;display:flex;align-items:flex-end;}
+  .feat-img img{width:100%;height:100%;object-fit:cover;}
+  .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.9);gap:8px;text-align:center;padding:20px;font-size:14px;font-weight:600;}
+  .ph small{opacity:.85;font-weight:400;}
+
+  /* ---------- LOCATION ---------- */
+  .loc-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch;}
+  .map-box{border-radius:20px;overflow:hidden;border:1px solid var(--line);box-shadow:0 14px 40px rgba(8,97,118,.10);min-height:380px;background:#e9f1f3;}
+  .map-box iframe{width:100%;height:100%;min-height:380px;border:0;display:block;}
+  .dist-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px;display:flex;flex-direction:column;box-shadow:0 14px 40px rgba(8,97,118,.06);}
+  .dist-card h3{color:var(--teal900);font-size:20px;margin-bottom:4px;}
+  .dist-card > p{color:var(--muted);font-size:14.5px;margin-bottom:14px;}
+  .dist-list{list-style:none;display:flex;flex-direction:column;gap:2px;}
+  .dist-list li{display:flex;align-items:center;gap:14px;padding:13px 6px;border-bottom:1px dashed var(--line);}
+  .dist-list li:last-child{border-bottom:0;}
+  .dist-list .t{width:78px;flex:none;font-weight:800;color:var(--teal);font-size:17px;}
+  .dist-list .n{font-weight:700;}
+  .dist-list .d{color:var(--muted);font-size:13.5px;}
+
+  /* ---------- POSSIBILITIES ---------- */
+  .poss{background:var(--teal900);color:#fff;}
+  .poss .sec-head h2{color:#fff;}
+  .poss .sec-head p{color:#bfe0ea;}
+  .cards2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .pcard{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:34px 30px;}
+  .pcard .ic{width:52px;height:52px;border-radius:14px;background:rgba(141,198,63,.2);display:flex;align-items:center;justify-content:center;color:var(--lime);margin-bottom:16px;}
+  .pcard h3{font-size:22px;margin-bottom:8px;}
+  .pcard p{color:#cfe4ea;font-size:16px;}
+
+  /* ---------- STAYS (airbnb) ---------- */
+  .stays{background:#fff;}
+  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+  .scard{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--bg);transition:transform .15s,box-shadow .2s;}
+  .scard:hover{transform:translateY(-4px);box-shadow:0 18px 44px rgba(8,97,118,.12);}
+  .scard .pic{aspect-ratio:3/2;background:linear-gradient(150deg,#0E8FB0,#3E7C4F);position:relative;}
+  .scard .pic img{width:100%;height:100%;object-fit:cover;}
+  .scard .body{padding:20px 22px;}
+  .scard .kick{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:800;}
+  .scard h3{font-size:21px;color:var(--teal900);margin:3px 0 6px;}
+  .scard p{font-size:14.5px;color:var(--muted);}
+
+  /* ---------- LOTS / CTA ---------- */
+  .lots{background:linear-gradient(150deg,var(--teal700),var(--teal));color:#fff;text-align:center;}
+  .lots h2{font-size:clamp(28px,4.4vw,44px);margin-bottom:10px;}
+  .lots .price{font-size:clamp(40px,7vw,68px);font-weight:800;letter-spacing:-.03em;margin:6px 0;}
+  .lots .price small{font-size:22px;font-weight:600;opacity:.85;}
+  .lots .subs{display:flex;gap:30px;justify-content:center;flex-wrap:wrap;margin:22px 0 30px;color:#e7f6fb;font-weight:600;}
+  .lots .subs span{display:flex;align-items:center;gap:8px;}
+
+  /* ---------- CONTACT ---------- */
+  .contact{background:var(--bg);}
+  .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;}
+  .contact h2{font-size:clamp(26px,3.6vw,38px);color:var(--teal900);margin-bottom:12px;}
+  .contact p.sub{color:var(--muted);font-size:17px;margin-bottom:22px;}
+  .cline{display:flex;align-items:center;gap:14px;padding:12px 0;font-weight:600;}
+  .cline .ic{width:44px;height:44px;border-radius:12px;background:var(--teal50);display:flex;align-items:center;justify-content:center;color:var(--teal700);flex:none;}
+  .cline small{display:block;font-weight:500;color:var(--muted);font-size:13px;}
+  .contact-cta{background:#fff;border:1px solid var(--line);border-radius:22px;padding:34px;text-align:center;box-shadow:0 18px 50px rgba(8,97,118,.10);}
+  .contact-cta h3{color:var(--teal900);font-size:23px;margin-bottom:8px;}
+  .contact-cta p{color:var(--muted);margin-bottom:20px;}
+
+  footer{background:var(--teal900);color:#cfe4ea;text-align:center;padding:40px 0;font-size:14px;}
+  footer .brand{justify-content:center;color:#fff;margin-bottom:10px;}
+  footer a{color:#fff;font-weight:600;}
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:920px){
+    .cards4{grid-template-columns:repeat(2,1fr);}
+    .cards3{grid-template-columns:1fr;}
+    .feat-grid,.loc-grid,.cards2,.contact-grid{grid-template-columns:1fr;}
+    .feat-img{aspect-ratio:16/10;}
+    .facts .wrap{grid-template-columns:repeat(2,1fr);gap:22px;}
+    .nav-links{position:fixed;inset:70px 0 auto 0;background:#fff;flex-direction:column;gap:0;padding:8px 0 16px;
+      box-shadow:0 12px 30px rgba(0,0,0,.12);transform:translateY(-140%);transition:transform .32s;}
+    .nav-links.open{transform:translateY(0);}
+    .nav-links a{color:var(--ink)!important;width:100%;padding:14px 24px;border-bottom:1px solid var(--line);}
+    .nav-links .nav-cta{background:var(--teal);color:#fff!important;margin:12px 24px 0;text-align:center;}
+    .burger{display:block;}
+    header .brand{color:#fff;}
+    header.scrolled .nav-links a{color:var(--ink);}
+  }
+  @media (max-width:560px){
+    section{padding:60px 0;}
+    .cards4{grid-template-columns:1fr;}
+    .hero-cta .btn{width:100%;justify-content:center;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= NAV ================= -->
+<header id="hdr">
+  <div class="wrap nav">
+    <a href="#top" class="brand"><img src="logo-airesdechica.jpeg" alt="Aires de Chicá"><b>Aires de Chicá</b></a>
+    <nav class="nav-links" id="navlinks">
+      <a href="#naturaleza">Naturaleza</a>
+      <a href="#ubicacion">Ubicación</a>
+      <a href="#cascada">Cascada</a>
+      <a href="#alojamientos">Alojamientos</a>
+      <a href="#lotes">Lotes</a>
+      <a href="#contacto" class="nav-cta">Contáctanos</a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menú"><span></span><span></span><span></span></button>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section class="hero" id="top" style="padding:0">
+  <div class="slides" id="slides"></div>
+  <div class="wrap hero-inner">
+    <span class="tagpill">🌿 Comunidad ecológica cerrada · Buenos Aires, Chame</span>
+    <h1>Vive entre montañas,<br>agua y brisa perpetua</h1>
+    <p class="lead">33 hectáreas de naturaleza a solo minutos de la Interamericana. Tu refugio de montaña, cerca de todo.</p>
+    <div class="hero-cta">
+      <a href="#lotes" class="btn">Ver los lotes</a>
+      <a href="#contacto" class="btn ghost">Agenda una visita</a>
+    </div>
+  </div>
+  <div class="dots" id="dots"></div>
+  <div class="scroll-ind">Desliza para descubrir<br>▾</div>
+</section>
+
+<!-- ================= QUICK FACTS ================= -->
+<div class="facts">
+  <div class="wrap">
+    <div class="fact"><b>33 ha</b><span>de comunidad ecológica</span></div>
+    <div class="fact"><b>13 min</b><span>de la Interamericana</span></div>
+    <div class="fact"><b>1,200 m²</b><span>lotes desde</span></div>
+    <div class="fact"><b>$70,000</b><span>precios desde</span></div>
+  </div>
+</div>
+
+<!-- ================= INTRO ================= -->
+<section class="intro" id="naturaleza">
+  <div class="wrap">
+    <div class="sec-head" style="margin-bottom:26px">
+      <span class="eyebrow">Un refugio natural</span>
+      <h2>Naturaleza que se siente al llegar</h2>
+    </div>
+    <p class="big">Aires de Chicá es una <span class="accent">comunidad ecológica cerrada de 33 hectáreas</span> en Buenos Aires, Chame — a tan solo <b>13 minutos de la Interamericana</b> y <b>20 minutos de Coronado</b>. Un entorno de montaña, fresco y seguro, para vivir o invertir.</p>
+  </div>
+</section>
+
+<!-- ================= TREASURES ================= -->
+<section class="treasures" style="padding-top:20px">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Tesoros naturales</span>
+      <h2>Lo que hace única a Chicá</h2>
+      <p>Cuatro regalos de la montaña que vas a disfrutar todos los días.</p>
+    </div>
+    <div class="cards4">
+      <div class="tcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5C12 2.5 5.5 9.5 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 9.5 12 2.5 12 2.5Z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/></svg></div>
+        <h3>Agua abundante</h3>
+        <p>Agua de montaña y subterránea en abundancia. Los lotes se entregan servidos con agua potable.</p>
+      </div>
+      <div class="tcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19h18"/><path d="m3 19 6-9 4 5 2.5-3.5L21 19"/><circle cx="17" cy="6" r="2"/></svg></div>
+        <h3>Vistas panorámicas</h3>
+        <p>Amplias vistas a la montaña desde toda la comunidad. Amaneceres y atardeceres inolvidables.</p>
+      </div>
+      <div class="tcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h9a2.5 2.5 0 1 1-2.5 2.5"/></svg></div>
+        <h3>Clima fresco y brisa</h3>
+        <p>Temperatura agradable todo el año y una brisa perpetua que se siente apenas llegas.</p>
+      </div>
+      <div class="tcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v9M9 3v9M13 5v7M17 6v6"/><path d="M3 12h18v2a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6Z"/></svg></div>
+        <h3>Cascada y posas</h3>
+        <p>Una cascada y posas naturales dentro de la comunidad para disfrutar en familia y con amistades.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CASCADA ================= -->
+<section class="feature" id="cascada">
+  <div class="wrap feat-grid">
+    <div class="feat-txt">
+      <span class="eyebrow">Dentro de la comunidad</span>
+      <h2>Tu propia cascada y posas naturales</h2>
+      <p>Uno de los mayores tesoros de Chicá está puertas adentro: una cascada de aguas frescas de montaña y posas naturales, perfectas para un chapuzón en familia o una tarde con amistades.</p>
+      <p>Naturaleza viva a pasos de tu lote, para desconectarte sin salir de casa.</p>
+    </div>
+    <div class="feat-img" data-img="cascada">
+      <div class="ph">💧 Foto de la cascada<small>Reemplázala con tu mejor toma de la cascada</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= UBICACIÓN ================= -->
+<section id="ubicacion">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Ubicación privilegiada</span>
+      <h2>Naturaleza, con todo cerca</h2>
+      <p>Escondido en la montaña de Buenos Aires, Chame — pero a minutos de servicios, playas y la ciudad.</p>
+    </div>
+    <div class="loc-grid">
+      <div class="map-box">
+        <!-- Reemplaza el q= por las coordenadas exactas de la entrada de la comunidad -->
+        <iframe title="Ubicación Aires de Chicá" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+          src="https://www.google.com/maps?q=Buenos%20Aires%2C%20Chame%2C%20Panam%C3%A1&z=12&output=embed"></iframe>
+      </div>
+      <div class="dist-card">
+        <h3>¿Qué tan cerca está todo?</h3>
+        <p>Tiempos aproximados en auto desde la comunidad.</p>
+        <ul class="dist-list">
+          <li><span class="t">10 min</span><span><span class="n">Bejuco</span><span class="d">Supermercados, bancos y servicios.</span></span></li>
+          <li><span class="t">13 min</span><span><span class="n">Interamericana</span><span class="d">Acceso directo a la vía principal.</span></span></li>
+          <li><span class="t">20 min</span><span><span class="n">Coronado y playas</span><span class="d">Playa, comercios y restaurantes.</span></span></li>
+          <li><span class="t">1.5 h</span><span><span class="n">Ciudad de Panamá</span><span class="d">A poco más de una hora de la capital.</span></span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= POSIBILIDADES ================= -->
+<section class="poss">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow" style="color:var(--lime)">Tu proyecto en Chicá</span>
+      <h2>Vive o invierte en la montaña</h2>
+      <p>Un mismo lugar, dos grandes posibilidades.</p>
+    </div>
+    <div class="cards2">
+      <div class="pcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></div>
+        <h3>Construye tu casa de montaña</h3>
+        <p>Tu hogar rodeado de naturaleza, con clima fresco y todo cerca. El refugio que siempre quisiste, sin alejarte de la ciudad.</p>
+      </div>
+      <div class="pcard">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V9l5-4 5 4"/><path d="M14 20V12l3-2 3 2v8"/><path d="M2 20h20"/></svg></div>
+        <h3>Desarrolla tu proyecto de cabañas o Airbnb</h3>
+        <p>El entorno perfecto para un proyecto de cabañas o alquiler vacacional. Alta demanda de naturaleza a minutos de la ciudad.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ALOJAMIENTOS ================= -->
+<section class="stays" id="alojamientos">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Ya se vive Chicá</span>
+      <h2>Hogares y estancias dentro de la comunidad</h2>
+      <p>Vecinos que ya disfrutan la montaña — y alojamientos para conocerla antes de decidir.</p>
+    </div>
+    <div class="cards3">
+      <div class="scard">
+        <div class="pic" data-img="stay1"><div class="ph">🏡 Foto<small>Las Nubes</small></div></div>
+        <div class="body"><span class="kick">El hogar de</span><h3>Las Nubes</h3><p>Una estancia entre la neblina y las vistas de la montaña.</p></div>
+      </div>
+      <div class="scard">
+        <div class="pic" data-img="stay2"><div class="ph">🏡 Foto<small>Malaya</small></div></div>
+        <div class="body"><span class="kick">El hogar de</span><h3>Malaya</h3><p>Diseño y naturaleza en armonía, para desconectar de verdad.</p></div>
+      </div>
+      <div class="scard">
+        <div class="pic" data-img="stay3"><div class="ph">🏡 Foto<small>Rincón Sereno</small></div></div>
+        <div class="body"><span class="kick">El hogar de</span><h3>Rincón Sereno</h3><p>Paz, brisa y el sonido del agua como banda sonora.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LOTES / CTA ================= -->
+<section class="lots" id="lotes">
+  <div class="wrap">
+    <span class="eyebrow" style="color:#d9f2fb">Disponibilidad</span>
+    <h2>Lotes desde 1,200 m²</h2>
+    <div class="price"><small>Desde</small> $70,000</div>
+    <div class="subs">
+      <span>✓ Agua potable incluida</span>
+      <span>✓ Comunidad cerrada</span>
+      <span>✓ Vistas a la montaña</span>
+    </div>
+    <a href="#contacto" class="btn" style="background:#fff;color:var(--teal700)">Solicita información y precios</a>
+  </div>
+</section>
+
+<!-- ================= CONTACTO ================= -->
+<section class="contact" id="contacto">
+  <div class="wrap contact-grid">
+    <div>
+      <span class="eyebrow">Contacto</span>
+      <h2>Ven a conocer Aires de Chicá</h2>
+      <p class="sub">Agenda una visita o pide más información. Con gusto te mostramos la comunidad y los lotes disponibles.</p>
+      <div class="cline"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg></span><span>WhatsApp<small id="wa-label">+507 0000-0000 — reemplazar</small></span></div>
+      <div class="cline"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="m4 6 8 6 8-6"/></svg></span><span>Correo<small>info@airesdechica.org</small></span></div>
+      <div class="cline"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span>Ubicación<small>Buenos Aires, Chame · Panamá</small></span></div>
+    </div>
+    <div class="contact-cta">
+      <h3>Escríbenos por WhatsApp</h3>
+      <p>Respuesta rápida. Cuéntanos qué buscas: vivir, invertir o construir.</p>
+      <a href="https://wa.me/5070000000?text=Hola%2C%20me%20interesa%20informaci%C3%B3n%20sobre%20los%20lotes%20de%20Aires%20de%20Chic%C3%A1" target="_blank" rel="noopener" class="btn wa" id="wa-btn" style="width:100%;justify-content:center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm5.5 14.2c-.2.6-1.2 1.2-1.7 1.2-.4 0-1 .1-3.2-.9-2.7-1.2-4.4-4-4.5-4.2-.1-.2-1.1-1.4-1.1-2.7s.7-1.9.9-2.1c.2-.2.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2 1.3 2.3 1.5.2.1.4.1.6-.1l.7-.9c.2-.2.3-.2.6-.1l2 .9c.2.1.4.2.4.3.1.2.1.7-.1 1.3Z"/></svg>
+        Chatear ahora
+      </a>
+      <p style="font-size:13px;margin-top:14px;margin-bottom:0">O escríbenos a <a href="mailto:info@airesdechica.org" style="color:var(--teal);font-weight:700">info@airesdechica.org</a></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand" style="justify-content:center"><img src="logo-airesdechica.jpeg" alt="" style="height:40px;width:40px;border-radius:10px"><b style="font-size:18px">Aires de Chicá</b></div>
+    <p>Comunidad ecológica · Buenos Aires, Chame · Panamá</p>
+    <p style="margin-top:6px;opacity:.7">© <span id="yr"></span> Aires de Chicá. Todos los derechos reservados.</p>
+  </div>
+</footer>
+
+<script>
+  // ---- Hero carousel: fotos de Google Drive (redimensionadas por el CDN de Google) ----
+  // Para que carguen, la carpeta de Drive debe estar como "Cualquiera con el enlace: Lector".
+  var HERO_IDS = [
+    "1LGVMr2Rd1o-Putxz48StSl9EBPuUkm1z",
+    "1I-PZNmZASMxjdgj9Txe2dbXiHdczC5sK",
+    "1nSgeBxi0qTtEEqTcEeJkMvRfAenh7mNf",
+    "1f_yv6H4NqwBKLeERm_R9ClZQg93fkCuV",
+    "19oLw2yh4eRRTb2R9nCGfEF-1gdIeBqKC",
+    "1pOkA-q2XGNdDS35PYyY7x8IOgHv4Oj1t"
+  ];
+  var driveUrl = function(id){ return "https://lh3.googleusercontent.com/d/" + id + "=w1920"; };
+  var slidesEl = document.getElementById("slides");
+  var dotsEl = document.getElementById("dots");
+  var slides = [];
+  HERO_IDS.forEach(function(id, i){
+    var s = document.createElement("div");
+    s.className = "slide" + (i === 0 ? " on" : "");
+    var img = new Image();
+    img.onload = function(){ s.style.backgroundImage = "url('" + driveUrl(id) + "')"; };
+    img.src = driveUrl(id);
+    slidesEl.appendChild(s);
+    slides.push(s);
+    var d = document.createElement("i");
+    if (i === 0) d.className = "on";
+    d.addEventListener("click", function(){ go(i); });
+    dotsEl.appendChild(d);
+  });
+  var cur = 0, timer;
+  function go(n){
+    slides[cur].classList.remove("on"); dotsEl.children[cur].classList.remove("on");
+    cur = (n + slides.length) % slides.length;
+    slides[cur].classList.add("on"); dotsEl.children[cur].classList.add("on");
+    restart();
+  }
+  function next(){ go(cur + 1); }
+  function restart(){ clearInterval(timer); timer = setInterval(next, 5000); }
+  if (slides.length > 1) restart();
+
+  // ---- Nav: scrolled state + mobile menu ----
+  var hdr = document.getElementById("hdr");
+  var onScroll = function(){ hdr.classList.toggle("scrolled", window.scrollY > 40); };
+  onScroll(); window.addEventListener("scroll", onScroll, {passive:true});
+  var links = document.getElementById("navlinks");
+  document.getElementById("burger").addEventListener("click", function(){ links.classList.toggle("open"); });
+  links.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ links.classList.remove("open"); }); });
+
+  document.getElementById("yr").textContent = new Date().getFullYear();
+</script>
+</body>
+</html>
