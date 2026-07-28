@@ -54,6 +54,7 @@ function doGet(e) {
     if (action === 'ping')           out = { ok: true, negocio: CONFIG.NEGOCIO, ts: new Date().toISOString() };
     else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
     else if (action === 'getPropuesta')     out = { ok: true, data: getPropuesta() };
+    else if (action === 'getContrato')      out = { ok: true, data: getContrato() };
     else if (action === 'getDashboard')    { requireAuth(p.token); out = { ok: true, data: buildDashboard(p.asOf || null) }; }
     else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios(p.todos === '1') }; }
     else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
@@ -106,6 +107,7 @@ function doPost(e) {
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
+    else if (action === 'guardarContrato')  out = { ok: true, data: guardarContrato(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropSaldo2025') out = { ok: true, data: setPropSaldo2025(data.clave, data.saldo2025) };
