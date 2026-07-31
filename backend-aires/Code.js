@@ -81,6 +81,8 @@ function doPost(e) {
     if (action === 'verifyPassword')        return _reply({ ok: true, data: verifyPassword(data.password) }, null);
     if (action === 'setPassword')           return _reply({ ok: true, data: setPassword(data.nueva, data.actual) }, null);
     if (action === 'resetPassword')         return _reply({ ok: true, data: resetPassword(data.resetToken, data.nueva) }, null);
+    // guardado del contrato: público (para que el Cliente pueda editar/sugerir sin la contraseña del panel)
+    if (action === 'guardarContrato')       return _reply({ ok: true, data: guardarContrato(data.html, data.quien, data.version) }, null);
 
     // el resto exige token válido (permite bootstrap si aún no hay contraseña)
     requireAuth(data.token);
@@ -107,7 +109,6 @@ function doPost(e) {
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
-    else if (action === 'guardarContrato')  out = { ok: true, data: guardarContrato(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };
     else if (action === 'setPropSaldo2025') out = { ok: true, data: setPropSaldo2025(data.clave, data.saldo2025) };
