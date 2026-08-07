@@ -1106,7 +1106,47 @@ async function renderOpts(){
           <button class="btn" onclick="cambiarContrasena()">Cambiar contraseña</button>
           <span id="pwMsg" class="muted"></span>
         </div>
+      </div></div>
+
+      <div class="card"><div class="hd"><h2>Actualización de julio 2026</h2></div><div class="bd" style="padding:18px">
+        <div class="help" style="margin-bottom:10px">Carga puntual, desde el Excel del cliente, de los <b>cobros y gastos de julio</b> más el <b>aporte único de la promotora</b> (enero). <b>No toca los lotes 4A ni 5.</b> Es <b>reversible</b>: crea un respaldo automático de Pagos y Gastos antes de aplicar, y puedes deshacerlo con un clic.</div>
+        <div id="ujStatus" class="muted" style="font-size:.85rem;margin-bottom:10px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn green" id="ujApply" onclick="ujAplicar()">Actualizar a julio</button>
+          <button class="btn" style="background:var(--ac-coral)" id="ujRoll" onclick="ujRollback()">Deshacer (rollback)</button>
+        </div>
+        <div id="ujMsg" class="muted" style="margin-top:10px"></div>
       </div></div>`;
+  ujLoadStatus();
+}
+async function ujLoadStatus(){
+  const el=document.getElementById('ujStatus'); if(!el) return;
+  try{ const s=await jsonp('estadoUpdateJulio');
+    if(s.aplicado){ el.innerHTML='✅ <b>Aplicada</b>'+(s.hayRespaldo?' · respaldo disponible para deshacer':'');
+      const a=document.getElementById('ujApply'); if(a){ a.disabled=true; a.textContent='Ya aplicada'; }
+    } else { el.textContent='Aún no aplicada.';
+      const r=document.getElementById('ujRoll'); if(r && !s.hayRespaldo) r.disabled=true; }
+  }catch(e){ el.textContent=''; }
+}
+async function ujAplicar(){
+  if(!confirm('¿Aplicar la actualización de julio (cobros + gastos + aporte de la promotora)?\n\nSe creará un respaldo automático. Podrás deshacerlo con "Deshacer (rollback)".')) return;
+  const btn=document.getElementById('ujApply'), msg=document.getElementById('ujMsg');
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Aplicando…'; msg.textContent='';
+  try{ const r=await post('actualizarJulio2026',{});
+    if(r.yaAplicado){ msg.textContent=r.msg; }
+    else { msg.innerHTML='✅ '+r.cobros+' cobros ('+money(r.totalCobros)+') · aporte '+money(r.aportePromotora)+' · '+r.gastos+' gastos ('+money(r.totalGastos)+'). Respaldo creado.'; }
+    GASTOS_DATA=null; ujLoadStatus();
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) msg.textContent='Error: '+e; }
+}
+async function ujRollback(){
+  if(!confirm('¿Deshacer la actualización de julio y restaurar el sistema al estado anterior (desde el respaldo)?')) return;
+  const btn=document.getElementById('ujRoll'), msg=document.getElementById('ujMsg');
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Restaurando…'; msg.textContent='';
+  try{ const r=await post('rollbackJulio2026',{});
+    msg.textContent=r.msg; GASTOS_DATA=null;
+    const a=document.getElementById('ujApply'); if(a && r.ok){ a.disabled=false; a.textContent='Actualizar a julio'; }
+    ujLoadStatus();
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) msg.textContent='Error: '+e; }
 }
 async function cambiarContrasena(){
   const act=document.getElementById('pw_actual').value;

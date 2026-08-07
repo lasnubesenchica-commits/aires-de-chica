@@ -64,6 +64,7 @@ function doGet(e) {
     else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
+    else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
@@ -100,6 +101,8 @@ function doPost(e) {
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };
     else if (action === 'seedGastos2026')   out = { ok: true, data: seedGastos2026(!!data.force) };
     else if (action === 'seedRecurrentes')  out = { ok: true, data: seedRecurrentes(!!data.force) };
+    else if (action === 'actualizarJulio2026') out = { ok: true, data: actualizarJulio2026(!!data.force) };
+    else if (action === 'rollbackJulio2026')   out = { ok: true, data: rollbackJulio2026() };
     else if (action === 'descargarInformePL') out = { ok: true, data: descargarInformePL(data.anio, data.mesIni, data.mesFin, data.nota) };
     else if (action === 'enviarInformePL')  out = { ok: true, data: enviarInformePL(data.anio, data.mesIni, data.mesFin, data.nota) };
     else if (action === 'conciliarBanco')   out = { ok: true, data: conciliarBanco(data.rows, data.filename) };
