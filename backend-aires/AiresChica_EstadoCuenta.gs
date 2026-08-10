@@ -209,14 +209,32 @@ function calcEstado(prop, pagosArr, asOf) {
   var moraByIdx = {}, condonByIdx = {};
   buckets.forEach(function (b) { if (b.tipo === 'cuota') { moraByIdx[b.idx] = b.mora; condonByIdx[b.idx] = b.condonada; } });
 
-  var mensual = [], acum = saldo2025;
-  if (acum !== 0) mensual.push({ label: acum < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: acum, mora: 0, condonada: false, vouchers: [] });
+  // Saldo acumulado de la columna "Saldo Cuota": refleja SOLO el principal (cuotas),
+  // aplicando los pagos del mes primero a la cuota y luego a la mora (o al revés,
+  // según moraOrden). Así la columna nunca queda negativa por dinero que en realidad
+  // fue a mora. Es una vista de presentación; los totales salen de los buckets.
+  var mensual = [];
+  var cuotaRun = deuda2025;   // principal pendiente acumulado
+  var moraRun = 0;            // mora pendiente acumulada
+  var poolRun = credito2025;  // saldo a favor de 2025 disponible para aplicar
+  if (saldo2025 !== 0) mensual.push({ label: saldo2025 < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, pagado: 0, saldo: saldo2025, mora: 0, condonada: false, vouchers: [] });
   for (var mm = mesInicio; mm <= mesActual; mm++) {
-    var pg = _round2(pagosMes[mm] || 0);
-    acum = _round2(acum + cuota - pg);
     var _idx = year * 12 + mm;
-    mensual.push({ label: AC_MESES_LARGO[mm - 1], ym: _ymKey(year, mm), cuota: cuota, pagado: pg, saldo: acum,
-      mora: _round2(moraByIdx[_idx] || 0), condonada: !!condonByIdx[_idx], vouchers: vouchersMes[mm] || [] });
+    var pg = _round2(pagosMes[mm] || 0);
+    var moraMes = _round2(moraByIdx[_idx] || 0);
+    cuotaRun = _round2(cuotaRun + cuota);
+    moraRun = _round2(moraRun + moraMes);
+    var disp = _round2(poolRun + pg); poolRun = 0; // dinero disponible este mes
+    if (moraOrden === 'mora') {
+      var pmA = Math.min(disp, Math.max(0, moraRun)); moraRun = _round2(moraRun - pmA); disp = _round2(disp - pmA);
+      cuotaRun = _round2(cuotaRun - disp);
+    } else {
+      var pcA = Math.min(disp, Math.max(0, cuotaRun)); cuotaRun = _round2(cuotaRun - pcA); disp = _round2(disp - pcA);
+      var pmB = Math.min(disp, Math.max(0, moraRun)); moraRun = _round2(moraRun - pmB); disp = _round2(disp - pmB);
+      cuotaRun = _round2(cuotaRun - disp); // sobrante (prepago) queda como crédito negativo
+    }
+    mensual.push({ label: AC_MESES_LARGO[mm - 1], ym: _ymKey(year, mm), cuota: cuota, pagado: pg, saldo: cuotaRun,
+      mora: moraMes, condonada: !!condonByIdx[_idx], vouchers: vouchersMes[mm] || [] });
   }
 
   return {
