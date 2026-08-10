@@ -174,7 +174,7 @@
   <h2 class="cl" style="margin-top:34px;border-top:1px solid var(--border);padding-top:16px">Anexo A — Funcionalidades acordadas</h2>
   <p class="muted" style="margin-top:0">Funcionalidades que el Proveedor incorporará al sistema conforme a la cláusula Décima tercera, sin costo adicional y dentro de los treinta (30) días siguientes a la firma.</p>
   <p><b>1. Motivo obligatorio de desactivación.</b> Al desactivar un propietario, el sistema exigirá registrar el motivo de la acción, que quedará documentado.</p>
-  <p><b>2. Multiusuario y registro de auditoría.</b> El sistema contará con <b>cuentas de usuario individuales</b> (credenciales separadas por cada administrador) y un <b>registro de auditoría</b> que dejará constancia de <b>quién</b> realizó cada registro o modificación de datos, con la acción efectuada y la fecha y hora correspondientes.</p>
+  <p><b>2. Multiusuario, roles y auditoría.</b> El sistema contará con <b>cuentas de usuario individuales</b> y un modelo de <b>roles</b>: un <b>Superadministrador</b> (el Proveedor) con control total, y usuarios de <b>consulta</b> con acceso de solo lectura y descarga de reportes. <b>Toda edición de datos financieros y el envío de comunicaciones a los propietarios serán exclusivos del Superadministrador.</b> El sistema mantendrá un <b>registro de auditoría</b> que dejará constancia de quién realizó cada registro o modificación, con la acción efectuada y la fecha y hora correspondientes.</p>
   <p><b>3. Política de contraseña.</b> La contraseña de acceso exigirá un mínimo de <b>ocho (8) caracteres</b> e incluirá mayúsculas, números y caracteres especiales.</p>
   <p><b>4. Cierre de presupuesto.</b> Una vez aprobado, el presupuesto podrá <b>cerrarse</b> para impedir su modificación durante el período fiscal en curso; su reapertura quedará restringida al administrador.</p>
   <p><b>5. Control y formato del presupuesto.</b> Al ingresar el presupuesto, el sistema calculará el <b>total anual de forma dinámica</b> a medida que se ingresa cada línea, y aplicará <b>formato contable</b> (separadores de miles y decimales) a los campos numéricos, con opción de exportación.</p>
@@ -186,8 +186,8 @@
   var GAS_URL='https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
   var doc=document.getElementById('doc');
   var ORIGINAL=doc.innerHTML;   // versión original de fábrica (antes de cargar ediciones)
-  var LKEY='ac_contrato_edit_cfab9f1542d';
-  var DOC_VERSION='cfab9f1542d';
+  var LKEY='ac_contrato_edit_c5f4e0b95fb';
+  var DOC_VERSION='c5f4e0b95fb';
   var TOKEN=localStorage.getItem('ac_token')||'';
   var EDITOR=localStorage.getItem('ac_contrato_editor')||'';
   var LOGO=(document.querySelector('.cover img, .doc-head img')||{}).src||'';
