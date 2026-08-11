@@ -125,11 +125,14 @@ function calcEstado(prop, pagosArr, asOf) {
   //    genera mora. Es un cargo fijo (no crece con el atraso).
   var saldoPrin = saldo2025;   // principal corriente (deuda + / crédito -), sin mora
   var moraMesMap = {}, condMesMap = {};
+  var cubiertoMesCash = 0;     // cobertura de la cuota del MES DE CORTE con el mismo criterio
   for (var mm3 = mesInicio; mm3 <= mesActual; mm3++) {
     var idx3 = year * 12 + mm3;
     var pago3 = _round2(pagosMes[mm3] || 0);
     var creditoPrevio = saldoPrin < 0 ? -saldoPrin : 0;          // saldo a favor que traía al mes
-    var cubierta3 = _round2(creditoPrevio + pago3) >= cuota - 0.009;
+    var disponible3 = _round2(creditoPrevio + pago3);            // con qué contó para cubrir el mes
+    var cubierta3 = disponible3 >= cuota - 0.009;
+    if (mm3 === mesActual) cubiertoMesCash = _round2(Math.min(cuota, Math.max(0, disponible3)));
     var mora3 = 0, cond3 = false;
     if (idx3 >= moraDesde && idx3 < currentIdx && !cubierta3) {
       if (condon.all || !!condon.set[_ymKey(year, mm3)]) cond3 = true;
@@ -171,13 +174,17 @@ function calcEstado(prop, pagosArr, asOf) {
     if (b.tipo === 'cuota' && b.mora > 0.009 && b.moraSaldo > 0.009) mesesMora++;
   });
 
-  // cobertura de la cuota del MES DE CORTE (principal)
-  var pendienteMes = bucketMes ? bucketMes.saldo : 0;
-  var cubiertoMes = bucketMes ? _round2(bucketMes.monto - bucketMes.saldo) : 0;
+  // cobertura de la cuota del MES DE CORTE. Se mide con el MISMO criterio que la mora:
+  // lo pagado dentro del mes más el saldo a favor que se traía. Antes se leía del bucket
+  // (cascada de lo más antiguo primero), lo que marcaba "Pendiente" a quien sí pagó su
+  // cuota del mes sólo porque su dinero se había imputado a meses anteriores —
+  // contradiciendo a la mora, que ya lo daba por cubierto.
+  var cubiertoMes = bucketMes ? cubiertoMesCash : 0;
+  var pendienteMes = bucketMes ? _round2(bucketMes.monto - cubiertoMes) : 0;
   var estadoMes;
   if (!bucketMes) estadoMes = 'na';
   else if (pendienteMes <= 0.009) estadoMes = 'pagado';
-  else if (pendienteMes < bucketMes.monto - 0.009) estadoMes = 'parcial';
+  else if (cubiertoMes > 0.009) estadoMes = 'parcial';
   else estadoMes = 'pendiente';
 
   saldoTotal = _round2(saldoTotal);
