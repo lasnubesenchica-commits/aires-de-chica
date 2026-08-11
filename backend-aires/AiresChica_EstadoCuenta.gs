@@ -138,17 +138,20 @@ function calcEstado(prop, pagosArr, asOf) {
     }
   });
 
-  // 4) aplicación del pago: principal y mora, en el ORDEN configurado.
+  // 4) aplicación del pago: cada obligación se salda COMPLETA (cuota + su mora)
+  //    de la más antigua a la más nueva. Dentro de cada mes, moraOrden define si se
+  //    cubre primero la cuota o primero la mora. Así un pago tardío que trae "cuota
+  //    del mes + su mora" salda ambas en ese mes, en lugar de dejar la mora colgada
+  //    al final por haber aplicado todo el principal primero. El total no cambia;
+  //    solo cambia cómo se reparte entre principal y mora.
   var pool = _round2(totalPagado + credito2025);
   buckets.forEach(function (b) { b.pagado = 0; b.saldo = b.monto; b.moraPagado = 0; b.moraSaldo = b.mora; });
-  var moraList = buckets.filter(function (b) { return b.mora > 0; });
-  function _aplicaPrincipal() {
-    buckets.forEach(function (b) { var ap = Math.min(pool, b.saldo); b.pagado = _round2(b.pagado + ap); b.saldo = _round2(b.saldo - ap); pool = _round2(pool - ap); });
-  }
-  function _aplicaMora() {
-    moraList.forEach(function (b) { var ap = Math.min(pool, b.moraSaldo); b.moraPagado = _round2(b.moraPagado + ap); b.moraSaldo = _round2(b.moraSaldo - ap); pool = _round2(pool - ap); });
-  }
-  if (moraOrden === 'mora') { _aplicaMora(); _aplicaPrincipal(); } else { _aplicaPrincipal(); _aplicaMora(); }
+  function _payCuota(b) { var ap = Math.min(pool, b.saldo); b.pagado = _round2(b.pagado + ap); b.saldo = _round2(b.saldo - ap); pool = _round2(pool - ap); }
+  function _payMora(b) { var ap = Math.min(pool, b.moraSaldo); b.moraPagado = _round2(b.moraPagado + ap); b.moraSaldo = _round2(b.moraSaldo - ap); pool = _round2(pool - ap); }
+  buckets.forEach(function (b) {
+    if (moraOrden === 'mora') { _payMora(b); _payCuota(b); }
+    else { _payCuota(b); _payMora(b); }
+  });
 
   // 5) totales
   var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
