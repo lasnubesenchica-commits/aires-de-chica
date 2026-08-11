@@ -159,7 +159,10 @@ function calcEstado(prop, pagosArr, asOf) {
   var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
   var oldestUnpaid = null, bucketMes = null, mesesMora = 0;
   buckets.forEach(function (b) {
-    facturado += b.monto;
+    // "Facturado" = SOLO las cuotas devengadas del año en curso. El saldo que algunos
+    // propietarios arrastran de 2025 se facturó en 2025, así que no cuenta como
+    // facturación de este año; lo que se cobre de él se refleja en "Pagado".
+    if (b.tipo === 'cuota') facturado += b.monto;
     moraCargada = _round2(moraCargada + b.mora);
     if (b.saldo > 0.009) { saldoTotal = _round2(saldoTotal + b.saldo); if (!oldestUnpaid) oldestUnpaid = b; }
     if (b.moraSaldo > 0.009) moraPendiente = _round2(moraPendiente + b.moraSaldo);
