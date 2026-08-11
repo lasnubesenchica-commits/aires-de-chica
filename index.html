@@ -1390,16 +1390,16 @@ async function descargarCartera(){
   const rows=cuentas.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.email||'',c.cuota,c.facturado,c.pagado,c.saldo,Number(c.moraCargada)||0,c.mora,Number(c.creditoAFavor)||0,c.saldoConMora,c.estado,c.diasVencido]);
   const totRow=['','','TOTAL','','', _sum(cuentas,'facturado'),_sum(cuentas,'pagado'),_sum(cuentas,'saldo'),_sum(cuentas,'moraCargada'),_sum(cuentas,'mora'),_sum(cuentas,'creditoAFavor'),_sum(cuentas,'saldoConMora'),'',''];
   const notes2=['Lote o número de finca del propietario.','Residencial al que pertenece el lote (Las Nubes / Quintas / Haras).','Nombre del propietario.','Correo donde se envía el estado de cuenta.','Cuota mensual de mantenimiento vigente para este propietario.','Cuotas de 2026 devengadas hasta la fecha de corte. No incluye la mora ni el saldo que algunos propietarios arrastran de 2025 (ese se facturó en 2025).','Total cobrado durante 2026 hasta la fecha de corte. Incluye lo que se haya pagado del saldo arrastrado de 2025.','Saldo de cuotas pendiente (solo principal, sin mora). Incluye el saldo de 2025 que siga sin pagarse.','Cargos por mora generados en el año: 10% de la cuota por cada mes (de abril en adelante) que no se cubrió dentro del mes. Es la cifra que aparece como "Cargos por mora del año" en el estado de cuenta. No descuenta lo ya pagado ni incluye la mora condonada.','Parte de esos cargos que aún está sin pagar. Es menor que "Mora del año" cuando el propietario ya pagó su mora.','Saldo a favor del propietario (pagó de más). En el estado de cuenta se muestra como saldo total negativo.','Total por cobrar = Saldo cuotas + Mora pendiente. Es 0 cuando el propietario está al día o tiene crédito a favor.','Estado del propietario al corte (Al día / Pendiente / Moroso).','Días transcurridos desde el vencimiento más antiguo sin pagar.'];
-  const ws2=_tableSheet('Detalle por propietario','Corte al '+corte+' · Mora = cargo único del 10% de la cuota por cada mes (desde abril) que no se cubrió dentro del mes, contando el saldo a favor arrastrado. "Mora del año" son los cargos generados y "Mora pendiente" lo que falta por pagar de ellos. Total por cobrar = Saldo cuotas + Mora pendiente (no descuenta el crédito a favor, que va en su propia columna).', head, rows, [4,5,6,7,8,9,10,11], [8,13,24,26,10,11,11,13,12,14,13,13,11,9], {totalRow:totRow, estadoCol:12, notes:notes2});
+  const ws2=_tableSheet('Cuentas por Cobrar por Propietarios','Corte al '+corte+' · Mora = cargo único del 10% de la cuota por cada mes (desde abril) que no se cubrió dentro del mes, contando el saldo a favor arrastrado. "Mora del año" son los cargos generados y "Mora pendiente" lo que falta por pagar de ellos. Total por cobrar = Saldo cuotas + Mora pendiente (no descuenta el crédito a favor, que va en su propia columna).', head, rows, [4,5,6,7,8,9,10,11], [8,13,24,26,10,11,11,13,12,14,13,13,11,9], {totalRow:totRow, estadoCol:12, notes:notes2});
   const r3=(DASH.porResidencial||[]).map(r=>[r.residencial,r.cuentas,r.facturado,r.pagado,r.saldo,r.mora]);
   const tot3=['TOTAL', _sum(DASH.porResidencial||[],'cuentas'), _sum(DASH.porResidencial||[],'facturado'),_sum(DASH.porResidencial||[],'pagado'),_sum(DASH.porResidencial||[],'saldo'),_sum(DASH.porResidencial||[],'mora')];
   const notes3=['Residencial (Las Nubes / Quintas / Haras).','Cantidad de cuentas activas en el residencial.','Cuotas de 2026 devengadas por el residencial hasta el corte (no incluye el saldo arrastrado de 2025).','Total cobrado del residencial durante 2026 hasta el corte.','Saldo de cuotas pendiente del residencial (solo principal).','Recargo por mora acumulado del residencial.'];
-  const ws3=_tableSheet('Por residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo cuotas','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3, notes:notes3});
+  const ws3=_tableSheet('Cuentas por Cobrar por Residencial','Corte al '+corte, ['Residencial','Cuentas','Facturado','Pagado','Saldo cuotas','Mora'], r3, [2,3,4,5], [18,9,14,14,14,12], {totalRow:tot3, notes:notes3});
   const ag=DASH.aging||{}, agm=DASH.agingMonto||{};
   const lbl={'al-dia':'Al día','0-30':'1 a 30 días','31-60':'31 a 60 días','61-90':'61 a 90 días','90+':'Más de 90 días'};
   const r4=['al-dia','0-30','31-60','61-90','90+'].map(x=>[lbl[x], ag[x]||0, agm[x]||0]);
   const notes4=['Tramo de antigüedad del saldo vencido, contado desde su vencimiento.','Cantidad de cuentas en este tramo de antigüedad.','Monto total por cobrar en el tramo (saldo de cuotas + mora).'];
-  const ws4=_tableSheet('Aging (antigüedad de saldos)','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {notes:notes4});
+  const ws4=_tableSheet('Informe de Antigüedad de Saldo','Corte al '+corte, ['Antigüedad','Cuentas','Monto (saldo+mora)'], r4, [2], [18,10,22], {notes:notes4});
   // Cobros del mes de corte
   const elbl={pagado:'Pagó',parcial:'Parcial',pendiente:'Pendiente',na:'—'};
   const cmes=[...(DASH.cuentas||[])].filter(c=>c.cuotaMes>0).sort((a,b)=>(b.pendienteMes||0)-(a.pendienteMes||0));
@@ -1413,9 +1413,9 @@ async function descargarCartera(){
   const ws6=_cobrosMensualSheet(DASH.cuentas||[], corte, nMonths);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Resumen');
-  XLSX.utils.book_append_sheet(wb,ws2,'Detalle por propietario');
-  XLSX.utils.book_append_sheet(wb,ws3,'Por residencial');
-  XLSX.utils.book_append_sheet(wb,ws4,'Aging');
+  XLSX.utils.book_append_sheet(wb,ws2,'CXC POR PROPIETARIO');
+  XLSX.utils.book_append_sheet(wb,ws3,'CXC POR RESIDENCIAL');
+  XLSX.utils.book_append_sheet(wb,ws4,'INFORME ANTIGUEDAD');
   XLSX.utils.book_append_sheet(wb,ws5,'Cobros del mes');
   XLSX.utils.book_append_sheet(wb,ws6,'Cobros por mes');
   XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
