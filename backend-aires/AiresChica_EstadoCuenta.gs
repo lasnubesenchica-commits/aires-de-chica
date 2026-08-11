@@ -11,7 +11,15 @@
  */
 
 function _asOfDate(asOf) {
-  if (asOf) { var d = new Date(asOf); if (!isNaN(d.getTime())) return d; }
+  if (asOf) {
+    // 'YYYY-MM-DD' se construye como MEDIANOCHE LOCAL del negocio. Si se deja a
+    // new Date(str), el motor lo interpreta como medianoche UTC, que en Panamá es
+    // el día anterior a las 19:00: el mes de corte se corría (un corte al 1 de
+    // agosto calculaba julio) y la ventana de pagos quedaba desfasada un día.
+    var m = String(asOf).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    var d = new Date(asOf); if (!isNaN(d.getTime())) return d;
+  }
   return _today();
 }
 

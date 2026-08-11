@@ -1218,7 +1218,7 @@ function _initMes(){
 }
 // Calcula la fecha de corte según el control activo (Periodo en cartera / Mes en cobros) y recarga.
 function aplicarCorte(){
-  const ae=document.getElementById('fAsOf'), prev=ae.value, t=new Date(), y=t.getFullYear(), cur=t.getMonth()+1;
+  const ae=document.getElementById('fAsOf'), t=new Date(), y=t.getFullYear(), cur=t.getMonth()+1;
   if(VISTA==='mes'){
     const m=+document.getElementById('fMes').value||cur;
     ae.value=(m>=cur)?_iso(t):_iso(new Date(y,m,0));          // mes en curso = hoy; pasado = fin de ese mes
@@ -1229,8 +1229,12 @@ function aplicarCorte(){
     else if(r==='mesAnterior') ae.value=_iso(new Date(y,t.getMonth(),0));
     // custom: se deja ae.value como está
   }
-  if(ae.value===prev && DASH){ renderTabla(); return; }        // mismo corte -> no recarga, solo redibuja
-  renderDash();
+  // Se compara contra el corte con el que se cargó el tablero, NO contra el valor previo
+  // del campo: en "Personalizado" el onchange corre cuando el valor YA cambió, así que
+  // comparar contra sí mismo hacía que nunca se recargara (ni el tablero ni el Excel).
+  const cargado = (DASH && DASH.asOfStr) ? DASH.asOfStr : null;
+  if(DASH && cargado && ae.value===cargado){ renderTabla(); return; }  // mismo corte -> solo redibuja
+  renderDash().catch(e=>{ if(!onAuthError(e)) alert('No se pudo actualizar al corte '+ae.value+': '+e); });
 }
 function aplicarRango(){
   const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), custom=(r==='custom');
