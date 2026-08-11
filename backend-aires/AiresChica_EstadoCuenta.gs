@@ -119,19 +119,30 @@ function calcEstado(prop, pagosArr, asOf) {
   });
 
   // 3) mora por mes (regla del cliente): del mes de abril en adelante se aplica un cargo
-  //    ÚNICO del 10% de la cuota si la cuota de ESE mes no fue pagada dentro del mes. El
-  //    mes en curso todavía no genera mora. Es un cargo fijo (no crece con el atraso).
+  //    ÚNICO del 10% de la cuota si la cuota de ESE mes no queda cubierta por el pago del
+  //    mes MÁS el saldo a favor que traía el propietario. Es decir, un adelanto/crédito
+  //    arrastrado cubre la cuota del mes y evita la mora. El mes en curso todavía no
+  //    genera mora. Es un cargo fijo (no crece con el atraso).
+  var saldoPrin = saldo2025;   // principal corriente (deuda + / crédito -), sin mora
+  var moraMesMap = {}, condMesMap = {};
+  for (var mm3 = mesInicio; mm3 <= mesActual; mm3++) {
+    var idx3 = year * 12 + mm3;
+    var pago3 = _round2(pagosMes[mm3] || 0);
+    var creditoPrevio = saldoPrin < 0 ? -saldoPrin : 0;          // saldo a favor que traía al mes
+    var cubierta3 = _round2(creditoPrevio + pago3) >= cuota - 0.009;
+    var mora3 = 0, cond3 = false;
+    if (idx3 >= moraDesde && idx3 < currentIdx && !cubierta3) {
+      if (condon.all || !!condon.set[_ymKey(year, mm3)]) cond3 = true;
+      else mora3 = _round2(cuota * moraPct);                     // cargo único del 10%
+    }
+    moraMesMap[idx3] = mora3; condMesMap[idx3] = cond3;
+    saldoPrin = _round2(saldoPrin + cuota - pago3);              // avanza principal (sin mora)
+  }
   buckets.forEach(function (b) {
     b.mora = 0; b.moraMeses = 0; b.condonada = false;
     if (b.tipo !== 'cuota') return;
-    if (b.idx < moraDesde) return;                 // antes de abril 2026 no hay mora (regla del cliente)
-    if (b.idx >= currentIdx) return;               // el mes en curso aún no vence: sin mora todavía
-    var pagoMesB = _round2(pagosMes[b.month] || 0);
-    if (pagoMesB >= b.monto - 0.009) return;       // cuota del mes pagada dentro del mes -> sin mora
-    var cond = condon.all || !!condon.set[_ymKey(b.year, b.month)];
-    if (cond) { b.condonada = true; return; }
-    b.moraMeses = 1;
-    b.mora = _round2(cuota * moraPct);             // cargo único del 10%
+    b.condonada = !!condMesMap[b.idx];
+    if (moraMesMap[b.idx] > 0.009) { b.mora = moraMesMap[b.idx]; b.moraMeses = 1; }
   });
 
   // 4) aplicación del pago para repartir el saldo entre principal y mora: primero las
