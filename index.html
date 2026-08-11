@@ -25,6 +25,12 @@ nav.tabs button { border:0; background:none; font:inherit; font-weight:600; colo
 nav.tabs button.active { color:var(--ac-teal-700); border-bottom-color:var(--ac-teal); background:var(--ac-teal-50); }
 nav.tabs .tab-div { align-self:center; width:1px; height:18px; background:var(--ac-border); margin:0 6px; }
 nav.tabs .tab-gear { font-size:1.15rem; line-height:1; }
+/* Estado de carga del tablero: el recálculo al cambiar el corte puede tardar varios
+   segundos y sin señal visible parece que el selector no hace nada. */
+.ac-spin { width:14px; height:14px; border:2px solid #cfe9f2; border-top-color:var(--ac-teal); border-radius:50%; display:inline-block; animation:ac-sp .7s linear infinite; flex:none; }
+@keyframes ac-sp { to { transform:rotate(360deg); } }
+#dashLoadBar.show { display:flex !important; }
+.ac-dim { opacity:.4; pointer-events:none; transition:opacity .15s; }
 .kpis-hero { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 .kpis-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
 @media (max-width:820px){ .kpis-hero{grid-template-columns:1fr} .kpis-row{grid-template-columns:repeat(2,1fr)} }
@@ -265,6 +271,8 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 
   <section id="tab-dash">
     <div class="kpis" id="kpis"></div>
+    <div id="dashLoadBar" style="display:none;margin:-4px 0 12px;padding:9px 14px;border:1px solid var(--ac-border);border-left:4px solid var(--ac-teal);border-radius:9px;background:var(--ac-teal-50);align-items:center;gap:9px;font-size:.84rem;color:var(--ac-teal-700);font-weight:600">
+      <span class="ac-spin"></span><span id="dashLoadTxt">Actualizando…</span></div>
     <div class="card">
       <div class="hd"><h2>Cuentas</h2>
         <div class="seg" id="vistaSeg">
@@ -516,19 +524,38 @@ function setVista(v){
   if(mes) _initMes();
   aplicarCorte(); // recalcula el corte según el control activo (Mes o Periodo)
 }
+// Marca el tablero como "cargando": barra visible y datos atenuados. El recálculo del
+// corte tarda varios segundos y sin esto parecía que el selector no respondía.
+let _dashSeq=0;
+function _dashCargando(on, txt){
+  const bar=document.getElementById('dashLoadBar'), t=document.getElementById('dashLoadTxt');
+  if(bar){ bar.classList.toggle('show', !!on); if(t && txt) t.textContent=txt; }
+  ['kpis','tblCuentas','cuentasCards'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.toggle('ac-dim', !!on);
+  });
+}
 async function renderDash(){
   const ae=document.getElementById('fAsOf');
   if(ae && !ae.value){ const t=new Date(); ae.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
   const asOf = (ae && ae.value) ? ae.value : null;   // vacío = hoy (año en curso, YTD)
+  const seq=++_dashSeq;                              // para descartar respuestas fuera de orden
+  _dashCargando(true, 'Actualizando el tablero al corte '+fmtDate(asOf||new Date())+'…');
   // Si la carga falla hay que DECIRLO: antes la promesa se rechazaba sin manejar y el
   // tablero se quedaba con los datos anteriores, dando la impresión de que el cambio
   // de corte "no hacía nada".
+  let _d;
   try {
-    DASH = await jsonp('getDashboard', asOf?{asOf}:{});
+    _d = await jsonp('getDashboard', asOf?{asOf}:{});
   } catch(e) {
-    if(!onAuthError(e)) alert('No se pudo cargar el tablero al corte '+(asOf||'hoy')+'.\n\n'+e);
+    // sólo se reporta si sigue siendo la petición vigente: una que ya fue reemplazada
+    // por otro corte no debe molestar al usuario ni apagar el indicador.
+    if(seq===_dashSeq){ _dashCargando(false); if(!onAuthError(e)) alert('No se pudo cargar el tablero al corte '+(asOf||'hoy')+'.\n\n'+e); }
     throw e;
   }
+  // si mientras tanto se pidió otro corte, esta respuesta ya no vale
+  if(seq!==_dashSeq) return;
+  DASH=_d;
+  _dashCargando(false);
   const k=DASH.kpis;
   const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
   const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
