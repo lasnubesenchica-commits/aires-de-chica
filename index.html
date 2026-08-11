@@ -536,7 +536,7 @@ async function renderDash(){
         <div class="val">${k.tasaRecaudacionMes}%</div>
         <div class="bar"><span style="width:${barMes}%"></span></div>
         <div class="hero-sub">
-          <span><b>${money(k.pagadoMes)}</b> de ${money(k.facturadoMes)} facturado</span>
+          <span><b>${money(k.pagadoMesCuotas!=null?k.pagadoMesCuotas:k.pagadoMes)}</b> de ${money(k.facturadoMes)} facturado${(Number(k.pagadoMesOtros)||0)>0.009?` · +${money(k.pagadoMesOtros)} otros ingresos`:''}</span>
           <span>Acumulado anual <b>${k.tasaRecaudacionAnual}%</b></span>
         </div>
       </div>
@@ -1314,13 +1314,17 @@ function _resumenSheet(k, corte){
   const M=v=>({v:Number(v)||0,money:true}), P=v=>({v:(Number(v)||0),pct:true}), N=v=>({v:Number(v)||0});
   const blocks=[
     {sec:'Cartera', rows:[['Cuentas',N(k.cuentas)],['Al día',N(k.alDia)],['Pendientes (mes en curso)',N(k.pendientes)],['Morosos',N(k.morosos)],['Tasa de morosidad',P(k.tasaMorosidad)]]},
-    {sec:'Recaudación del año', rows:[['Facturado (cuotas 2026)',M(k.totalFacturado)],['Cobrado (cuotas)',M(k.totalPagado)],['% Recaudación anual',P(k.tasaRecaudacionAnual)],['Saldo pendiente (cuotas)',M(k.carteraVencida)],['Cargos por mora del año',M(k.moraCargadaTotal)],['Mora pendiente de pago',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)],['Crédito a favor de propietarios',M(k.creditoAFavorTotal)]]},
-    {sec:'Mes en curso', rows:[['Facturado del mes',M(k.facturadoMes)],['Cobrado del mes',M(k.pagadoMes)],['% Recaudación del mes',P(k.tasaRecaudacionMes)]]}
+    {sec:'Recaudación del año', rows:[['Facturado (cuotas 2026)',M(k.totalFacturado),'factAnual'],['Cobrado (cuotas)',M(k.totalPagado),'cobrAnual'],['% Recaudación anual',P(k.tasaRecaudacionAnual),'pctAnual'],['Saldo pendiente (cuotas)',M(k.carteraVencida)],['Cargos por mora del año',M(k.moraCargadaTotal)],['Mora pendiente de pago',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)],['Crédito a favor de propietarios',M(k.creditoAFavorTotal)]]},
+    {sec:'Mes en curso', rows:[['Facturado del mes',M(k.facturadoMes),'factMes'],['Cobrado del mes (cuotas)',M(k.pagadoMesCuotas),'cobrMes'],
+      ...(Math.abs(Number(k.pagadoMesOtros)||0)>0.009?[['Otros ingresos del mes',M(k.pagadoMesOtros)]]:[]),
+      ['% Recaudación del mes',P(k.tasaRecaudacionMes),'pctMes']]}
   ];
   const aoa=[['Aires de Chicá'],['Estado de cobros · Corte al '+corte],['']];
   const meta=[]; // {r, type}
+  const rk={}; // fila (0-based) de cada valor con clave, para armar fórmulas vivas
   blocks.forEach(bl=>{ aoa.push([bl.sec,'']); meta.push({r:aoa.length-1,type:'sec'});
-    bl.rows.forEach(rw=>{ const cell=rw[1]; aoa.push([rw[0], cell.v]); meta.push({r:aoa.length-1,type: cell.money?'money':(cell.pct?'pct':'num')}); });
+    bl.rows.forEach(rw=>{ const cell=rw[1]; aoa.push([rw[0], cell.v]); meta.push({r:aoa.length-1,type: cell.money?'money':(cell.pct?'pct':'num')});
+      if(rw[2]) rk[rw[2]]=aoa.length-1; });
     aoa.push(['']); });
   const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:30},{wch:18}];
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}}];
@@ -1334,6 +1338,17 @@ function _resumenSheet(k, corte){
       else _s(ws,m.r,1,ST.valB);
     }
   });
+  // Los porcentajes quedan como FÓRMULA viva (cobrado/facturado), no como número fijo:
+  // así recalculan si se edita algún monto y se puede auditar de dónde salen.
+  // Se conserva el valor calculado como caché para que se vea al abrir el archivo.
+  const _pctF=(pctKey,numKey,denKey)=>{
+    if(rk[pctKey]==null||rk[numKey]==null||rk[denKey]==null) return;
+    const a=XLSX.utils.encode_cell({r:rk[pctKey],c:1}); if(!ws[a]) return;
+    const nR=rk[numKey]+1, dR=rk[denKey]+1;
+    ws[a].f=`IF(B${dR}=0,0,B${nR}/B${dR}*100)`;
+  };
+  _pctF('pctMes','cobrMes','factMes');
+  _pctF('pctAnual','cobrAnual','factAnual');
   return ws;
 }
 // Hoja pivote: Cobros (caja real) por mes, propietarios en filas agrupados por residencial.

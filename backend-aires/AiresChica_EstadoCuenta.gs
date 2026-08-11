@@ -325,6 +325,18 @@ function buildDashboard(asOf) {
     }
   });
 
+  // "Cobrado del mes" se separa igual que en Finanzas: lo que corresponde a CUOTAS de
+  // propietarios (que es lo que suman la hoja "Cobros por mes" y la de "Cobros del Mes")
+  // y otros ingresos del mes (aportes, reembolsos). El % de recaudación se calcula con
+  // las cuotas, para compararlo contra lo facturado del mes en la misma base.
+  var _clavesCuenta = {};
+  cuentas.forEach(function (e) { _clavesCuenta[e.clave] = 1; });
+  var pagadoMesCuotas = 0;
+  Object.keys(pagadoMesByClave).forEach(function (k) {
+    if (_clavesCuenta[k]) pagadoMesCuotas = _round2(pagadoMesCuotas + pagadoMesByClave[k]);
+  });
+  var pagadoMesOtros = _round2(pagadoMes - pagadoMesCuotas);
+
   var topMorosos = cuentas.filter(function (e) { return e.saldoConMora > 0.009; })
     .sort(function (a, b) { return b.saldoConMora - a.saldoConMora; })
     .slice(0, 10)
@@ -370,8 +382,10 @@ function buildDashboard(asOf) {
       creditoAFavorTotal: _round2(creditoTotal),
       moraCargadaTotal: _round2(moraCargadaTot),
       facturadoMes: _round2(facturadoMes),
-      pagadoMes: _round2(pagadoMes),
-      tasaRecaudacionMes: facturadoMes ? _round2(pagadoMes / facturadoMes * 100) : 0,
+      pagadoMes: _round2(pagadoMes),                 // caja total recibida en el mes
+      pagadoMesCuotas: _round2(pagadoMesCuotas),     // sólo cuotas de propietarios
+      pagadoMesOtros: pagadoMesOtros,                // aportes u otros ingresos del mes
+      tasaRecaudacionMes: facturadoMes ? _round2(pagadoMesCuotas / facturadoMes * 100) : 0,
       tasaRecaudacionAnual: totalFacturado ? _round2(totalPagado / totalFacturado * 100) : 0
     },
     aging: aging,
