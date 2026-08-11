@@ -349,7 +349,12 @@ function buildDashboard(asOf) {
   return {
     negocio: CONFIG.NEGOCIO,
     asOf: asOf,
+    // fecha de corte REALMENTE usada, ya formateada en la zona horaria del negocio.
+    // Los reportes deben etiquetarse con ésta y no con el control de la pantalla,
+    // que puede haber cambiado sin recargar el tablero.
+    asOfStr: Utilities.formatDate(asOf, CONFIG.TZ, 'yyyy-MM-dd'),
     mesActual: AC_MESES_LARGO[mesActual - 1],
+    mesActualNum: mesActual,
     anio: year,
     kpis: {
       cuentas: cuentas.length,
