@@ -276,7 +276,7 @@ function buildDashboard(asOf) {
   });
 
   // KPIs
-  var totalFacturado = 0, totalPagado = 0, carteraVencida = 0, moraAcum = 0;
+  var totalFacturado = 0, totalPagado = 0, carteraVencida = 0, moraAcum = 0, creditoTotal = 0;
   var aging = { 'al-dia': 0, '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   var agingMonto = { 'al-dia': 0, '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   var morosos = 0, pendientes = 0, alDia = 0;
@@ -287,6 +287,7 @@ function buildDashboard(asOf) {
     totalPagado += e.pagado;
     carteraVencida += e.saldo;
     moraAcum += e.mora;
+    creditoTotal += e.creditoAFavor || 0;
     aging[e.aging] = (aging[e.aging] || 0) + 1;
     agingMonto[e.aging] = _round2((agingMonto[e.aging] || 0) + e.saldoConMora);
     if (e.diasVencido > 0) morosos++;               // cuota(s) vencida(s)
@@ -350,6 +351,7 @@ function buildDashboard(asOf) {
       carteraVencida: _round2(carteraVencida),
       moraAcumulada: _round2(moraAcum),
       saldoTotalConMora: _round2(carteraVencida + moraAcum),
+      creditoAFavorTotal: _round2(creditoTotal),
       facturadoMes: _round2(facturadoMes),
       pagadoMes: _round2(pagadoMes),
       tasaRecaudacionMes: facturadoMes ? _round2(pagadoMes / facturadoMes * 100) : 0,

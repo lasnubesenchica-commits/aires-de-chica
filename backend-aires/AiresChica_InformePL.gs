@@ -21,13 +21,17 @@ function _informePLData(anio, mesIni, mesFin) {
   var g = getGastosData(anio);
 
   // rango: ingresos / egresos / resultado + mes a mes
-  var ingreso = 0, egreso = 0, porMes = [];
+  var ingreso = 0, egreso = 0, porMes = [], ingCuotas = 0, ingOtros = 0;
   for (var m = mesIni; m <= mesFin; m++) {
     var im = g.ingresosPorMes[m - 1] || 0, em = g.porMes[m - 1] || 0;
     ingreso = _round2(ingreso + im); egreso = _round2(egreso + em);
+    ingCuotas = _round2(ingCuotas + ((g.cuotasPorMes || [])[m - 1] || 0));
+    ingOtros = _round2(ingOtros + ((g.otrosPorMes || [])[m - 1] || 0));
     porMes.push({ mes: m, ingresos: _round2(im), egresos: _round2(em), resultado: _round2(im - em) });
   }
   var resultado = _round2(ingreso - egreso);
+  // otros ingresos (aportes, reembolsos) del rango, para detallarlos en el informe
+  var otrosIngresos = (g.otrosIngresos || []).filter(function (o) { return o.mes >= mesIni && o.mes <= mesFin; });
 
   // gastos por categoría (del presupuesto) en el rango
   var byCat = {};
@@ -60,6 +64,7 @@ function _informePLData(anio, mesIni, mesFin) {
   return {
     anio: anio, mesIni: mesIni, mesFin: mesFin,
     ingreso: ingreso, egreso: egreso, resultado: resultado, porMes: porMes,
+    ingCuotas: ingCuotas, ingOtros: ingOtros, otrosIngresos: otrosIngresos,
     catList: catList, presupVs: presupVs, presupTotal: presupTotal,
     fondoInicial: fondoInicial, resYTD: _round2(resYTD), fondoDisponible: _round2(fondoInicial + resYTD),
     kpis: dash.kpis,
@@ -118,7 +123,8 @@ function _informePLHtml(D, nota) {
 
   // Resumen
   var resumen = '<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate"><tr>' +
-    stat('Ingresos (cobros)', _money(D.ingreso), B.teal) +
+    stat('Ingresos', _money(D.ingreso), B.teal,
+         D.ingOtros > 0.009 ? 'Cuotas ' + _money(D.ingCuotas) + ' + Otros ' + _money(D.ingOtros) : 'Cuotas de mantenimiento') +
     stat('Egresos (gastos)', _money(D.egreso), B.coral) +
     stat(pos ? 'Superávit del período' : 'Déficit del período', _money(D.resultado), resCol, 'Ingresos − Egresos') +
     '</tr></table>';
@@ -151,6 +157,22 @@ function _informePLHtml(D, nota) {
       td('<b>' + _money(D.egreso) + '</b>', 'right', 'border-top:2px solid ' + B.teal) +
       td('<b style="color:' + resCol + '">' + _money(D.resultado) + '</b>', 'right', 'border-top:2px solid ' + B.teal) +
       td('<b style="color:' + resCol + '">' + _money(D.resultado) + '</b>', 'right', 'border-top:2px solid ' + B.teal) + '</tr></table>';
+
+  // Otros ingresos (aportes, reembolsos): se detallan para dejar claro su origen,
+  // ya que están incluidos en la fila de Ingresos.
+  var otrosTabla = '';
+  if ((D.otrosIngresos || []).length) {
+    var otrosRows = D.otrosIngresos.map(function (o) {
+      return '<tr>' + td(INF_MESES[o.mes - 1]) + td(o.concepto) +
+        td('<b>' + _money(o.monto) + '</b>', 'right') + '</tr>';
+    }).join('');
+    otrosTabla = '<div style="font-size:13px;font-weight:700;color:' + B.teal700 + ';margin:16px 0 6px">Otros ingresos del período</div>' +
+      '<div style="font-size:10.5px;color:' + B.muted + ';margin-bottom:5px">Ingresos que no provienen de cuotas de mantenimiento. Ya están incluidos en el total de ingresos.</div>' +
+      '<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr>' +
+      th('Mes') + th('Concepto') + th('Monto', 'right') + '</tr>' + otrosRows +
+      '<tr>' + td('<b>TOTAL</b>', 'left', 'border-top:2px solid ' + B.teal) + td('', 'left', 'border-top:2px solid ' + B.teal) +
+        td('<b>' + _money(D.ingOtros) + '</b>', 'right', 'border-top:2px solid ' + B.teal) + '</tr></table>';
+  }
 
   // Presupuesto vs ejecución
   var presRows = D.presupVs.map(function (t) {
@@ -209,7 +231,7 @@ function _informePLHtml(D, nota) {
       '<div style="height:4px;background:linear-gradient(90deg,' + B.teal + ',' + B.green + ' 60%,' + B.coral + ');margin:14px 0 8px;border-radius:2px"></div>' +
       fondoTop +
       secTitle('Resumen ejecutivo') + resumen +
-      secTitle('Resultado mes a mes') + mesTabla +
+      secTitle('Resultado mes a mes') + mesTabla + otrosTabla +
       secTitle('Presupuesto vs ejecución') + presTabla +
       secTitle('Gastos por categoría') + catTabla +
       secTitle('Estado de cobros') + cobros +
