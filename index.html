@@ -527,6 +527,10 @@ function setVista(v){
 // Marca el tablero como "cargando": barra visible y datos atenuados. El recálculo del
 // corte tarda varios segundos y sin esto parecía que el selector no respondía.
 let _dashSeq=0;
+// Caché por corte: recalcular el tablero en el servidor tarda, así que volver a un
+// corte ya consultado es instantáneo. Sólo la usa el selector de periodo; cualquier
+// recarga tras registrar/editar datos la limpia para no mostrar información vieja.
+let DASH_CACHE={};
 function _dashCargando(on, txt){
   const bar=document.getElementById('dashLoadBar'), t=document.getElementById('dashLoadTxt');
   if(bar){ bar.classList.toggle('show', !!on); if(t && txt) t.textContent=txt; }
@@ -534,10 +538,14 @@ function _dashCargando(on, txt){
     const el=document.getElementById(id); if(el) el.classList.toggle('ac-dim', !!on);
   });
 }
-async function renderDash(){
+async function renderDash(opts){
   const ae=document.getElementById('fAsOf');
   if(ae && !ae.value){ const t=new Date(); ae.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
   const asOf = (ae && ae.value) ? ae.value : null;   // vacío = hoy (año en curso, YTD)
+  // Sin {cache:true} se asume que los datos pudieron cambiar (se acaba de registrar un
+  // pago, un gasto, una cuota…): se descarta la caché entera y se pide al servidor.
+  if(!(opts && opts.cache)) DASH_CACHE={};
+  else if(DASH_CACHE[asOf||'hoy']){ DASH=DASH_CACHE[asOf||'hoy']; _dashCargando(false); _pintarDash(); return; }
   const seq=++_dashSeq;                              // para descartar respuestas fuera de orden
   _dashCargando(true, 'Actualizando el tablero al corte '+fmtDate(asOf||new Date())+'…');
   // Si la carga falla hay que DECIRLO: antes la promesa se rechazaba sin manejar y el
@@ -555,7 +563,12 @@ async function renderDash(){
   // si mientras tanto se pidió otro corte, esta respuesta ya no vale
   if(seq!==_dashSeq) return;
   DASH=_d;
+  DASH_CACHE[asOf||'hoy']=_d;
   _dashCargando(false);
+  _pintarDash();
+}
+// Pinta KPIs y tabla con el DASH ya cargado (desde el servidor o desde la caché).
+function _pintarDash(){
   const k=DASH.kpis;
   const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
   const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
@@ -587,7 +600,9 @@ async function renderDash(){
       ${card('Al día', k.alDia, 'Sin saldo pendiente','')}
     </div>`;
   const rs=[...new Set(DASH.cuentas.map(c=>c.residencial))];
-  document.getElementById('fRes').innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
+  const fr=document.getElementById('fRes'), prevRes=fr.value;   // no perder el filtro al recargar
+  fr.innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
+  if(prevRes && rs.indexOf(prevRes)>=0) fr.value=prevRes;
   renderTabla();
 }
 function renderTabla(){
@@ -1273,7 +1288,7 @@ function aplicarCorte(){
   // comparar contra sí mismo hacía que nunca se recargara (ni el tablero ni el Excel).
   const cargado = (DASH && DASH.asOfStr) ? DASH.asOfStr : null;
   if(DASH && cargado && ae.value===cargado){ renderTabla(); return; }  // mismo corte -> solo redibuja
-  renderDash().catch(()=>{});   // renderDash ya reporta el error al usuario
+  renderDash({cache:true}).catch(()=>{});   // renderDash ya reporta el error al usuario
 }
 function aplicarRango(){
   const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), custom=(r==='custom');
