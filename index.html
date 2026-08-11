@@ -312,7 +312,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
         <th class="num">Cuota/mes <span class="hlp" title="Cuota mensual del propietario: cuota base + 30% por cada cabaña (o la cuota fija si se le definió una).">ⓘ</span></th>
         <th class="num">Pagado <span class="hlp" title="Suma de todos los pagos recibidos en el año, hasta la fecha de corte.">ⓘ</span></th>
         <th class="num">Saldo <span class="hlp" title="Saldo pendiente = cuotas facturadas hasta la fecha (más deuda 2025, menos crédito a favor) − lo pagado. No incluye la mora.">ⓘ</span></th>
-        <th class="num">Mora <span class="hlp" title="Recargo del 10% mensual sobre cada cuota vencida, a partir de abril 2026 (se acumula por cada mes de atraso).">ⓘ</span></th>
+        <th class="num">Mora <span class="hlp" title="Cargo único del 10% sobre la cuota del mes (de abril 2026 en adelante) que no se pague dentro del mes.">ⓘ</span></th>
         <th class="num">Total <span class="hlp" title="Total a cobrar = Saldo pendiente + Mora.">ⓘ</span></th>
         <th>Estado</th><th>Vence</th><th></th>
       </tr></thead><tbody></tbody></table>
@@ -491,7 +491,7 @@ const HEAD_CARTERA=`<tr><th>Lote</th><th>Residencial</th><th>Propietario</th>
   <th class="num">Cuota/mes <span class="hlp" title="Cuota mensual del propietario: cuota base + 30% por cada cabaña (o la cuota fija si se le definió una).">ⓘ</span></th>
   <th class="num">Pagado <span class="hlp" title="Suma de todos los pagos recibidos en el año, hasta la fecha de corte.">ⓘ</span></th>
   <th class="num">Saldo <span class="hlp" title="Saldo pendiente = cuotas facturadas hasta la fecha (más deuda 2025, menos crédito a favor) − lo pagado. No incluye la mora.">ⓘ</span></th>
-  <th class="num">Mora <span class="hlp" title="Recargo del 10% mensual sobre cada cuota vencida, a partir de abril 2026.">ⓘ</span></th>
+  <th class="num">Mora <span class="hlp" title="Cargo único del 10% sobre la cuota del mes (de abril 2026 en adelante) que no se pague dentro del mes.">ⓘ</span></th>
   <th class="num">Total <span class="hlp" title="Total a cobrar = Saldo pendiente + Mora.">ⓘ</span></th>
   <th>Estado</th><th>Vence</th><th></th></tr>`;
 const HEAD_MES=`<tr><th>Lote</th><th>Residencial</th><th>Propietario</th>
@@ -613,7 +613,7 @@ function _renderEstado(e){
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Pagado</th><th class="num">Saldo cuota</th><th class="num">Mora</th></tr></thead>
+    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
       const vs=b.vouchers||[];
       const pagadoCell = b.pagado
@@ -627,16 +627,15 @@ function _renderEstado(e){
       else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span><span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`;
       return `<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
       <td class="num mCuota">${b.cuota?money(b.cuota):'—'}</td>
+      <td class="num">${moraCell}</td>
       <td class="num">${pagadoCell}</td>
-      <td class="num" style="${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td>
-      <td class="num">${moraCell}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo cuota = principal (cuota menos lo pagado). La <b>Mora</b> es un cargo aparte que permanece aunque se pague la cuota.</div>
+      <td class="num" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`;}).join('')}</tbody></table>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% cuando la cuota del mes (de abril en adelante) no se paga dentro del mes.</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Saldo pendiente (cuotas)</span><b>${money(e.saldo)}</b></div>
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Recargo por mora acumulado</span><b style="color:var(--ac-coral)">${money(e.mora)}</b></div>
-      ${e.creditoAFavor>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">-${money(e.creditoAFavor)}</b></div>`:''}
+      ${e.moraCargada>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año</span><b style="color:var(--ac-coral)">${money(e.moraCargada)}</b></div>`:''}
+      ${e.saldoNeto<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-e.saldoNeto)}</b></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
-        <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoConMora)}</b></div>
+        <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoNeto)}</b></div>
     </div></div>
     <div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}

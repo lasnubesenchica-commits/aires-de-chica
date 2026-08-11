@@ -46,9 +46,9 @@ function estadoCuentaHTML(est) {
     return '<tr style="background:' + bg + '">' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + '">' + b.label + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + (b.cuota ? _money(b.cuota) : '—') + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + pagadoTxt + '</td>' +
-      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right;color:' + saldoColor + '">' + _money(b.saldo) + '</td>' +
       '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + moraTxt + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right">' + pagadoTxt + '</td>' +
+      '<td style="padding:7px 10px;border-bottom:1px solid ' + B.border + ';text-align:right;color:' + saldoColor + ';font-weight:600">' + _money(b.saldo) + '</td>' +
       '</tr>';
   }).join('');
 
@@ -95,21 +95,21 @@ function estadoCuentaHTML(est) {
     '<thead><tr style="background:' + B.teal + ';color:#fff">' +
       '<th style="padding:9px 10px;text-align:left">Mes</th>' +
       '<th style="padding:9px 10px;text-align:right">Cuota</th>' +
-      '<th style="padding:9px 10px;text-align:right">Pagado</th>' +
-      '<th style="padding:9px 10px;text-align:right">Saldo cuota</th>' +
       '<th style="padding:9px 10px;text-align:right">Mora</th>' +
+      '<th style="padding:9px 10px;text-align:right">Pagado</th>' +
+      '<th style="padding:9px 10px;text-align:right">Saldo total</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table>' +
+  '<div style="font-size:11px;color:' + B.muted + ';margin-top:6px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La mora es un cargo único del 10% cuando la cuota del mes (de abril en adelante) no se paga dentro del mes.</div>' +
 
   // Totales
   '<table style="width:100%;border-collapse:collapse;margin-top:18px"><tr>' +
     '<td style="width:55%"></td>' +
     '<td style="vertical-align:top">' +
-      _totRow('Saldo pendiente (cuotas)', _money(est.saldo), B.ink, B) +
-      _totRow('Recargo por mora acumulado', _money(est.mora), B.coral, B) +
-      (est.creditoAFavor > 0.009 ? _totRow('Crédito a favor', '-' + _money(est.creditoAFavor), B.ok, B) : '') +
+      (est.moraCargada > 0.009 ? _totRow('Cargos por mora del año', _money(est.moraCargada), B.coral, B) : '') +
+      (est.saldoNeto < -0.009 ? _totRow('Crédito a favor', _money(-est.saldoNeto), B.ok, B) : '') +
       '<div style="display:flex;justify-content:space-between;padding:11px 12px;background:' + B.teal50 + ';border-radius:8px;margin-top:6px">' +
         '<span style="font-weight:700">SALDO TOTAL</span>' +
-        '<span style="font-weight:800;font-size:16px;color:' + color + '">' + _money(est.saldoConMora) + '</span>' +
+        '<span style="font-weight:800;font-size:16px;color:' + color + '">' + _money(est.saldoNeto) + '</span>' +
       '</div>' +
     '</td>' +
   '</tr></table>' +
