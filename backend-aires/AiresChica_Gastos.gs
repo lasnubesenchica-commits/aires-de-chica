@@ -133,19 +133,38 @@ function getGastosData(anio) {
   var porMes = [0,0,0,0,0,0,0,0,0,0,0,0];
   gastos.forEach(function (g) { var m = g.fecha.getMonth(); porMes[m] = _round2(porMes[m] + g.monto); });
 
-  // ingresos (cobros de cuotas — base caja) del año, por mes; para el Estado de Resultados
+  // ingresos (base caja) del año, por mes; para el Estado de Resultados.
+  // Se separan en CUOTAS de mantenimiento (pagos de un propietario registrado) y
+  // OTROS INGRESOS (aportes, reembolsos, etc.: pagos cuya clave no es de un
+  // propietario). De estos últimos se devuelve el detalle para mostrarlo explícito.
   var pagos = getPagos();
+  var _clavesProp = {};
+  getPropietarios(true).forEach(function (p) { if (p.clave) _clavesProp[p.clave] = 1; });
+
   var ingresosPorMes = [0,0,0,0,0,0,0,0,0,0,0,0], ingresosTotal = 0;
+  var cuotasPorMes   = [0,0,0,0,0,0,0,0,0,0,0,0], cuotasTotal   = 0;
+  var otrosPorMes    = [0,0,0,0,0,0,0,0,0,0,0,0], otrosTotal    = 0;
+  var otrosIngresos = [];
   var ysetPag = {};
   pagos.forEach(function (p) {
     var fp = p.fecha instanceof Date ? p.fecha : new Date(p.fecha);
     if (isNaN(fp.getTime())) return;
     ysetPag[fp.getFullYear()] = 1;
-    if (fp.getFullYear() === anio) {
-      ingresosPorMes[fp.getMonth()] = _round2(ingresosPorMes[fp.getMonth()] + (Number(p.monto) || 0));
-      ingresosTotal = _round2(ingresosTotal + (Number(p.monto) || 0));
+    if (fp.getFullYear() !== anio) return;
+    var m = fp.getMonth(), monto = Number(p.monto) || 0;
+    ingresosPorMes[m] = _round2(ingresosPorMes[m] + monto);
+    ingresosTotal = _round2(ingresosTotal + monto);
+    if (_clavesProp[p.clave]) {
+      cuotasPorMes[m] = _round2(cuotasPorMes[m] + monto);
+      cuotasTotal = _round2(cuotasTotal + monto);
+    } else {
+      otrosPorMes[m] = _round2(otrosPorMes[m] + monto);
+      otrosTotal = _round2(otrosTotal + monto);
+      otrosIngresos.push({ id: p.id, fecha: fp, mes: m + 1, concepto: String(p.nombre || p.clave || 'Otro ingreso'),
+        monto: _round2(monto), origen: p.origen || '', notas: p.notas || '' });
     }
   });
+  otrosIngresos.sort(function (a, b) { return a.fecha - b.fecha; });
 
   // años disponibles (para el selector)
   var yset = {}; yset[anio] = 1; yset[hoy.getFullYear()] = 1;
@@ -167,6 +186,9 @@ function getGastosData(anio) {
     porMes: porMes,
     ingresosPorMes: ingresosPorMes,
     ingresosTotal: ingresosTotal,
+    cuotasPorMes: cuotasPorMes, cuotasTotal: cuotasTotal,
+    otrosPorMes: otrosPorMes, otrosTotal: otrosTotal,
+    otrosIngresos: otrosIngresos,
     resultadoTotal: _round2(ingresosTotal - ejecutadoTotal),
     aniosDisponibles: anios
   };

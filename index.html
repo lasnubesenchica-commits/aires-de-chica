@@ -1707,8 +1707,12 @@ function _gastosResultado(d){
   const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
   const rango=!(mi===1&&mf===12);
   const im=d.ingresosPorMes||[], em=d.porMes||[];
-  let ing=0, egr=0;
-  for(let i=mi-1;i<=mf-1;i++){ ing=Math.round((ing+(im[i]||0))*100)/100; egr=Math.round((egr+(em[i]||0))*100)/100; }
+  const cm=d.cuotasPorMes||[], om=d.otrosPorMes||[];
+  let ing=0, egr=0, ingCuotas=0, ingOtros=0;
+  for(let i=mi-1;i<=mf-1;i++){ ing=Math.round((ing+(im[i]||0))*100)/100; egr=Math.round((egr+(em[i]||0))*100)/100;
+    ingCuotas=Math.round((ingCuotas+(cm[i]||0))*100)/100; ingOtros=Math.round((ingOtros+(om[i]||0))*100)/100; }
+  // otros ingresos (aportes, reembolsos…) del periodo, para mostrarlos explícitos
+  const otrosList=(d.otrosIngresos||[]).filter(o=>o.mes>=mi&&o.mes<=mf);
   const res=Math.round((ing-egr)*100)/100;
   const positivo=res>=-0.009;
   const resCol=positivo?'var(--ac-green-600)':'var(--ac-danger)';
@@ -1724,7 +1728,7 @@ function _gastosResultado(d){
   // tarjetas resumen
   const cardKPI=(l,v,c,sub)=>`<div class="kpi ${c}" style="flex:1;min-width:200px"><div class="label">${l}</div><div class="val" style="font-size:1.5rem">${v}</div>${sub?`<div class="hint">${sub}</div>`:''}</div>`;
   const resumen=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
-    ${cardKPI('Ingresos (cobros)',money(ing),'green')}
+    ${cardKPI('Ingresos',money(ing),'green',ingOtros>0.009?`Cuotas ${money(ingCuotas)} · Otros ${money(ingOtros)}`:'Cuotas de mantenimiento')}
     ${cardKPI('Egresos (gastos)',money(egr),'coral')}
     <div class="kpi ${positivo?'green':'red'}" style="flex:1;min-width:200px"><div class="label">${positivo?'Superávit del periodo':'Déficit del periodo'}</div><div class="val" style="font-size:1.5rem;color:${resCol}">${money(res)}</div><div class="hint">Ingresos − Egresos</div></div>
   </div>`;
@@ -1752,6 +1756,8 @@ function _gastosResultado(d){
   const cCol=v=>v>=0?'var(--ac-green-600)':'var(--ac-danger)';
   const mesHead=mcols.map(c=>`<th class="num">${c.m}</th>`).join('');
   const rIng=mcols.map(c=>`<td class="num">${money(c.ii)}</td>`).join('');
+  const rCuo=mcols.map(c=>`<td class="num muted">${money(cm[GMESES.indexOf(c.m)]||0)}</td>`).join('');
+  const rOtr=mcols.map(c=>`<td class="num muted">${money(om[GMESES.indexOf(c.m)]||0)}</td>`).join('');
   const rEgr=mcols.map(c=>`<td class="num">${money(c.ee)}</td>`).join('');
   const rRes=mcols.map(c=>`<td class="num" style="color:${cCol(c.rr)}">${money(c.rr)}</td>`).join('');
   const rAcc=mcols.map(c=>`<td class="num" style="color:${cCol(c.acc)}">${money(c.acc)}</td>`).join('');
@@ -1761,8 +1767,18 @@ function _gastosResultado(d){
     <div class="bd" style="padding:14px 18px">
       ${filtro}
       ${resumen}
-      <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros de cuotas efectivos; egresos = gastos registrados.</div>
+      <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros efectivos (cuotas y otros ingresos); egresos = gastos registrados.</div>
     </div></div>
+    ${otrosList.length?`<div class="card" style="margin-top:14px"><div class="hd"><h2>Otros ingresos ${periodoTxt}</h2></div>
+    <div class="bd" style="padding:12px 18px">
+      <div class="muted" style="font-size:.78rem;margin-bottom:8px">Ingresos que no son cuotas de mantenimiento (aportes, reembolsos y similares). Ya están incluidos en el total de ingresos.</div>
+      <table class="stack-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Detalle</th><th class="num">Monto</th></tr></thead><tbody>
+        ${otrosList.map(o=>`<tr><td data-label="Fecha">${_fx(o.fecha)}</td><td data-label="Concepto"><b>${String(o.concepto).replace(/</g,'&lt;')}</b></td>
+          <td data-label="Detalle" class="muted" style="font-size:.8rem">${String(o.notas||'').replace(/</g,'&lt;')}</td>
+          <td class="num" data-label="Monto" style="font-weight:600">${money(o.monto)}</td></tr>`).join('')}
+        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Fecha">TOTAL</td><td></td><td></td><td class="num" data-label="Monto">${money(ingOtros)}</td></tr>
+      </tbody></table>
+    </div></div>`:''}
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos ${agrup==='informe'?'· esquema del informe':'por categoría'}</h2><div class="spacer" style="flex:1"></div>
       <div class="seg"><button class="seg-btn ${agrup==='categoria'?'active':''}" onclick="RES_AGRUP='categoria';paintFinanzas()">Categoría</button><button class="seg-btn ${agrup==='informe'?'active':''}" onclick="RES_AGRUP='informe';paintFinanzas()">Esquema informe</button></div></div>
     <div class="bd" style="padding:12px 18px">
@@ -1775,6 +1791,8 @@ function _gastosResultado(d){
     <div class="bd" style="padding:12px 18px">
       ${mcols.length?`<div style="overflow-x:auto"><table class="mes-t"><thead><tr><th>Concepto</th>${mesHead}<th class="num" style="border-left:1px solid var(--ac-border)">TOTAL</th></tr></thead><tbody>
         <tr><td>Ingresos</td>${rIng}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(ing)}</td></tr>
+        ${ingOtros>0.009?`<tr class="muted" style="font-size:.86rem"><td style="padding-left:18px">· Cuotas de mantenimiento</td>${rCuo}<td class="num" style="border-left:1px solid var(--ac-border)">${money(ingCuotas)}</td></tr>
+        <tr class="muted" style="font-size:.86rem"><td style="padding-left:18px">· Otros ingresos</td>${rOtr}<td class="num" style="border-left:1px solid var(--ac-border)">${money(ingOtros)}</td></tr>`:''}
         <tr><td>Egresos</td>${rEgr}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(egr)}</td></tr>
         <tr><td>Resultado</td>${rRes}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
         <tr style="border-top:2px solid var(--ac-teal)"><td style="font-weight:700">Acumulado</td>${rAcc}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
