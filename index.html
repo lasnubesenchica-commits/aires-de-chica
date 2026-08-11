@@ -425,7 +425,11 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec';
 let TOKEN = localStorage.getItem('ac_token') || '';
 const money = n => 'B/.' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtDate = d => { d=new Date(d); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); };
+// 'YYYY-MM-DD' se muestra literal: new Date('2026-08-31') es medianoche UTC y en
+// Panamá se leería como 30/08. Las fechas con hora sí se convierten normalmente.
+const fmtDate = d => { const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||'').trim());
+  if(m) return m[3]+'/'+m[2]+'/'+m[1];
+  d=new Date(d); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); };
 
 function jsonp(action, params={}){
   return new Promise((res,rej)=>{
@@ -516,14 +520,22 @@ async function renderDash(){
   const ae=document.getElementById('fAsOf');
   if(ae && !ae.value){ const t=new Date(); ae.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
   const asOf = (ae && ae.value) ? ae.value : null;   // vacío = hoy (año en curso, YTD)
-  DASH = await jsonp('getDashboard', asOf?{asOf}:{});
+  // Si la carga falla hay que DECIRLO: antes la promesa se rechazaba sin manejar y el
+  // tablero se quedaba con los datos anteriores, dando la impresión de que el cambio
+  // de corte "no hacía nada".
+  try {
+    DASH = await jsonp('getDashboard', asOf?{asOf}:{});
+  } catch(e) {
+    if(!onAuthError(e)) alert('No se pudo cargar el tablero al corte '+(asOf||'hoy')+'.\n\n'+e);
+    throw e;
+  }
   const k=DASH.kpis;
   const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
   const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
   document.getElementById('kpis').innerHTML = `
     <div class="kpis-hero">
       <div class="kpi hero red">
-        <div class="label">Saldo total por cobrar</div>
+        <div class="label">Saldo total por cobrar · al ${fmtDate(DASH.asOfStr||DASH.asOf)}</div>
         <div class="val">${money(k.saldoTotalConMora)}</div>
         <div class="hero-sub">
           <span>Cartera vencida <b>${money(k.carteraVencida)}</b></span>
@@ -1234,7 +1246,7 @@ function aplicarCorte(){
   // comparar contra sí mismo hacía que nunca se recargara (ni el tablero ni el Excel).
   const cargado = (DASH && DASH.asOfStr) ? DASH.asOfStr : null;
   if(DASH && cargado && ae.value===cargado){ renderTabla(); return; }  // mismo corte -> solo redibuja
-  renderDash().catch(e=>{ if(!onAuthError(e)) alert('No se pudo actualizar al corte '+ae.value+': '+e); });
+  renderDash().catch(()=>{});   // renderDash ya reporta el error al usuario
 }
 function aplicarRango(){
   const r=document.getElementById('fRango').value, ae=document.getElementById('fAsOf'), custom=(r==='custom');
