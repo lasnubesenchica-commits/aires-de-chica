@@ -738,9 +738,15 @@ function _renderEstado(e){
         <button type="button" class="seg-btn ${prev?'':'active'}" onclick="setCmpVista('ahora','${e.clave}')">Ahora · regla nueva</button>
         <button type="button" class="seg-btn ${prev?'active':''}" onclick="setCmpVista('antes','${e.clave}')">Antes · regla anterior</button>
       </div>
-      <div class="muted" style="font-size:.75rem;margin-top:6px">${prev
-        ? 'Cálculo <b>anterior</b>, sólo para comparar. Los saldos vigentes son los de «Ahora».'
-        : 'Esta cuenta cambió con la nueva regla de mora: <b>'+money(e.moraCargadaPrev)+'</b> → <b>'+money(e.moraCargada)+'</b> de recargo.'}</div>
+      <div style="margin-top:8px;padding:10px 13px;border:1px solid var(--ac-border);border-left:3px solid ${prev?'var(--ac-muted)':'var(--ac-teal)'};border-radius:8px;background:${prev?'#fafafa':'var(--ac-teal-50)'}">
+        <div style="font-weight:700;font-size:.78rem;color:${prev?'var(--ac-muted)':'var(--ac-teal-700)'};text-transform:uppercase;letter-spacing:.03em">Cómo se calcula la mora ${prev?'en la regla anterior':'ahora'}</div>
+        <div class="muted" style="font-size:.78rem;line-height:1.55;margin-top:4px">${prev
+          ? 'Cargo único del <b>10% de la cuota</b>, de abril en adelante, si <b>dentro del mes no entraba el equivalente a una cuota</b>. Sólo miraba la caja de ese mes: si el propietario pagaba una cuota en julio, julio se daba por cubierto <b>aunque ese dinero estuviera tapando junio</b>.'
+          : 'Cargo único del <b>10% de la cuota</b>, de abril en adelante. Los pagos <b>saldan primero el mes más atrasado</b>, así que un mes genera recargo si <b>al cierre su cuota sigue descubierta</b> — aunque ese mes haya entrado dinero, si ese dinero tapó un mes anterior. Un <b>saldo a favor</b> arrastrado sí cubre el mes y evita el recargo.'}</div>
+        <div style="font-size:.78rem;margin-top:6px">${prev
+          ? 'Vista de comparación: los saldos vigentes son los de «Ahora».'
+          : 'En esta cuenta el recargo del año pasa de <b>'+money(e.moraCargadaPrev)+'</b> a <b style="color:var(--ac-coral)">'+money(e.moraCargada)+'</b>.'}</div>
+      </div>
     </div>`:''}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
@@ -762,7 +768,7 @@ function _renderEstado(e){
       <td class="num">${moraCell}</td>
       <td class="num">${pagadoCell}</td>
       <td class="num" style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% de la cuota${prev?', que la regla anterior aplicaba cuando no entraba el equivalente a una cuota dentro del mes.':' cuando, al cierre del mes, la cuota sigue sin cubrirse (los pagos saldan primero el mes más atrasado).'}</div>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido.${cmp?'':' La <b>mora</b> es un cargo único del 10% de la cuota cuando, al cierre del mes, la cuota sigue sin cubrirse: los pagos saldan primero el mes más atrasado.'}</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
       ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
       ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>${prev?'Con la regla nueva sería':'Con la regla anterior era'}</span><b>${money(prev?e.saldoNeto:e.saldoNetoPrev)}</b></div>`:''}
