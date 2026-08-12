@@ -126,28 +126,30 @@ function calcEstado(prop, pagosArr, asOf) {
     }
   });
 
-  // 3) mora por mes (regla del cliente): del mes de abril en adelante se aplica un cargo
-  //    ÚNICO del 10% de la cuota si la cuota de ESE mes no queda cubierta por el pago del
-  //    mes MÁS el saldo a favor que traía el propietario. Es decir, un adelanto/crédito
-  //    arrastrado cubre la cuota del mes y evita la mora. El mes en curso todavía no
-  //    genera mora. Es un cargo fijo (no crece con el atraso).
+  // 3) mora por mes: del mes de abril en adelante se aplica un cargo ÚNICO del 10% de la
+  //    cuota si, AL CIERRE de ese mes, el propietario todavía debe principal.
+  //
+  //    Los pagos saldan SIEMPRE el mes más atrasado primero (cascada). Por eso no basta
+  //    con mirar cuánto entró dentro del mes: si alguien debía junio y paga una cuota en
+  //    julio, ese dinero tapa junio y julio queda descubierto, así que julio SÍ genera
+  //    mora. Un saldo a favor arrastrado, en cambio, sí cubre el mes y evita el recargo.
+  //    El mes en curso todavía no vence, así que no genera mora. Es un cargo fijo.
   var saldoPrin = saldo2025;   // principal corriente (deuda + / crédito -), sin mora
   var moraMesMap = {}, condMesMap = {};
-  var cubiertoMesCash = 0;     // cobertura de la cuota del MES DE CORTE con el mismo criterio
+  var cubiertoMesCash = 0;     // cobertura de la cuota del MES DE CORTE, con el mismo criterio
   for (var mm3 = mesInicio; mm3 <= mesActual; mm3++) {
     var idx3 = year * 12 + mm3;
     var pago3 = _round2(pagosMes[mm3] || 0);
-    var creditoPrevio = saldoPrin < 0 ? -saldoPrin : 0;          // saldo a favor que traía al mes
-    var disponible3 = _round2(creditoPrevio + pago3);            // con qué contó para cubrir el mes
-    var cubierta3 = disponible3 >= cuota - 0.009;
-    if (mm3 === mesActual) cubiertoMesCash = _round2(Math.min(cuota, Math.max(0, disponible3)));
+    saldoPrin = _round2(saldoPrin + cuota - pago3);              // el pago se imputa a lo más viejo
+    var pendMes = Math.min(cuota, Math.max(0, saldoPrin));       // parte de ESTA cuota sin cubrir
+    var cubierta3 = pendMes <= 0.009;
+    if (mm3 === mesActual) cubiertoMesCash = _round2(cuota - pendMes);
     var mora3 = 0, cond3 = false;
     if (idx3 >= moraDesde && idx3 < currentIdx && !cubierta3) {
       if (condon.all || !!condon.set[_ymKey(year, mm3)]) cond3 = true;
       else mora3 = _round2(cuota * moraPct);                     // cargo único del 10%
     }
     moraMesMap[idx3] = mora3; condMesMap[idx3] = cond3;
-    saldoPrin = _round2(saldoPrin + cuota - pago3);              // avanza principal (sin mora)
   }
   buckets.forEach(function (b) {
     b.mora = 0; b.moraMeses = 0; b.condonada = false;
