@@ -39,7 +39,30 @@ var COL_PRESUP = ['anio','categoria','monto'];
 
 /* ─────────────── setup de pestañas ─────────────── */
 
-function ensureSheets() {
+/**
+ * Prepara la estructura del libro: crea hojas y columnas que falten y fuerza el
+ * formato de texto donde hace falta.
+ *
+ * Es una tarea de MIGRACIÓN, no de lectura, y sale cara: `_forceText` escribe el
+ * formato sobre columnas enteras (mil filas cada una) y `_ensureColumn` lee un
+ * encabezado por llamada. Como se invocaba al principio de casi todas las funciones
+ * —incluidas las de sólo lectura— cada carga del tablero o de Finanzas pagaba ese
+ * costo y tardaba cerca de un minuto.
+ *
+ * Ahora corre una sola vez por versión de estructura: si la marca guardada coincide
+ * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
+ * mantenimiento y conviene tras tocar el Sheet a mano).
+ */
+var AC_SCHEMA_V = 'v1-2026-08';   // subir si cambian hojas o columnas
+var _ensuredEnEstaEjecucion = false;
+
+function ensureSheets(force) {
+  if (_ensuredEnEstaEjecucion && !force) return { omitido: true, motivo: 'ya verificado en esta ejecución' };
+  var _props = PropertiesService.getScriptProperties();
+  if (!force && _props.getProperty('AC_SCHEMA') === AC_SCHEMA_V) {
+    _ensuredEnEstaEjecucion = true;
+    return { omitido: true, motivo: 'estructura al día (' + AC_SCHEMA_V + ')' };
+  }
   var ss = _ss();
   var created = [];
   [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
@@ -74,7 +97,9 @@ function ensureSheets() {
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
   _forceText(ss.getSheetByName(SH.PAGOS), ['clave', 'lote'], COL_PAGOS);
-  return { created: created, sheets: ss.getSheets().map(function (s) { return s.getName(); }) };
+  _props.setProperty('AC_SCHEMA', AC_SCHEMA_V);   // no repetirlo en cada lectura
+  _ensuredEnEstaEjecucion = true;
+  return { created: created, esquema: AC_SCHEMA_V, sheets: ss.getSheets().map(function (s) { return s.getName(); }) };
 }
 
 function _forceText(sh, names, cols) {

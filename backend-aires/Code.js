@@ -87,7 +87,7 @@ function doPost(e) {
 
     // el resto exige token válido (permite bootstrap si aún no hay contraseña)
     requireAuth(data.token);
-    if (action === 'ensureSheets')          out = { ok: true, data: ensureSheets() };
+    if (action === 'ensureSheets')          out = { ok: true, data: ensureSheets(true) };
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
