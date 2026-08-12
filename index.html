@@ -74,8 +74,6 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .icon-btn { background:none; border:1px solid transparent; border-radius:7px; cursor:pointer; font-size:.95rem; line-height:1; padding:5px 6px; color:var(--ac-muted); }
 .icon-btn:hover { background:#fff; border-color:var(--ac-border); }
 .icon-btn.danger:hover { color:var(--ac-danger); }
-/* Valor de la regla anterior, debajo del actual: evita columnas extra y scroll lateral. */
-.sub-antes { font-size:.66rem; color:var(--ac-muted); font-weight:400; margin-top:1px; white-space:nowrap; }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -718,20 +716,31 @@ function openEstado(clave){
   jsonp('getEstadoCuenta',{clave}).then(_renderEstado).catch(ex=>{ if(!onAuthError(ex)) alert('Error: '+ex); });
 }
 // Comparación temporal con la regla de mora anterior, para que la Junta valide el cambio.
-let CMP_MORA=false;
-function toggleCmpMora(clave){ CMP_MORA=!CMP_MORA; openEstado(clave); }
+// Se muestran las DOS versiones en la misma tabla de siempre, en pestañas: apilar el
+// valor viejo debajo del nuevo se leía confuso.
+let CMP_VISTA='ahora';   // 'ahora' | 'antes'
+function setCmpVista(v, clave){ CMP_VISTA=v; openEstado(clave); }
 function _renderEstado(e){
-  const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
+  const cmp = !!e.moraDifiere;                 // la cuenta cambió con la regla nueva
+  const prev = cmp && CMP_VISTA==='antes';     // se está viendo el cálculo anterior
+  const vMora  = b => prev ? (b.moraPrev||0) : (b.mora||0);
+  const vSaldo = b => prev ? (b.saldoPrev||0) : (b.saldo||0);
+  const totMora  = prev ? e.moraCargadaPrev : e.moraCargada;
+  const totSaldo = prev ? e.saldoNetoPrev   : e.saldoNeto;
+  const color = totSaldo>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   const today = new Date().toISOString().slice(0,10);
-  const cmp = CMP_MORA && !!e.moraDifiere;   // sólo tiene sentido si las dos reglas difieren
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    ${e.moraDifiere?`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 12px;padding:9px 12px;border:1px solid ${cmp?'var(--ac-teal)':'var(--ac-border)'};border-radius:9px;background:${cmp?'var(--ac-teal-50)':'#fff'}">
-      <span style="font-size:.8rem">${cmp?'Comparando con la <b>regla anterior</b>: el valor previo va en gris debajo de cada monto.':'Esta cuenta cambió con la nueva regla de mora.'}</span>
-      <span style="flex:1"></span>
-      <button class="link-btn" style="font-size:.78rem;font-weight:600" onclick="toggleCmpMora('${e.clave}')">${cmp?'Ocultar comparación':'Comparar antes / ahora'}</button>
+    ${cmp?`<div style="margin:-4px 0 12px">
+      <div class="seg" style="display:inline-flex">
+        <button type="button" class="seg-btn ${prev?'':'active'}" onclick="setCmpVista('ahora','${e.clave}')">Ahora · regla nueva</button>
+        <button type="button" class="seg-btn ${prev?'active':''}" onclick="setCmpVista('antes','${e.clave}')">Antes · regla anterior</button>
+      </div>
+      <div class="muted" style="font-size:.75rem;margin-top:6px">${prev
+        ? 'Cálculo <b>anterior</b>, sólo para comparar. Los saldos vigentes son los de «Ahora».'
+        : 'Esta cuenta cambió con la nueva regla de mora: <b>'+money(e.moraCargadaPrev)+'</b> → <b>'+money(e.moraCargada)+'</b> de recargo.'}</div>
     </div>`:''}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
@@ -741,29 +750,25 @@ function _renderEstado(e){
             ? `<a href="${vs[0]}" target="_blank" class="cprev" title="Ver comprobante" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none">${money(b.pagado)} 📎</a>`+(vs.length>1?`<span class="muted" style="font-size:.68rem"> +${vs.length-1}</span>`:'')
             : money(b.pagado))
         : (b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—');
+      const mo=vMora(b), sa=vSaldo(b);
       let moraCell='—';
-      if(all && (b.mora>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
-      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span><span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`;
-      else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span><span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`;
-      const nuevoCargo = cmp && b.mora>0.009 && !(b.moraPrev>0.009);   // mora que aparece con la regla nueva
-      // En modo comparación el valor anterior va DEBAJO del actual, en la misma celda:
-      // añadir columnas obligaba a desplazar el modal en horizontal.
-      const antes = v => cmp ? `<div class="sub-antes">antes ${v}</div>` : '';
-      return `<tr style="${nuevoCargo?'background:#fff3e8':(b.saldo>0.009?'background:#fff7f4':'')}"><td>${b.label}${nuevoCargo?' <span class="pill" style="font-size:.55rem;background:var(--ac-coral);color:#fff">nueva</span>':''}</td>
+      if(all && (mo>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
+      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`+(prev?'':`<span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`);
+      else if(mo>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(mo)}</span>`+(prev?'':`<span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`);
+      // en la vista "ahora" se marcan los meses cuyo recargo aparece con la regla nueva
+      const nuevoCargo = cmp && !prev && b.mora>0.009 && !(b.moraPrev>0.009);
+      return `<tr style="${nuevoCargo?'background:#fff3e8':(sa>0.009?'background:#fff7f4':'')}"><td>${b.label}${nuevoCargo?' <span class="pill" style="font-size:.55rem;background:var(--ac-coral);color:#fff">nueva</span>':''}</td>
       <td class="num mCuota">${b.cuota?money(b.cuota):'—'}</td>
-      <td class="num">${moraCell}${b.cuota?antes(b.moraPrev>0.009?money(b.moraPrev):'—'):''}</td>
+      <td class="num">${moraCell}</td>
       <td class="num">${pagadoCell}</td>
-      <td class="num" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}${antes(money(b.saldoPrev))}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% cuando la cuota del mes (de abril en adelante) no se paga dentro del mes.</div>
+      <td class="num" style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% de la cuota${prev?', que la regla anterior aplicaba cuando no entraba el equivalente a una cuota dentro del mes.':' cuando, al cierre del mes, la cuota sigue sin cubrirse (los pagos saldan primero el mes más atrasado).'}</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>Mora con la regla anterior</span><b>${money(e.moraCargadaPrev)}</b></div>
-      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>Saldo con la regla anterior</span><b>${money(e.saldoNetoPrev)}</b></div>
-      <div style="border-top:1px dashed var(--ac-border);margin:6px 0"></div>`:''}
-      ${e.moraCargada>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${cmp?' (ahora)':''}</span><b style="color:var(--ac-coral)">${money(e.moraCargada)}</b></div>`:''}
-      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Diferencia</span><b style="color:var(--ac-coral)">+${money(e.saldoNeto-e.saldoNetoPrev)}</b></div>`:''}
-      ${e.saldoNeto<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-e.saldoNeto)}</b></div>`:''}
+      ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
+      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>${prev?'Con la regla nueva sería':'Con la regla anterior era'}</span><b>${money(prev?e.saldoNeto:e.saldoNetoPrev)}</b></div>`:''}
+      ${totSaldo<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-totSaldo)}</b></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
-        <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoNeto)}</b></div>
+        <b>SALDO TOTAL${prev?' (anterior)':''}</b><b style="color:${color};font-size:1.1rem">${money(totSaldo)}</b></div>
     </div></div>
     <div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
