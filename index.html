@@ -446,13 +446,28 @@ const fmtDate = d => { const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||'').tr
   if(m) return m[3]+'/'+m[2]+'/'+m[1];
   d=new Date(d); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); };
 
-function jsonp(action, params={}){
+// Lectura vía JSONP. Los fallos de RED (Apps Script devuelve una página de error,
+// se corta la conexión, etc.) son intermitentes, así que se reintenta solo antes de
+// molestar al usuario. Un error de negocio del backend NO se reintenta: se propaga.
+function jsonp(action, params={}, opts={}){
+  const maxReintentos = opts.reintentos==null ? 2 : opts.reintentos;
+  const ms = opts.timeout || 120000;   // el tablero puede tardar; margen amplio
   return new Promise((res,rej)=>{
-    const cb='__cb'+Math.random().toString(36).slice(2);
-    const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
-    const s=document.createElement('script'); s.src=GAS_URL+'?'+qs;
-    window[cb]=d=>{ delete window[cb]; s.remove(); d.ok?res(d.data):rej(d.error); };
-    s.onerror=()=>{ s.remove(); rej('network'); }; document.body.appendChild(s);
+    let intento=0;
+    const lanzar=()=>{
+      const cb='__cb'+Math.random().toString(36).slice(2);
+      const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+      const s=document.createElement('script'); s.src=GAS_URL+'?'+qs;
+      let cerrado=false;
+      const limpiar=()=>{ clearTimeout(tid); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } s.remove(); };
+      const fallar=motivo=>{ if(cerrado) return; cerrado=true; limpiar();
+        if(intento++ < maxReintentos) setTimeout(lanzar, 800*intento); else rej(motivo); };
+      const tid=setTimeout(()=>fallar('timeout'), ms);
+      window[cb]=d=>{ if(cerrado) return; cerrado=true; limpiar(); d.ok?res(d.data):rej(d.error); };
+      s.onerror=()=>fallar('network');
+      document.body.appendChild(s);
+    };
+    lanzar();
   });
 }
 async function post(action,data={}){
@@ -469,8 +484,25 @@ async function boot(){
   let st; try{ st = await jsonp('getAuthState'); }catch(e){ st={hasPassword:false}; }
   if(!st.hasPassword){ setupGate('setup'); return; }
   if(!TOKEN){ setupGate('login'); return; }
-  try{ await renderDash(); showApp(); }
-  catch(e){ if(!onAuthError(e)){ setupGate('login'); } }
+  // Un fallo de CONEXIÓN no es un problema de sesión: mandar al login confundía
+  // (las credenciales están bien) y dejaba la pantalla en blanco. Se ofrece reintentar.
+  try{ await renderDash({silencioso:true}); showApp(); }
+  catch(e){ if(!onAuthError(e)) pantallaSinConexion(e); }
+}
+function pantallaSinConexion(e){
+  const msg = (String(e)==='network'||String(e)==='timeout')
+    ? 'No se pudo contactar el servidor. Puede ser la conexión o que Google Apps Script no respondiera a tiempo.'
+    : ('El servidor respondió con un error:<br><code style="font-size:.8rem">'+_esc(e)+'</code>');
+  document.getElementById('gate').classList.remove('show');
+  const app=document.getElementById('app');
+  app.style.display='block';
+  app.innerHTML=`<div style="max-width:520px;margin:80px auto;padding:26px 28px;border:1px solid var(--ac-border);border-radius:14px;background:#fff;box-shadow:var(--ac-shadow);text-align:center">
+    <div style="font-size:2rem;line-height:1">📡</div>
+    <h2 style="margin:10px 0 6px;font-size:1.15rem;color:var(--ac-teal-900)">No se pudo cargar el tablero</h2>
+    <p class="muted" style="font-size:.88rem;line-height:1.6">${msg}</p>
+    <p class="muted" style="font-size:.8rem">Tu sesión sigue activa; no hace falta volver a entrar.</p>
+    <button class="btn" style="margin-top:14px" onclick="location.reload()">Reintentar</button>
+  </div>`;
 }
 function setupGate(mode){
   GATE_MODE=mode;
@@ -563,8 +595,10 @@ async function renderDash(opts){
     _d = await jsonp('getDashboard', asOf?{asOf}:{});
   } catch(e) {
     // sólo se reporta si sigue siendo la petición vigente: una que ya fue reemplazada
-    // por otro corte no debe molestar al usuario ni apagar el indicador.
-    if(seq===_dashSeq){ _dashCargando(false); if(!onAuthError(e)) alert('No se pudo cargar el tablero al corte '+(asOf||'hoy')+'.\n\n'+e); }
+    // por otro corte no debe molestar al usuario ni apagar el indicador. En el arranque
+    // se calla, porque quien llama muestra una pantalla de reintento más útil.
+    if(seq===_dashSeq){ _dashCargando(false);
+      if(!(opts&&opts.silencioso) && !onAuthError(e)) alert('No se pudo cargar el tablero al corte '+(asOf||'hoy')+'.\n\n'+e); }
     throw e;
   }
   // si mientras tanto se pidió otro corte, esta respuesta ya no vale
