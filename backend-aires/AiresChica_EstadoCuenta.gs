@@ -134,6 +134,25 @@ function calcEstado(prop, pagosArr, asOf) {
   //    julio, ese dinero tapa junio y julio queda descubierto, así que julio SÍ genera
   //    mora. Un saldo a favor arrastrado, en cambio, sí cubre el mes y evita el recargo.
   //    El mes en curso todavía no vence, así que no genera mora. Es un cargo fijo.
+  //
+  //    Se calcula además la mora con la REGLA ANTERIOR (sólo caja del mes) para poder
+  //    comparar ambas en pantalla mientras la Junta valida el cambio. No afecta ningún
+  //    saldo: es informativa y puede retirarse cuando el cambio quede aprobado.
+  var moraPrevMap = {};
+  (function () {
+    var sp = saldo2025;
+    for (var m = mesInicio; m <= mesActual; m++) {
+      var ix = year * 12 + m, pg = _round2(pagosMes[m] || 0);
+      var cr = sp < 0 ? -sp : 0;
+      var cubierta = _round2(cr + pg) >= cuota - 0.009;   // miraba sólo lo pagado ese mes
+      var mv = 0;
+      if (ix >= moraDesde && ix < currentIdx && !cubierta &&
+          !(condon.all || !!condon.set[_ymKey(year, m)])) mv = _round2(cuota * moraPct);
+      moraPrevMap[ix] = mv;
+      sp = _round2(sp + cuota - pg);
+    }
+  })();
+
   var saldoPrin = saldo2025;   // principal corriente (deuda + / crédito -), sin mora
   var moraMesMap = {}, condMesMap = {};
   var cubiertoMesCash = 0;     // cobertura de la cuota del MES DE CORTE, con el mismo criterio
@@ -228,13 +247,18 @@ function calcEstado(prop, pagosArr, asOf) {
 
   var mensual = [];
   var saldoRun = saldo2025; // saldo inicial: deuda 2025 (positiva) o crédito a favor (negativo)
-  if (saldo2025 !== 0) mensual.push({ label: saldo2025 < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, mora: 0, pagado: 0, saldo: saldoRun, condonada: false, vouchers: [] });
+  var saldoRunPrev = saldo2025, moraCargadaPrev = 0;   // mismo libro con la regla anterior
+  if (saldo2025 !== 0) mensual.push({ label: saldo2025 < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, mora: 0, moraPrev: 0, pagado: 0, saldo: saldoRun, saldoPrev: saldoRun, condonada: false, vouchers: [] });
   for (var mm = mesInicio; mm <= mesActual; mm++) {
     var _idx = year * 12 + mm;
     var pg = _round2(pagosMes[mm] || 0);
     var moraMes = _round2(moraByIdx[_idx] || 0);
+    var moraMesPrev = _round2(moraPrevMap[_idx] || 0);
     saldoRun = _round2(saldoRun + cuota + moraMes - pg);
-    mensual.push({ label: AC_MESES_LARGO[mm - 1], ym: _ymKey(year, mm), cuota: cuota, mora: moraMes, pagado: pg, saldo: saldoRun,
+    saldoRunPrev = _round2(saldoRunPrev + cuota + moraMesPrev - pg);
+    moraCargadaPrev = _round2(moraCargadaPrev + moraMesPrev);
+    mensual.push({ label: AC_MESES_LARGO[mm - 1], ym: _ymKey(year, mm), cuota: cuota, mora: moraMes, moraPrev: moraMesPrev,
+      pagado: pg, saldo: saldoRun, saldoPrev: saldoRunPrev,
       condonada: !!condonByIdx[_idx], vouchers: vouchersMes[mm] || [] });
   }
   var saldoNeto = saldoRun; // saldo total con signo (debe positivo / crédito negativo)
@@ -255,6 +279,9 @@ function calcEstado(prop, pagosArr, asOf) {
     moraCargada: moraCargada,      // recargo por mora total generado (antes de pagos/condonación)
     saldoConMora: saldoConMora,
     saldoNeto: saldoNeto,          // saldo total con signo: positivo = debe; negativo = crédito a favor
+    // comparación con la regla anterior de mora (informativa, para validar el cambio)
+    moraCargadaPrev: moraCargadaPrev, saldoNetoPrev: saldoRunPrev,
+    moraDifiere: Math.abs(_round2(moraCargada - moraCargadaPrev)) > 0.009,
     creditoAFavor: creditoAFavor,
     moraOrden: moraOrden, moraCrece: moraCrece,
     moraCondon: String(prop.moraCondon || ''), moraCondonAll: condon.all,
@@ -411,6 +438,7 @@ function buildDashboard(asOf) {
                cobradoMensual: cobradoMensualByClave[e.clave] || [0,0,0,0,0,0,0,0,0,0,0,0],
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, saldoNeto: e.saldoNeto, creditoAFavor: e.creditoAFavor,
+               moraCargadaPrev: e.moraCargadaPrev, saldoNetoPrev: e.saldoNetoPrev, moraDifiere: e.moraDifiere,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
                fechaVencimiento: e.fechaVencimiento,

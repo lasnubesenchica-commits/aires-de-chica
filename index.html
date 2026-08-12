@@ -715,14 +715,23 @@ function openEstado(clave){
   // respaldo: si el detalle aún no vino en el dashboard, lo pide al backend
   jsonp('getEstadoCuenta',{clave}).then(_renderEstado).catch(ex=>{ if(!onAuthError(ex)) alert('Error: '+ex); });
 }
+// Comparación temporal con la regla de mora anterior, para que la Junta valide el cambio.
+let CMP_MORA=false;
+function toggleCmpMora(clave){ CMP_MORA=!CMP_MORA; openEstado(clave); }
 function _renderEstado(e){
   const color = e.saldoConMora>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   const today = new Date().toISOString().slice(0,10);
+  const cmp = CMP_MORA && !!e.moraDifiere;   // sólo tiene sentido si las dos reglas difieren
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
+    ${e.moraDifiere?`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 12px;padding:9px 12px;border:1px solid ${cmp?'var(--ac-teal)':'var(--ac-border)'};border-radius:9px;background:${cmp?'var(--ac-teal-50)':'#fff'}">
+      <span style="font-size:.8rem">${cmp?'Comparando con la <b>regla anterior</b> (columnas «antes»).':'Esta cuenta cambió con la nueva regla de mora.'}</span>
+      <span style="flex:1"></span>
+      <button class="link-btn" style="font-size:.78rem;font-weight:600" onclick="toggleCmpMora('${e.clave}')">${cmp?'Ocultar comparación':'Comparar antes / ahora'}</button>
+    </div>`:''}
+    <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th>${cmp?'<th class="num" style="color:var(--ac-muted)">Mora antes</th>':''}<th class="num">Mora${cmp?' ahora':''}</th><th class="num">Pagado</th>${cmp?'<th class="num" style="color:var(--ac-muted)">Saldo antes</th>':''}<th class="num">Saldo total${cmp?' ahora':''}</th></tr></thead>
     <tbody>${e.mensual.map(b=>{
       const vs=b.vouchers||[];
       const pagadoCell = b.pagado
@@ -734,14 +743,21 @@ function _renderEstado(e){
       if(all && (b.mora>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
       else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span><span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`;
       else if(b.mora>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(b.mora)}</span><span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`;
-      return `<tr style="${b.saldo>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
+      const nuevoCargo = cmp && b.mora>0.009 && !(b.moraPrev>0.009);   // mora que aparece con la regla nueva
+      return `<tr style="${nuevoCargo?'background:#fff3e8':(b.saldo>0.009?'background:#fff7f4':'')}"><td>${b.label}${nuevoCargo?' <span class="pill" style="font-size:.55rem;background:var(--ac-coral);color:#fff">nueva</span>':''}</td>
       <td class="num mCuota">${b.cuota?money(b.cuota):'—'}</td>
+      ${cmp?`<td class="num muted">${b.moraPrev>0.009?money(b.moraPrev):'—'}</td>`:''}
       <td class="num">${moraCell}</td>
       <td class="num">${pagadoCell}</td>
+      ${cmp?`<td class="num muted">${money(b.saldoPrev)}</td>`:''}
       <td class="num" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`;}).join('')}</tbody></table>
     <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% cuando la cuota del mes (de abril en adelante) no se paga dentro del mes.</div>
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      ${e.moraCargada>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año</span><b style="color:var(--ac-coral)">${money(e.moraCargada)}</b></div>`:''}
+      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>Mora con la regla anterior</span><b>${money(e.moraCargadaPrev)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>Saldo con la regla anterior</span><b>${money(e.saldoNetoPrev)}</b></div>
+      <div style="border-top:1px dashed var(--ac-border);margin:6px 0"></div>`:''}
+      ${e.moraCargada>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${cmp?' (ahora)':''}</span><b style="color:var(--ac-coral)">${money(e.moraCargada)}</b></div>`:''}
+      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Diferencia</span><b style="color:var(--ac-coral)">+${money(e.saldoNeto-e.saldoNetoPrev)}</b></div>`:''}
       ${e.saldoNeto<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-e.saldoNeto)}</b></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
         <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(e.saldoNeto)}</b></div>
