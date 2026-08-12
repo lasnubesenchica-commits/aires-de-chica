@@ -66,7 +66,14 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 #tblProp col.c-lote { width:6%; } #tblProp col.c-resid { width:9%; }
 #tblProp col.c-prop { width:12%; } #tblProp col.c-mail { width:12%; }
 #tblProp col.c-cel { width:8%; } #tblProp col.c-lotes { width:6%; }
-#tblProp col.c-cab { width:5%; } #tblProp col.c-saldo { width:15%; } #tblProp col.c-ingreso { width:9%; } #tblProp col.c-cuota { width:13%; } #tblProp col.c-act { width:8%; }
+#tblProp col.c-cab { width:6%; } #tblProp col.c-saldo { width:11%; } #tblProp col.c-ingreso { width:9%; } #tblProp col.c-cuota { width:11%; } #tblProp col.c-act { width:8%; }
+/* Directorio de solo lectura: se ojea aquí y se edita en el modal del perfil. */
+#tblProp tbody tr { cursor:pointer; }
+#tblProp tbody tr:hover { background:var(--ac-teal-50); }
+#tblProp .sub { font-size:.7rem; color:var(--ac-muted); }
+.icon-btn { background:none; border:1px solid transparent; border-radius:7px; cursor:pointer; font-size:.95rem; line-height:1; padding:5px 6px; color:var(--ac-muted); }
+.icon-btn:hover { background:#fff; border-color:var(--ac-border); }
+.icon-btn.danger:hover { color:var(--ac-danger); }
 #tblProp td.cuota .sub { font-size:.68rem; color:var(--ac-muted); margin-top:2px; white-space:normal; line-height:1.2; }
 #tblProp td.email, #tblProp td:first-child, #tblProp td:nth-child(3) { overflow:hidden; text-overflow:ellipsis; }
 .legend { display:flex; flex-wrap:wrap; gap:8px 20px; padding:11px 18px; border-bottom:1px solid var(--ac-border); font-size:.8rem; }
@@ -360,7 +367,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
       <input type="search" id="pQ" placeholder="Buscar…"/>
       <button class="btn" onclick="openAddProp()" style="padding:9px 14px;white-space:nowrap">+ Agregar</button></div>
       <div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
-        Aquí administras los <b>datos de cobro</b> de cada propietario. Los campos <b>se editan directamente y se guardan solos</b> al cambiarlos; alimentan el <b>estado de cuenta</b> (cuota mensual, saldos y mora) y los correos.
+        Aquí administras los <b>datos de cobro</b> de cada propietario. Haz <b>clic en cualquier fila</b> (o en ✏️) para abrir su <b>perfil</b> y editarlo; alimentan el <b>estado de cuenta</b> (cuota mensual, saldos y mora) y los correos.
         <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--ac-teal-600);font-weight:600">¿Qué puedo editar y para qué sirve?</summary>
           <ul style="margin:8px 0 0;padding-left:18px;line-height:1.65">
             <li><b>Lotes</b>: cantidad de lotes del propietario (informativo; no cambia la cuota).</li>
@@ -841,44 +848,49 @@ let PROP_OPEN=new Set();
 async function renderProp(){
   try{ PROPS=await jsonp('getPropietarios',{todos:1}); }catch(e){ if(onAuthError(e))return; return; }
   const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const mesOpts=p=>'<option value="">Todo el año</option>'+meses.map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('');
-  const actLinks=p=> `<button class="link-btn" style="font-size:.78rem;font-weight:600" title="Ver y editar todo el perfil" onclick="openEditProp('${p.clave}')">Editar perfil</button>`
-    + (p.activo!==false
-      ? ` <button class="link-btn" style="color:var(--ac-muted);font-size:.78rem;margin-left:8px" title="Deja de facturarle; conserva el historial" onclick="toggleActivo('${p.clave}',false,this)">Desactivar</button>`
-      : ` <button class="link-btn" style="font-size:.78rem;margin-left:8px" onclick="toggleActivo('${p.clave}',true,this)">Reactivar</button> <button class="link-btn" style="color:var(--ac-danger);font-size:.78rem;margin-left:8px" title="Solo si no tiene pagos" onclick="eliminarProp('${p.clave}',this)">Eliminar</button>`);
+  // El directorio es de SOLO LECTURA: se ojea aquí y se edita en el modal del perfil.
+  const txtIngreso=p=>{ const v=String(p.inicioCobro||''); const m=/^(\d{4})-(\d{2})$/.exec(v);
+    return m ? `${meses[(+m[2])-1]} ${m[1]}` : '<span class="muted">Todo el año</span>'; };
+  const txtSaldo=p=>{ const s=Number(p.saldo2025)||0; if(!s) return '<span class="muted">—</span>';
+    return s<0 ? `<b style="color:var(--ac-ok)">${money(Math.abs(s))}</b><div class="sub" style="color:var(--ac-ok)">a favor</div>`
+               : `<b>${money(s)}</b><div class="sub">debe</div>`; };
+  // Acciones como iconos para no robarle ancho a los datos.
+  const icoEditar=p=>`<button class="icon-btn" title="Editar perfil" onclick="event.stopPropagation();openEditProp('${p.clave}')">✏️</button>`;
+  const icoEstado=p=> p.activo!==false
+      ? `<button class="icon-btn" title="Desactivar: deja de facturarle y conserva el historial" onclick="event.stopPropagation();toggleActivo('${p.clave}',false,this)">⊘</button>`
+      : `<button class="icon-btn" title="Reactivar" onclick="event.stopPropagation();toggleActivo('${p.clave}',true,this)">↩</button>
+         <button class="icon-btn danger" title="Eliminar (solo si no tiene pagos)" onclick="event.stopPropagation();eliminarProp('${p.clave}',this)">🗑</button>`;
+  const icons=p=>icoEditar(p)+icoEstado(p);
   const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
     const list=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
       .sort((a,b)=>(a.activo!==false)===(b.activo!==false)?0:((a.activo!==false)?-1:1));   // inactivos al final
-    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr style="${p.activo!==false?'':'opacity:.5'}"><td><b>${p.lote}</b>${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</td><td>${p.residencial}</td>
-      <td><a href="#" onclick="openEditProp('${p.clave}');return false" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none" title="Ver y editar el perfil">${p.nombre}</a></td>
-      <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
-      <td class="num"><input type="number" min="1" step="1" value="${p.lotes||1}" title="Cantidad de lotes (informativo; no cambia la cuota)" onchange="setLotes('${p.clave}',this)" style="width:48px;text-align:right;padding:5px 5px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-      <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-      <td class="num"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
-        <input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" title="Monto del saldo inicial 2025" onchange="setSaldo('${p.clave}',this)" style="width:60px;text-align:right;padding:5px 5px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}">
-        <select onchange="setSaldo('${p.clave}',this)" title="¿Es deuda que arrastra, o crédito a favor?" style="width:74px;padding:4px 3px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.7rem;${p.saldo2025<0?'color:var(--ac-ok)':'color:var(--ac-muted)'}">
-          <option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option>
-          <option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option>
-        </select></div></td>
-      <td><select onchange="setInicio('${p.clave}',this)" title="Mes en que empieza a pagar cuota" style="width:100%;max-width:104px;padding:4px 4px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.72rem">
-        <option value="">Todo el año</option>
-        ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('')}
-      </select></td>
-      <td class="num cuota"><input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" title="Vacío = cuota base + 30% por cabaña (automático). Escribe un valor sólo para casos especiales." onchange="setCuota('${p.clave}',this)" style="width:100%;max-width:78px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-        <div class="sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</div></td>
-      <td style="white-space:nowrap">${actLinks(p)}</td></tr>`).join('');
+    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr style="${p.activo!==false?'':'opacity:.5'}" title="Clic para ver y editar el perfil" onclick="openEditProp('${p.clave}')">
+      <td><b>${p.lote}</b>${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</td>
+      <td>${p.residencial}</td>
+      <td style="color:var(--ac-teal-600);font-weight:600">${_esc(p.nombre)}</td>
+      <td class="email" title="${_esc(p.email)}">${p.email||'<span class="muted">—</span>'}</td>
+      <td title="${_esc(p.celular)}">${p.celular||'<span class="muted">—</span>'}</td>
+      <td class="num">${p.lotes||1}</td>
+      <td class="num">${p.cabanas||'<span class="muted">—</span>'}</td>
+      <td class="num">${txtSaldo(p)}</td>
+      <td>${txtIngreso(p)}</td>
+      <td class="num cuota"><b>${money(p.cuota)}</b><div class="sub">${p.cuotaGlobal?'auto':'fija'}</div></td>
+      <td style="white-space:nowrap;text-align:right">${icons(p)}</td></tr>`).join('');
     document.getElementById('propCards').innerHTML=list.map(p=>`<details class="pcard" style="${p.activo!==false?'':'opacity:.6'}" ${PROP_OPEN.has(p.clave)?'open':''} ontoggle="this.open?PROP_OPEN.add('${p.clave}'):PROP_OPEN.delete('${p.clave}')">
-      <summary><div><div class="pc-lote">L${p.lote} · ${p.residencial}${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</div><div class="pc-name">${p.nombre}</div></div><span class="pc-chev">▾</span></summary>
+      <summary><div><div class="pc-lote">L${p.lote} · ${p.residencial}${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</div><div class="pc-name">${_esc(p.nombre)}</div></div><span class="pc-chev">▾</span></summary>
       <div class="pc-body">
       <div class="pc-contact muted">${p.email||'sin correo'}${p.celular?' · '+p.celular:''}</div>
-      <div class="pc-fields">
-        <label>Lotes<input type="number" min="1" step="1" value="${p.lotes||1}" onchange="setLotes('${p.clave}',this)"></label>
-        <label>Cabañas<input type="number" min="0" step="1" value="${p.cabanas||0}" onchange="setCabanas('${p.clave}',this)"></label>
-        <label class="pc-full">Saldo 2025<span class="pc-saldo"><input type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" onchange="setSaldo('${p.clave}',this)" style="${p.saldo2025<0?'color:var(--ac-ok);font-weight:700':''}"><select onchange="setSaldo('${p.clave}',this)"><option value="debe" ${p.saldo2025<0?'':'selected'}>Debe</option><option value="favor" ${p.saldo2025<0?'selected':''}>A favor</option></select></span></label>
-        <label class="pc-full">Ingreso (empieza a pagar)<select onchange="setInicio('${p.clave}',this)">${mesOpts(p)}</select></label>
-        <label class="pc-full">Cuota/mes<input type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto" onchange="setCuota('${p.clave}',this)"><span class="pc-cuota-sub">= ${money(p.cuota)}${p.cuotaGlobal?' (auto)':' (fija)'}</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px;font-size:.84rem">
+        <div><span class="muted" style="font-size:.72rem;display:block">Lotes</span>${p.lotes||1}</div>
+        <div><span class="muted" style="font-size:.72rem;display:block">Cabañas</span>${p.cabanas||'—'}</div>
+        <div><span class="muted" style="font-size:.72rem;display:block">Saldo 2025</span>${txtSaldo(p)}</div>
+        <div><span class="muted" style="font-size:.72rem;display:block">Ingreso</span>${txtIngreso(p)}</div>
+        <div style="grid-column:1/-1"><span class="muted" style="font-size:.72rem;display:block">Cuota/mes</span><b>${money(p.cuota)}</b> <span class="muted" style="font-size:.72rem">(${p.cuotaGlobal?'auto':'fija'})</span></div>
       </div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--ac-border);text-align:right">${actLinks(p)}</div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--ac-border);display:flex;gap:8px;align-items:center;justify-content:space-between">
+        <button class="btn ghost" style="padding:7px 12px;font-size:.82rem" onclick="openEditProp('${p.clave}')">✏️ Editar perfil</button>
+        <span>${icoEstado(p)}</span>
+      </div>
       </div></details>`).join('');
   };
   document.getElementById('pQ').oninput=draw; draw();
@@ -1018,60 +1030,6 @@ function toast(msg){
   t.textContent=msg||'✓ Guardado';
   t.classList.add('show');
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), 1600);
-}
-async function setLotes(clave,el){
-  el.disabled=true;
-  try{ const r=await post('setPropLotes',{clave,lotes:el.value});
-    const p=PROPS.find(x=>x.clave===clave); if(p){ p.lotes=r.lotes; }
-    toast('✓ Guardado');
-    document.getElementById('pQ').dispatchEvent(new Event('input'));
-    if(typeof renderDash==='function') renderDash();
-  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ el.disabled=false; }
-}
-async function setCabanas(clave,el){
-  el.disabled=true;
-  try{ const r=await post('setPropCabanas',{clave,cabanas:el.value});
-    const p=PROPS.find(x=>x.clave===clave); if(p){ p.cabanas=r.cabanas; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
-    toast('✓ Guardado');
-    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja
-    if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota en KPIs/tabla
-  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ el.disabled=false; }
-}
-async function setSaldo(clave,el){
-  const td=el.closest('.pc-saldo')||el.closest('td');  // tabla (td) o tarjeta (.pc-saldo)
-  const amt=Math.abs(+(td.querySelector('input').value)||0);
-  const tipo=td.querySelector('select').value;      // 'debe' | 'favor'
-  const signed=tipo==='favor'?-amt:amt;             // el signo se guarda por dentro
-  td.querySelectorAll('input,select').forEach(x=>x.disabled=true);
-  try{ const r=await post('setPropSaldo2025',{clave,saldo2025:signed});
-    const p=PROPS.find(x=>x.clave===clave); if(p){ p.saldo2025=r.saldo2025; }
-    toast('✓ Guardado');
-    document.getElementById('pQ').dispatchEvent(new Event('input'));  // redibuja (color/tipo)
-    if(typeof renderDash==='function') renderDash(); // recalcula estados de cuenta
-  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ td.querySelectorAll('input,select').forEach(x=>x.disabled=false); }
-}
-async function setInicio(clave,el){
-  el.disabled=true;
-  try{ const r=await post('setPropInicio',{clave,inicio:el.value});
-    const p=PROPS.find(x=>x.clave===clave); if(p){ p.inicioCobro=r.inicioCobro; }
-    toast('✓ Guardado');
-    document.getElementById('pQ').dispatchEvent(new Event('input'));
-    if(typeof renderDash==='function') renderDash(); // recalcula cuotas facturadas
-  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ el.disabled=false; }
-}
-async function setCuota(clave,el){
-  el.disabled=true;
-  try{ const r=await post('setPropCuota',{clave,cuota:el.value});
-    const p=PROPS.find(x=>x.clave===clave); if(p){ p.cuotaMensual=r.cuotaMensual; p.cuota=r.cuota; p.cuotaGlobal=r.cuotaGlobal; }
-    toast('✓ Guardado');
-    document.getElementById('pQ').dispatchEvent(new Event('input'));
-    if(typeof renderDash==='function') renderDash();
-  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
-  finally{ el.disabled=false; }
 }
 
 /* ───────── Conciliación ───────── */
