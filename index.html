@@ -1968,16 +1968,19 @@ function _gastosResultado(d){
       ${resumen}
       <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros efectivos (cuotas y otros ingresos); egresos = gastos registrados.</div>
     </div></div>
-    ${otrosList.length?`<div class="card" style="margin-top:14px"><div class="hd"><h2>Otros ingresos ${periodoTxt}</h2></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>Otros ingresos ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
+      <button class="btn" style="padding:8px 13px;white-space:nowrap" onclick="openOtroIngreso()">+ Agregar ingreso</button></div>
     <div class="bd" style="padding:12px 18px">
-      <div class="muted" style="font-size:.78rem;margin-bottom:8px">Ingresos que no son cuotas de mantenimiento (aportes, reembolsos y similares). Ya están incluidos en el total de ingresos.</div>
-      <table class="stack-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Detalle</th><th class="num">Monto</th></tr></thead><tbody>
+      <div class="muted" style="font-size:.78rem;margin-bottom:8px">Ingresos que no son cuotas de mantenimiento (aportes, reembolsos y similares). Se suman al total de ingresos del Estado de Resultados y no afectan la cartera ni los estados de cuenta.</div>
+      ${otrosList.length?`<table class="stack-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Detalle</th><th class="num">Monto</th><th></th></tr></thead><tbody>
         ${otrosList.map(o=>`<tr><td data-label="Fecha">${_fx(o.fecha)}</td><td data-label="Concepto"><b>${String(o.concepto).replace(/</g,'&lt;')}</b></td>
           <td data-label="Detalle" class="muted" style="font-size:.8rem">${String(o.notas||'').replace(/</g,'&lt;')}</td>
-          <td class="num" data-label="Monto" style="font-weight:600">${money(o.monto)}</td></tr>`).join('')}
-        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Fecha">TOTAL</td><td></td><td></td><td class="num" data-label="Monto">${money(ingOtros)}</td></tr>
-      </tbody></table>
-    </div></div>`:''}
+          <td class="num" data-label="Monto" style="font-weight:600">${money(o.monto)}</td>
+          <td style="text-align:right">${String(o.id||'').indexOf('OI-')===0?`<button class="icon-btn danger" title="Eliminar este ingreso" onclick="eliminarOtroIngreso('${o.id}',this)">🗑</button>`:`<span class="muted" style="font-size:.68rem" title="Registrado por la carga inicial; no se elimina desde aquí">—</span>`}</td></tr>`).join('')}
+        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Fecha">TOTAL</td><td></td><td></td><td class="num" data-label="Monto">${money(ingOtros)}</td><td></td></tr>
+      </tbody></table>`
+      :`<div class="muted" style="padding:10px 0;font-size:.85rem">Sin otros ingresos en ${periodoTxt}. Usa <b>+ Agregar ingreso</b> para registrar un aporte o reembolso.</div>`}
+    </div></div>
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos ${agrup==='informe'?'· esquema del informe':'por categoría'}</h2><div class="spacer" style="flex:1"></div>
       <div class="seg"><button class="seg-btn ${agrup==='categoria'?'active':''}" onclick="RES_AGRUP='categoria';paintFinanzas()">Categoría</button><button class="seg-btn ${agrup==='informe'?'active':''}" onclick="RES_AGRUP='informe';paintFinanzas()">Esquema informe</button></div></div>
     <div class="bd" style="padding:12px 18px">
@@ -1998,6 +2001,52 @@ function _gastosResultado(d){
       </tbody></table></div>`
         :'<div class="muted" style="padding:12px 0">Sin movimientos en el periodo.</div>'}
     </div></div>`;
+}
+// ── Otros ingresos (aportes, reembolsos): no son cuotas, se registran a mano ──
+function openOtroIngreso(){
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">Agregar otro ingreso</div>
+    <div class="muted" style="font-size:.82rem">Para dinero que no es cuota de mantenimiento: aportes, reembolsos y similares.</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf">
+      <label class="full">Concepto *<input id="oi_concepto" placeholder="Ej.: Aporte extraordinario de la promotora"></label>
+      <label>Fecha *<input id="oi_fecha" type="date" value="${hoy}" max="${hoy}"></label>
+      <label>Monto (B/.) *<input id="oi_monto" type="number" step="0.01" min="0" placeholder="0.00" inputmode="decimal"></label>
+      <label class="full">Detalle<input id="oi_notas" placeholder="Opcional: de dónde viene o a qué corresponde"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">Se suma a los <b>ingresos del Estado de Resultados</b> en el mes de la fecha indicada. No genera cuota ni afecta el estado de cuenta de ningún propietario.</div>
+    <div id="oiErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="link-btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" onclick="guardarOtroIngreso(this)">Registrar ingreso</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>{ const el=document.getElementById('oi_concepto'); if(el) el.focus(); }, 60);
+}
+async function guardarOtroIngreso(btn){
+  const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const err=document.getElementById('oiErr');
+  const ingreso={ concepto:g('oi_concepto'), fecha:g('oi_fecha'), monto:Number(g('oi_monto'))||0, notas:g('oi_notas') };
+  if(!ingreso.concepto){ err.textContent='Escribe el concepto del ingreso.'; return; }
+  if(!(ingreso.monto>0)){ err.textContent='El monto debe ser mayor que cero.'; return; }
+  if(!ingreso.fecha){ err.textContent='Indica la fecha del ingreso.'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Registrando…';
+  try{
+    await post('registrarOtroIngreso',{ingreso});
+    closeModal(); toast('✓ Ingreso registrado');
+    await renderFinanzas();                     // recarga los datos y repinta Finanzas
+    if(typeof renderDash==='function') renderDash();
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
+async function eliminarOtroIngreso(id, btn){
+  if(!confirm('¿Eliminar este ingreso? Dejará de sumar en el Estado de Resultados.')) return;
+  btn.disabled=true;
+  try{
+    await post('eliminarOtroIngreso',{id});
+    toast('✓ Ingreso eliminado');
+    await renderFinanzas();
+    if(typeof renderDash==='function') renderDash();
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function importarGastos2026(btn){
   if(!confirm('¿Cargar el presupuesto 2026 y los gastos de enero a junio desde el Excel?\n\n• Presupuesto: 11 categorías (B/.37,917.00)\n• Gastos ene–jun: 87 registros (B/.21,373.64)')) return;

@@ -92,6 +92,8 @@ function doPost(e) {
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
     else if (action === 'registrarGasto')   out = { ok: true, data: registrarGasto(data.gasto) };
+    else if (action === 'registrarOtroIngreso') out = { ok: true, data: registrarOtroIngreso(data.ingreso || {}) };
+    else if (action === 'eliminarOtroIngreso')  out = { ok: true, data: eliminarOtroIngreso(data.id) };
     else if (action === 'registrarGastosBatch') out = { ok: true, data: registrarGastosBatch(data.gastos) };
     else if (action === 'actualizarGasto')  out = { ok: true, data: actualizarGasto(data.id, data.datos || {}) };
     else if (action === 'eliminarGasto')    out = { ok: true, data: eliminarGasto(data.id) };

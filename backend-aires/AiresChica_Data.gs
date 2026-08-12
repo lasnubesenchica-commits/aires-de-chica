@@ -552,6 +552,51 @@ function appendPago(pago) {
   return id;
 }
 
+/**
+ * Registra un ingreso que NO es cuota de mantenimiento (aporte, reembolso, etc.).
+ *
+ * Se guarda en la misma hoja de PAGOS con la clave sentinela 'OTRO': el sistema
+ * clasifica como "otro ingreso" todo pago cuya clave no corresponde a un propietario,
+ * así que entra al Estado de Resultados sin ensuciar la cartera ni los estados de cuenta.
+ */
+var OI_CLAVE = 'OTRO';
+
+function registrarOtroIngreso(d) {
+  ensureSheets();
+  d = d || {};
+  var concepto = String(d.concepto || '').trim();
+  var monto = _round2(Number(d.monto) || 0);
+  if (!concepto) throw new Error('Escribe el concepto del ingreso.');
+  if (!(monto > 0)) throw new Error('El monto debe ser mayor que cero.');
+  if (_findProp(OI_CLAVE)) throw new Error('No se puede registrar: existe un propietario con la clave ' + OI_CLAVE + '.');
+
+  var fecha = _asOfDate(d.fecha);   // 'YYYY-MM-DD' en hora local del negocio
+  var id = 'OI-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000);
+  appendPago({
+    id: id, clave: OI_CLAVE, lote: '', nombre: concepto, monto: monto, fecha: fecha,
+    origen: 'otro-ingreso', mesAplicado: _ymKey(fecha.getFullYear(), fecha.getMonth() + 1),
+    notas: String(d.notas || '').trim()
+  });
+  return { ok: true, id: id, concepto: concepto, monto: monto, fecha: fecha };
+}
+
+/** Elimina un ingreso registrado manualmente. Sólo borra filas creadas por esta vía. */
+function eliminarOtroIngreso(id) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador del ingreso.');
+  var sh = _ss().getSheetByName(SH.PAGOS);
+  var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
+  var ii = h.indexOf('id'), ci = h.indexOf('clave');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ii]).trim() === id) {
+      if (String(vals[r][ci]).trim() !== OI_CLAVE) throw new Error('Ese registro no es un otro ingreso.');
+      sh.deleteRow(r + 1);
+      return { ok: true, id: id };
+    }
+  }
+  throw new Error('No se encontró el ingreso ' + id + '.');
+}
+
 // Elimina una fila de PAGOS por su id. Devuelve true si eliminó algo.
 function _eliminarPagoById(id) {
   if (!id) return false;
