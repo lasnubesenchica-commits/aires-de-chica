@@ -121,6 +121,7 @@ function doPost(e) {
     else if (action === 'setPropCuota')     out = { ok: true, data: setPropCuota(data.clave, data.cuota) };
     else if (action === 'setMoraCondon')    out = { ok: true, data: setMoraCondon(data.clave, data.mes, !!data.condonar) };
     else if (action === 'addPropietario')   out = { ok: true, data: addPropietario(data.prop) };
+    else if (action === 'actualizarPropietario') out = { ok: true, data: actualizarPropietario(data.clave, data.datos || {}) };
     else if (action === 'setPropActivo')    out = { ok: true, data: setPropActivo(data.clave, !!data.activo) };
     else if (action === 'eliminarPropietario') out = { ok: true, data: eliminarPropietario(data.clave) };
     else out = { ok: false, error: 'accion desconocida: ' + action };

@@ -396,10 +396,80 @@ function addPropietario(data) {
   // fila alineada con COL_PROP
   var row = [clave, residencial, lote, loteNum, nombre,
     String(data.email || '').trim(), String(data.celular || '').trim(),
-    lotes, cabanas, cuota, saldo2025, 'si', String(data.notas || ''), '',
+    lotes, cabanas, cuota, saldo2025, 'si', String(data.notas || ''), (data.airbnb ? 'si' : ''),
     cuotaMensual, inicioCobro, ''];
   sh.appendRow(row);
   return { ok: true, clave: clave, nombre: nombre, residencial: residencial, lote: lote, cuota: cuota };
+}
+
+/**
+ * Actualiza el PERFIL completo de un propietario en una sola escritura.
+ * Sólo toca los campos presentes en `datos`; los ausentes quedan como están.
+ * La clave NO cambia: es la que enlaza pagos y comprobantes con la cuenta.
+ * Admite: nombre, residencial, lote, email, celular, lotes, cabanas,
+ * saldo2025, cuotaMensual, inicioCobro, notas.
+ */
+function actualizarPropietario(clave, datos) {
+  ensureSheets();
+  datos = datos || {};
+  clave = String(clave || '').trim();
+  if (!clave) throw new Error('Falta la clave del propietario.');
+
+  var sh = _ss().getSheetByName(SH.PROP);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var ci = h.indexOf('clave');
+  if (ci < 0) throw new Error('No se encontró la columna clave.');
+
+  var fila = -1;
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][ci]).trim() === clave) { fila = r; break; }
+  }
+  if (fila < 0) throw new Error('No existe la cuenta ' + clave);
+
+  var row = vals[fila].slice();
+  function set(col, valor) { var i = h.indexOf(col); if (i >= 0) row[i] = valor; }
+  function tiene(k) { return datos[k] !== undefined && datos[k] !== null; }
+
+  if (tiene('nombre')) {
+    var nom = String(datos.nombre).trim();
+    if (!nom) throw new Error('El nombre no puede quedar vacío.');
+    set('nombre', nom);
+  }
+  if (tiene('residencial')) {
+    var res = String(datos.residencial).trim();
+    if (!res) throw new Error('El residencial no puede quedar vacío.');
+    set('residencial', res);
+  }
+  if (tiene('lote')) {
+    var lote = String(datos.lote).trim();
+    if (!lote) throw new Error('El lote no puede quedar vacío.');
+    set('lote', lote);
+    var m = lote.toUpperCase().replace(/\s+/g, '').match(/[0-9]+[A-Z]?/);
+    set('loteNum', m ? m[0] : lote.toUpperCase().replace(/\s+/g, ''));
+  }
+  if (tiene('email'))   set('email', String(datos.email).trim());
+  if (tiene('celular')) set('celular', String(datos.celular).trim());
+  if (tiene('notas'))   set('notas', String(datos.notas));
+  if (tiene('airbnb'))  set('airbnb', datos.airbnb ? 'si' : '');
+  if (tiene('lotes'))   set('lotes', Math.max(1, Math.floor(Number(datos.lotes) || 1)));
+  if (tiene('cabanas')) set('cabanas', Math.max(0, Math.floor(Number(datos.cabanas) || 0)));
+  if (tiene('saldo2025')) set('saldo2025', _round2(Number(datos.saldo2025) || 0));
+  if (tiene('cuotaMensual')) {
+    var cm = Number(datos.cuotaMensual);
+    set('cuotaMensual', cm > 0 ? _round2(cm) : '');
+  }
+  if (tiene('inicioCobro')) {
+    var ic = String(datos.inicioCobro || '');
+    set('inicioCobro', /^\d{4}-\d{2}$/.test(ic) ? ic : '');
+  }
+
+  // la cuota efectiva siempre se recalcula desde cabañas + cuota fija
+  var iCab = h.indexOf('cabanas'), iCm = h.indexOf('cuotaMensual');
+  set('cuota', cuotaDe({ cabanas: iCab >= 0 ? row[iCab] : 0, cuotaMensual: iCm >= 0 ? row[iCm] : '' }));
+
+  sh.getRange(fila + 1, 1, 1, row.length).setValues([row]);
+  return { ok: true, clave: clave, prop: _findProp(clave) };
 }
 
 /** Activa o desactiva un propietario (reversible; conserva su historial). */

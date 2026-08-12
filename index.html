@@ -842,13 +842,15 @@ async function renderProp(){
   try{ PROPS=await jsonp('getPropietarios',{todos:1}); }catch(e){ if(onAuthError(e))return; return; }
   const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const mesOpts=p=>'<option value="">Todo el año</option>'+meses.map((mn,i)=>{const v='2026-'+String(i+1).padStart(2,'0');return `<option value="${v}" ${p.inicioCobro===v?'selected':''}>${mn} 2026</option>`;}).join('');
-  const actLinks=p=> p.activo!==false
-    ? `<button class="link-btn" style="color:var(--ac-muted);font-size:.78rem" title="Deja de facturarle; conserva el historial" onclick="toggleActivo('${p.clave}',false,this)">Desactivar</button>`
-    : `<button class="link-btn" style="font-size:.78rem" onclick="toggleActivo('${p.clave}',true,this)">Reactivar</button> <button class="link-btn" style="color:var(--ac-danger);font-size:.78rem;margin-left:8px" title="Solo si no tiene pagos" onclick="eliminarProp('${p.clave}',this)">Eliminar</button>`;
+  const actLinks=p=> `<button class="link-btn" style="font-size:.78rem;font-weight:600" title="Ver y editar todo el perfil" onclick="openEditProp('${p.clave}')">Editar perfil</button>`
+    + (p.activo!==false
+      ? ` <button class="link-btn" style="color:var(--ac-muted);font-size:.78rem;margin-left:8px" title="Deja de facturarle; conserva el historial" onclick="toggleActivo('${p.clave}',false,this)">Desactivar</button>`
+      : ` <button class="link-btn" style="font-size:.78rem;margin-left:8px" onclick="toggleActivo('${p.clave}',true,this)">Reactivar</button> <button class="link-btn" style="color:var(--ac-danger);font-size:.78rem;margin-left:8px" title="Solo si no tiene pagos" onclick="eliminarProp('${p.clave}',this)">Eliminar</button>`);
   const draw=()=>{ const q=document.getElementById('pQ').value.toLowerCase();
     const list=PROPS.filter(p=>!q||p.nombre.toLowerCase().includes(q)||String(p.lote).toLowerCase().includes(q))
       .sort((a,b)=>(a.activo!==false)===(b.activo!==false)?0:((a.activo!==false)?-1:1));   // inactivos al final
-    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr style="${p.activo!==false?'':'opacity:.5'}"><td><b>${p.lote}</b>${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</td><td>${p.residencial}</td><td>${p.nombre}</td>
+    document.querySelector('#tblProp tbody').innerHTML=list.map(p=>`<tr style="${p.activo!==false?'':'opacity:.5'}"><td><b>${p.lote}</b>${p.activo!==false?'':' <span class="pill red" style="font-size:.58rem">inactivo</span>'}</td><td>${p.residencial}</td>
+      <td><a href="#" onclick="openEditProp('${p.clave}');return false" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none" title="Ver y editar el perfil">${p.nombre}</a></td>
       <td class="email" title="${p.email||''}">${p.email||'<span class="muted">—</span>'}</td><td title="${p.celular||''}">${p.celular||''}</td>
       <td class="num"><input type="number" min="1" step="1" value="${p.lotes||1}" title="Cantidad de lotes (informativo; no cambia la cuota)" onchange="setLotes('${p.clave}',this)" style="width:48px;text-align:right;padding:5px 5px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
       <td class="num"><input type="number" min="0" step="1" value="${p.cabanas||0}" title="Cada cabaña suma 30% sobre la cuota base" onchange="setCabanas('${p.clave}',this)" style="width:54px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
@@ -881,6 +883,73 @@ async function renderProp(){
   };
   document.getElementById('pQ').oninput=draw; draw();
 }
+const _r2=n=>Math.round((Number(n)||0)*100)/100;
+// Opciones del mes de ingreso (cuándo empieza a pagar cuota). Vacío = todo el año.
+function _mesInicioOpts(sel){
+  const mm=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const y=(DASH&&DASH.anio)||2026;
+  return '<option value="">Todo el año</option>'+mm.map((mn,i)=>{
+    const v=y+'-'+String(i+1).padStart(2,'0');
+    return `<option value="${v}" ${sel===v?'selected':''}>${mn} ${y}</option>`;
+  }).join('');
+}
+const _esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+// Perfil completo del propietario, editable en un solo formulario.
+function openEditProp(clave){
+  const p=(PROPS||[]).find(x=>x.clave===clave); if(!p) return;
+  const res=[...new Set((PROPS||[]).map(x=>x.residencial).filter(Boolean))].sort();
+  const favor=Number(p.saldo2025)<0;
+  document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${_esc(p.nombre)}</div>
+    <div class="muted" style="font-size:.82rem">${_esc(p.residencial)} · Lote ${_esc(p.lote)} · Cuota ${money(p.cuota)}${p.activo===false?' · <span style="color:var(--ac-danger);font-weight:600">inactivo</span>':''}</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf">
+      <label class="full">Nombre *<input id="ep_nombre" value="${_esc(p.nombre)}"></label>
+      <label>Residencial *<input id="ep_res" list="ep_reslist" value="${_esc(p.residencial)}"><datalist id="ep_reslist">${res.map(r=>`<option value="${_esc(r)}">`).join('')}</datalist></label>
+      <label>Lote *<input id="ep_lote" value="${_esc(p.lote)}"></label>
+      <label class="full">Correo<input id="ep_email" type="email" value="${_esc(p.email)}" placeholder="correo@ejemplo.com"></label>
+      <label>Celular<input id="ep_cel" value="${_esc(p.celular)}" placeholder="6000-0000"></label>
+      <label>Lotes<input id="ep_lotes" type="number" min="1" step="1" value="${p.lotes||1}"></label>
+      <label>Cabañas<input id="ep_cab" type="number" min="0" step="1" value="${p.cabanas||0}"></label>
+      <label>Saldo 2025<span style="display:flex;gap:6px">
+        <input id="ep_saldo" type="number" min="0" step="0.01" value="${p.saldo2025?Math.abs(p.saldo2025):''}" placeholder="0" style="flex:1;min-width:0">
+        <select id="ep_saldoSigno" style="width:88px"><option value="debe" ${favor?'':'selected'}>Debe</option><option value="favor" ${favor?'selected':''}>A favor</option></select></span></label>
+      <label>Ingreso (empieza a pagar)<select id="ep_inicio">${_mesInicioOpts(p.inicioCobro||'')}</select></label>
+      <label class="full">Cuota fija (opcional)<input id="ep_cuota" type="number" step="0.01" min="0" value="${p.cuotaMensual||''}" placeholder="auto = base + 30% por cabaña"></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px">
+        <input id="ep_airbnb" type="checkbox" ${p.airbnb?'checked':''} style="width:auto;margin:0">
+        <span style="font-weight:400">Tiene cabaña(s) en Airbnb <span class="muted" style="font-size:.74rem">(informativo; no cambia la cuota)</span></span></label>
+      <label class="full">Notas<input id="ep_notas" value="${_esc(p.notas)}" placeholder="Opcional"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">La <b>cuota</b> se recalcula sola: base + 30% por cabaña, salvo que escribas una cuota fija. El <b>lote</b> y el <b>residencial</b> son informativos; la cuenta se sigue identificando internamente por <code>${_esc(p.clave)}</code>, así que su historial de pagos no se ve afectado.</div>
+    <div id="epErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      ${p.activo!==false
+        ? `<button class="btn ghost" onclick="toggleActivo('${p.clave}',false,this)">Desactivar</button>`
+        : `<button class="btn ghost" onclick="toggleActivo('${p.clave}',true,this)">↩ Reactivar</button>`}
+      <button class="link-btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" onclick="guardarPerfilProp('${p.clave}',this)">Guardar cambios</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>{ const el=document.getElementById('ep_nombre'); if(el) el.focus(); }, 60);
+}
+async function guardarPerfilProp(clave, btn){
+  const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const signo=((document.getElementById('ep_saldoSigno')||{}).value)==='favor'?-1:1;
+  const datos={ nombre:g('ep_nombre'), residencial:g('ep_res'), lote:g('ep_lote'),
+    email:g('ep_email'), celular:g('ep_cel'), lotes:g('ep_lotes'), cabanas:g('ep_cab'),
+    saldo2025:_r2(Math.abs(Number(g('ep_saldo'))||0)*signo), cuotaMensual:g('ep_cuota'),
+    inicioCobro:g('ep_inicio'), notas:g('ep_notas'),
+    airbnb:!!(document.getElementById('ep_airbnb')||{}).checked };
+  const err=document.getElementById('epErr');
+  if(!datos.nombre||!datos.residencial||!datos.lote){ err.textContent='Nombre, Residencial y Lote no pueden quedar vacíos.'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('actualizarPropietario',{clave,datos});
+    closeModal(); toast('✓ Perfil actualizado');
+    await renderProp(); if(typeof renderDash==='function') renderDash();
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
 function openAddProp(){
   const res=[...new Set((PROPS||[]).map(p=>p.residencial).filter(Boolean))].sort();
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">Agregar propietario</div><div class="muted" style="font-size:.82rem">Se crea con estos datos; luego puedes editar todo en la lista.</div></div>`;
@@ -893,7 +962,15 @@ function openAddProp(){
       <label>Celular<input id="np_cel" placeholder="6000-0000"></label>
       <label>Lotes<input id="np_lotes" type="number" min="1" value="1"></label>
       <label>Cabañas<input id="np_cab" type="number" min="0" value="0"></label>
+      <label>Saldo 2025<span style="display:flex;gap:6px">
+        <input id="np_saldo" type="number" min="0" step="0.01" placeholder="0" style="flex:1;min-width:0">
+        <select id="np_saldoSigno" style="width:88px"><option value="debe">Debe</option><option value="favor">A favor</option></select></span></label>
+      <label>Ingreso (empieza a pagar)<select id="np_inicio">${_mesInicioOpts('')}</select></label>
       <label class="full">Cuota fija (opcional)<input id="np_cuota" type="number" step="0.01" min="0" placeholder="auto = base + 30% por cabaña"></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px">
+        <input id="np_airbnb" type="checkbox" style="width:auto;margin:0">
+        <span style="font-weight:400">Tiene cabaña(s) en Airbnb <span class="muted" style="font-size:.74rem">(informativo; no cambia la cuota)</span></span></label>
+      <label class="full">Notas<input id="np_notas" placeholder="Opcional"></label>
     </div>
     <div id="npErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
@@ -921,8 +998,12 @@ async function eliminarProp(clave, btn){
 }
 async function guardarNuevoProp(btn){
   const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const signo=((document.getElementById('np_saldoSigno')||{}).value)==='favor'?-1:1;
+  const saldoAbs=Math.abs(Number(g('np_saldo'))||0);
   const data={ nombre:g('np_nombre'), residencial:g('np_res'), lote:g('np_lote'), email:g('np_email'), celular:g('np_cel'),
-    lotes:g('np_lotes'), cabanas:g('np_cab'), cuotaMensual:g('np_cuota') };
+    lotes:g('np_lotes'), cabanas:g('np_cab'), cuotaMensual:g('np_cuota'),
+    saldo2025:_r2(saldoAbs*signo), inicioCobro:g('np_inicio'), notas:g('np_notas'),
+    airbnb:!!(document.getElementById('np_airbnb')||{}).checked };
   const err=document.getElementById('npErr');
   if(!data.nombre||!data.residencial||!data.lote){ err.textContent='Completa Nombre, Residencial y Lote.'; return; }
   btn.disabled=true; const t=btn.textContent; btn.textContent='Creando…';
