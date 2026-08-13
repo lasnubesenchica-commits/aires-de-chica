@@ -1791,7 +1791,7 @@ async function rechazarComprob(id,btn){
 
 /* Preview flotante del comprobante al pasar el mouse sobre "Ver comprobante". */
 (function(){
-  var tip=null;
+  var tip=null, anclaActiva=null;
   function ensureTip(){
     if(tip) return tip;
     tip=document.createElement('div');
@@ -1804,6 +1804,7 @@ async function rechazarComprob(id,btn){
   function idDe(href){ var m=String(href||'').match(/[-\w]{25,}/); return m?m[0]:''; }
   function show(a){
     var id=idDe(a.getAttribute('href')); if(!id) return;
+    anclaActiva=a;
     var el=ensureTip();
     el.innerHTML='<div class="muted" style="font-size:.72rem;padding:20px 30px;text-align:center">Cargando preview…</div>';
     var img=new Image();
@@ -1820,10 +1821,38 @@ async function rechazarComprob(id,btn){
     var top=r.bottom+8; if(top+h>vh-8) top=r.top-h-8; if(top<8) top=8;
     el.style.left=left+'px'; el.style.top=top+'px';
   }
-  function hide(){ if(tip) tip.style.display='none'; }
-  document.addEventListener('mouseover',function(e){ var a=e.target.closest&&e.target.closest('a.cprev'); if(a) show(a); });
-  document.addEventListener('mouseout',function(e){ var a=e.target.closest&&e.target.closest('a.cprev'); if(a && !(e.relatedTarget&&tip&&tip.contains(e.relatedTarget))) hide(); });
-  document.addEventListener('scroll',hide,true);
+  function hide(){ if(tip) tip.style.display='none'; anclaActiva=null; }
+
+  // El preview se quedaba pegado en algunos navegadores. Causas y red de seguridad:
+  //  · el enlace abre Drive en OTRA pestaña, así que al salir de la página el
+  //    'mouseout' nunca llegaba y al volver el recuadro seguía flotando;
+  //  · si el enlace desaparece del DOM (el modal se repinta o se cierra) tampoco
+  //    hay 'mouseout' que lo apague;
+  //  · en pantallas táctiles un toque deja el hover activo indefinidamente.
+  // Por eso, además del hover, se oculta ante cualquier señal de que ya no aplica.
+  var puedeHover = !window.matchMedia || window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (puedeHover) {
+    document.addEventListener('mouseover', function(e){
+      var a = e.target.closest && e.target.closest('a.cprev');
+      if (a && a !== anclaActiva) show(a);
+    });
+    // Red de seguridad: si el puntero ya no está sobre el enlace ni sobre el preview,
+    // se oculta aunque no haya llegado el 'mouseout'.
+    document.addEventListener('mousemove', function(e){
+      if (!anclaActiva || !tip || tip.style.display === 'none') return;
+      if (!document.body.contains(anclaActiva)) return hide();   // el enlace ya no existe
+      var t = e.target;
+      if (t === anclaActiva || anclaActiva.contains(t) || tip.contains(t)) return;
+      hide();
+    });
+  }
+  document.addEventListener('click', hide, true);      // incluye abrir el comprobante y cerrar el modal
+  document.addEventListener('scroll', hide, true);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') hide(); });
+  window.addEventListener('blur', hide);               // se fue a la pestaña de Drive
+  document.addEventListener('visibilitychange', function(){ if (document.hidden) hide(); });
+  window.addEventListener('resize', hide);
+  window._cprevHide = hide;                            // por si hace falta apagarlo desde otro punto
 })();
 
 /* Tabs + init */
