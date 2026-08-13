@@ -166,7 +166,10 @@ function calcEstado(prop, pagosArr, asOf) {
     var mora3 = 0, cond3 = false;
     if (idx3 >= moraDesde && idx3 < currentIdx && !cubierta3) {
       if (condon.all || !!condon.set[_ymKey(year, mm3)]) cond3 = true;
-      else mora3 = _round2(cuota * moraPct);                     // cargo único del 10%
+      // El recargo es el 10% de lo que quedó SIN CUBRIR de la cuota de ese mes, no de
+      // la cuota entera: si se abonó parte, sólo el saldo pendiente genera mora.
+      // (Ej.: cuota 58.50 con 45.00 abonados -> 10% de 13.50 = 1.35, no 5.85.)
+      else mora3 = _round2(pendMes * moraPct);
     }
     moraMesMap[idx3] = mora3; condMesMap[idx3] = cond3;
   }
@@ -263,6 +266,19 @@ function calcEstado(prop, pagosArr, asOf) {
   }
   var saldoNeto = saldoRun; // saldo total con signo (debe positivo / crédito negativo)
 
+  // Desglose de QUÉ compone el saldo: cuotas que siguen pendientes y recargos por mora
+  // sin pagar, mes por mes. Sale de la aplicación en cascada de los pagos, así que la
+  // suma de los renglones es exactamente el saldo total.
+  var detalleSaldo = [];
+  buckets.forEach(function (b) {
+    if (b.saldo > 0.009) detalleSaldo.push({ tipo: 'cuota', label: b.label,
+      ym: b.tipo === 'cuota' ? _ymKey(b.year, b.month) : '', monto: _round2(b.saldo) });
+  });
+  buckets.forEach(function (b) {
+    if (b.moraSaldo > 0.009) detalleSaldo.push({ tipo: 'mora', label: b.label,
+      ym: _ymKey(b.year, b.month), monto: _round2(b.moraSaldo) });
+  });
+
   return {
     clave: prop.clave, lote: prop.lote, loteNum: prop.loteNum,
     residencial: prop.residencial, nombre: prop.nombre,
@@ -279,6 +295,7 @@ function calcEstado(prop, pagosArr, asOf) {
     moraCargada: moraCargada,      // recargo por mora total generado (antes de pagos/condonación)
     saldoConMora: saldoConMora,
     saldoNeto: saldoNeto,          // saldo total con signo: positivo = debe; negativo = crédito a favor
+    detalleSaldo: detalleSaldo,    // renglones que componen el saldo (cuotas y moras pendientes)
     // comparación con la regla anterior de mora (informativa, para validar el cambio)
     moraCargadaPrev: moraCargadaPrev, saldoNetoPrev: saldoRunPrev,
     moraDifiere: Math.abs(_round2(moraCargada - moraCargadaPrev)) > 0.009,
@@ -439,6 +456,7 @@ function buildDashboard(asOf) {
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, saldoNeto: e.saldoNeto, creditoAFavor: e.creditoAFavor,
                moraCargadaPrev: e.moraCargadaPrev, saldoNetoPrev: e.saldoNetoPrev, moraDifiere: e.moraDifiere,
+               detalleSaldo: e.detalleSaldo,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
                fechaVencimiento: e.fechaVencimiento,
