@@ -728,6 +728,12 @@ function _renderEstado(e){
   const totMora  = prev ? e.moraCargadaPrev : e.moraCargada;
   const totSaldo = prev ? e.saldoNetoPrev   : e.saldoNeto;
   const color = totSaldo>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
+  // Aclara si esos recargos ya se pagaron: con saldo a favor no era evidente que la mora
+  // estuviera descontada, y se leía como si hubiera quedado pendiente aparte.
+  const moraPend = Number(e.mora)||0;
+  const moraNota = prev ? ''
+    : (moraPend<=0.009 ? ' <span style="color:var(--ac-ok);font-weight:600">· ya cubiertos</span>'
+      : (moraPend < (Number(e.moraCargada)||0)-0.009 ? ` <span style="color:var(--ac-coral)">· ${money(moraPend)} sin pagar</span>` : ''));
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
@@ -778,7 +784,7 @@ function _renderEstado(e){
         <b>Total</b><b>${money(e.detalleSaldo.reduce((a,d)=>a+d.monto,0))}</b></div>
     </div>`:''}
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
+      ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${moraNota}</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
       ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>${prev?'Con la regla nueva sería':'Con la regla anterior era'}</span><b>${money(prev?e.saldoNeto:e.saldoNetoPrev)}</b></div>`:''}
       ${totSaldo<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-totSaldo)}</b></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
