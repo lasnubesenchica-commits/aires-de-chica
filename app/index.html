@@ -121,10 +121,10 @@ function _expMes(e,b,esUltimo){
   if(b.saldoIni!==undefined&&b.pagado){
     const a=[];
     if(b.apVencidas>0.009)   a.push(`${money(b.apVencidas)} a cuotas vencidas`);
-    if(b.apMora>0.009)       a.push(`${money(b.apMora)} a recargos por mora`);
     if(b.apMesEnCurso>0.009) a.push(`${money(b.apMesEnCurso)} a la cuota de ${b.label}`);
+    if(b.apMora>0.009)       a.push(`${money(b.apMora)} a recargos por mora`);
     if(b.apCredito>0.009)    a.push(`${money(b.apCredito)} a saldo a favor`);
-    L.push(`<b>Pagado</b> ${money(b.pagado)} — se aplicó así: ${a.join(', ')}. El orden es: vencidas → mora → mes en curso.`);
+    L.push(`<b>Pagado</b> ${money(b.pagado)} — se aplicó así: ${a.join(', ')}. El orden es: cuotas vencidas → cuota del mes en curso → recargos por mora.`);
   }
   if(b.saldoIni!==undefined) L.push(`<b>Saldo</b> = ${money(b.saldoIni)} anterior + ${money(b.cuota)} cuota + ${money(b.mora||0)} recargo − ${money(b.pagado)} pagos = ${money(b.saldo)}.`);
   return L.join('<br>');

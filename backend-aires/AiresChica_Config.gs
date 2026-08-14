@@ -22,10 +22,10 @@ function _cfgDefaults() {
     moraDesde:         CONFIG.MORA_DESDE,     // 'YYYY-MM'
     moraCrece:         false,                 // false = recargo fijo de una sola vez; true = crece moraPct% por mes de atraso (se congela al saldar la cuota)
     // Política de mora ratificada por la Junta (ago-2026). Ver AiresChica_EstadoCuenta.gs.
-    moraOrden:         'cuota',               // orden de imputación del pago:
-                                              //   'cuota'   = cuotas vencidas -> mora -> cuota del mes en curso (ratificado)
+    moraOrden:         'capital',             // orden de imputación del pago:
+                                              //   'capital' = cuotas vencidas -> cuota del mes en curso -> mora (ratificado)
+                                              //   'cuota'   = cuotas vencidas -> mora -> cuota del mes en curso
                                               //   'mora'    = mora -> cuotas vencidas -> cuota del mes en curso
-                                              //   'capital' = cuotas vencidas -> cuota del mes en curso -> mora
     moraBase:          'cuota',               // base del recargo: 'cuota' = 10% de la cuota íntegra vencida (ratificado); 'pendiente' = 10% de la parte sin cubrir
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
@@ -92,7 +92,7 @@ function guardarConfig(nueva) {
   clean.moraPct = Math.max(0, Number(clean.moraPct) || 0);
   clean.moraDesde = /^\d{4}-\d{2}$/.test(String(clean.moraDesde)) ? clean.moraDesde : d.moraDesde;
   clean.moraCrece = !!clean.moraCrece;
-  clean.moraOrden = (clean.moraOrden === 'mora' || clean.moraOrden === 'capital') ? clean.moraOrden : 'cuota';
+  clean.moraOrden = (clean.moraOrden === 'mora' || clean.moraOrden === 'cuota') ? clean.moraOrden : 'capital';
   clean.moraBase = (clean.moraBase === 'pendiente') ? 'pendiente' : 'cuota';
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));

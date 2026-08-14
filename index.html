@@ -765,10 +765,10 @@ function _tipPagado(e,b){
   if(!b.pagado) return `No se recibió ningún pago en ${b.label}.`;
   const l=[`Se recibieron ${money(b.pagado)} en ${b.label}. Se aplicaron en este orden:`];
   if(b.apVencidas>0.009)    l.push(`  1. ${money(b.apVencidas)} a cuotas ya vencidas (de la más antigua a la más nueva)`);
-  if(b.apMora>0.009)        l.push(`  2. ${money(b.apMora)} a recargos por mora pendientes`);
-  if(b.apMesEnCurso>0.009)  l.push(`  3. ${money(b.apMesEnCurso)} a la cuota de ${b.label}`);
+  if(b.apMesEnCurso>0.009)  l.push(`  2. ${money(b.apMesEnCurso)} a la cuota de ${b.label}`);
+  if(b.apMora>0.009)        l.push(`  3. ${money(b.apMora)} a recargos por mora pendientes`);
   if(b.apCredito>0.009)     l.push(`  4. ${money(b.apCredito)} quedaron como saldo a favor`);
-  l.push('El orden lo fija la política de cobro: vencidas → mora → mes en curso.');
+  l.push('El orden lo fija la política de cobro: cuotas vencidas → cuota del mes en curso → recargos por mora.');
   return l.join('\n');
 }
 function _tipSaldo(b,prev){
@@ -806,8 +806,8 @@ function _renderEstado(e){
       <div style="margin-top:8px;padding:10px 13px;border:1px solid var(--ac-border);border-left:3px solid ${prev?'var(--ac-muted)':'var(--ac-teal)'};border-radius:8px;background:${prev?'#fafafa':'var(--ac-teal-50)'}">
         <div style="font-weight:700;font-size:.78rem;color:${prev?'var(--ac-muted)':'var(--ac-teal-700)'};text-transform:uppercase;letter-spacing:.03em">Cómo se calcula la mora ${prev?'en la regla anterior':'ahora'}</div>
         <div class="muted" style="font-size:.78rem;line-height:1.55;margin-top:4px">${prev
-          ? 'Cargo único de abril en adelante, calculado sobre <b>la porción de la cuota que quedó sin cubrir</b>: si de una cuota de 45.00 se abonaban 40.50, el recargo era el 10% de 4.50. Producía montos como 4.05 o 4.30, imposibles de verificar a mano.'
-          : 'Cargo único del <b>10% de la cuota íntegra</b>, de abril en adelante, cuando al cierre del mes esa cuota sigue sin cubrirse del todo. Un abono parcial <b>no</b> reduce el recargo. Los pagos se imputan <b>cuotas vencidas → recargos por mora → cuota del mes en curso</b>, y la mora <b>nunca genera mora</b>.'}</div>
+          ? 'Mismo cargo del 10% de la cuota íntegra, pero los pagos se imputaban <b>cuotas vencidas → recargos por mora → cuota del mes en curso</b>. Al cobrarse antes que la cuota del mes, el recargo se comía parte del pago y dejaba esa cuota corta, lo que generaba un recargo nuevo: quien debía abril y mayo y pagaba 90.00 (las dos cuotas exactas) igual se recargaba en mayo.'
+          : 'Cargo único del <b>10% de la cuota íntegra</b>, de abril en adelante, cuando al cierre del mes esa cuota sigue sin cubrirse del todo. Un abono parcial <b>no</b> reduce el recargo. Los pagos se imputan <b>cuotas vencidas → cuota del mes en curso → recargos por mora</b>: el recargo se cobra de último para que no se coma el pago y deje corta la cuota del mes, que era como la mora terminaba generando mora.'}</div>
         <div style="font-size:.78rem;margin-top:6px">${prev
           ? 'Vista de comparación: los saldos vigentes son los de «Ahora».'
           : 'En esta cuenta el recargo del año pasa de <b>'+money(e.moraCargadaPrev)+'</b> a <b style="color:var(--ac-coral)">'+money(e.moraCargada)+'</b>.'}</div>
@@ -853,7 +853,6 @@ function _renderEstado(e){
           if(!m || Math.abs((m.apMesEnCurso||0)-d.abonado)>0.011) return null;
           const partes=[];
           if(m.apVencidas>0.009) partes.push(`${money(m.apVencidas)} a cuotas atrasadas`);
-          if(m.apMora>0.009)     partes.push(`${money(m.apMora)} a recargos por mora`);
           if(!partes.length) return null;
           return `Del pago de ${d.label.toLowerCase()} (${money(m.pagado)}) se fueron ${partes.join(' y ')}; a esta cuota llegaron ${money(d.abonado)}.`;
         };

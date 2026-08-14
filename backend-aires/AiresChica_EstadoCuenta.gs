@@ -12,7 +12,12 @@
  *   3. Frecuencia — un solo recargo por cuota. No se vuelve a cobrar mes tras mes.
  *   4. Capitalización — ninguna: la mora no genera mora.
  *   5. Imputación — el dinero se aplica en este orden: cuotas ya vencidas (de la más
- *      antigua a la más nueva) → recargos por mora → cuota del mes en curso.
+ *      antigua a la más nueva) → cuota del mes en curso → recargos por mora.
+ *      El recargo va de último a propósito. Cuando se cobraba antes que la cuota del
+ *      mes, se comía parte del pago y dejaba esa cuota corta, lo que generaba un
+ *      recargo nuevo: la mora terminaba generando mora por la puerta de atrás, contra
+ *      la regla 4. (Caso típico: se debía abril y mayo, entraban 90.00 = las dos
+ *      cuotas exactas, pero el recargo de abril se llevaba 4.50 y mayo se recargaba.)
  *   6. Tope — 10%, muy por debajo del 20% que permite la Ley 284 de 2022 (PH).
  *
  * Los puntos 2 y 5 son configurables (cfg.moraBase / cfg.moraOrden) por si la Junta
@@ -79,9 +84,10 @@ function _condonSet(prop) {
  * @param {Object} c     contexto de la cuenta (cuota, meses, pagos, condonaciones…).
  * @param {string} base  'cuota' = 10% de la cuota íntegra vencida (criterio de la Junta);
  *                       'pendiente' = 10% de la porción que quedó sin cubrir.
- * @param {string} orden 'cuota'   = cuotas vencidas → mora → cuota del mes en curso;
- *                       'mora'    = mora → cuotas vencidas → cuota del mes en curso;
- *                       'capital' = cuotas vencidas → cuota del mes en curso → mora.
+ * @param {string} orden 'capital' = cuotas vencidas → cuota del mes en curso → mora
+ *                                   (criterio de la Junta);
+ *                       'cuota'   = cuotas vencidas → mora → cuota del mes en curso;
+ *                       'mora'    = mora → cuotas vencidas → cuota del mes en curso.
  * @return {Object} buckets repartidos, detalle mensual y saldo a favor sobrante.
  */
 function _correrLibro(c, base, orden) {
@@ -177,7 +183,7 @@ function calcEstado(prop, pagosArr, asOf) {
   var cfg = _cfg();
   var moraPct = cfg.moraPct / 100;
   var moraCrece = !!cfg.moraCrece;
-  var moraOrden = (cfg.moraOrden === 'mora' || cfg.moraOrden === 'capital') ? cfg.moraOrden : 'cuota';
+  var moraOrden = (cfg.moraOrden === 'mora' || cfg.moraOrden === 'cuota') ? cfg.moraOrden : 'capital';
   var moraBase = (cfg.moraBase === 'pendiente') ? 'pendiente' : 'cuota';
   var cuota = cuotaDe(prop);
   var year = CONFIG.ANIO_ACTUAL;
@@ -225,9 +231,9 @@ function calcEstado(prop, pagosArr, asOf) {
   });
 
   // 3) libro de cuenta corriente con los criterios aprobados por la Junta (ago-2026).
-  //    Se corre además con la regla ANTERIOR (recargo proporcional a la parte no
-  //    cubierta) para poder comparar ambas en pantalla mientras la Junta valida el
-  //    cambio. La comparación es informativa: no afecta ningún saldo.
+  //    Se corre además con el orden ANTERIOR (el recargo se cobraba antes que la cuota
+  //    del mes en curso) para poder comparar ambos en pantalla mientras la Junta valida
+  //    el cambio. La comparación es informativa: no afecta ningún saldo.
   var _sumMes = 0;
   for (var _k in pagosMes) _sumMes = _round2(_sumMes + pagosMes[_k]);
   var ctxLibro = {
@@ -238,7 +244,7 @@ function calcEstado(prop, pagosArr, asOf) {
     poolIni: _round2(credito2025 + (totalPagado - _sumMes))
   };
   var libro     = _correrLibro(ctxLibro, moraBase, moraOrden);
-  var libroPrev = _correrLibro(ctxLibro, 'pendiente', moraOrden);
+  var libroPrev = _correrLibro(ctxLibro, moraBase, 'cuota');
 
   var buckets     = libro.buckets;
   var pool        = libro.pool;
