@@ -720,6 +720,51 @@ function openEstado(clave){
 // valor viejo debajo del nuevo se leía confuso.
 let CMP_VISTA='ahora';   // 'ahora' | 'antes'
 function setCmpVista(v, clave){ CMP_VISTA=v; openEstado(clave); }
+
+// Explicaciones de cada cifra del estado de cuenta, redactadas con los criterios
+// aprobados por la Junta. Se usa el tooltip NATIVO del navegador (atributo title) a
+// propósito: no deja overlays colgados como el preview del comprobante, y funciona
+// igual en todos los navegadores de la Junta.
+const _tip = txt => txt ? ` title="${_esc(txt)}" style="cursor:help"` : '';
+function _tipCuota(e,b){
+  if(!b.cuota) return '';
+  const partes=[`${e.lotes||1} lote(s) × ${money(45)}`];
+  if(e.cabanas) partes.push(`${e.cabanas} cabaña(s) × ${money(13.5)}`);
+  return `Cuota de ${b.label}: ${partes.join(' + ')} = ${money(b.cuota)}.\n`
+       + `Vence el último día del mes. No hay período de gracia: el recargo se causa al día siguiente.`;
+}
+function _tipMora(e,b,esUltimo){
+  if(b.condonada) return `El recargo de ${b.label} fue condonado por la administración.`;
+  if(b.mora>0.009){
+    return `Recargo por mora de ${b.label}: 10% de la cuota íntegra (${money(b.cuota)}) = ${money(b.mora)}.\n`
+         + `Se causó porque al cerrar ${b.label} quedaban ${money(b.descubierto||0)} sin cubrir de esa cuota.\n`
+         + `La base es la cuota completa, no la parte pendiente.\n`
+         + `Es un cargo ÚNICO: no se vuelve a cobrar en meses siguientes y nunca genera recargo sobre sí mismo.`;
+  }
+  if(!b.cuota) return '';
+  if(esUltimo) return `${b.label} es el mes en curso: todavía no vence, así que aún no genera recargo.`;
+  if(b.ym && b.ym < '2026-04') return `La mora rige desde la cuota de abril 2026, así que ${b.label} no genera recargo.`;
+  return `Sin recargo: al cerrar ${b.label} su cuota quedó totalmente cubierta.`;
+}
+function _tipPagado(e,b){
+  if(b.saldoIni===undefined) return '';
+  if(!b.pagado) return `No se recibió ningún pago en ${b.label}.`;
+  const l=[`Se recibieron ${money(b.pagado)} en ${b.label}. Se aplicaron en este orden:`];
+  if(b.apVencidas>0.009)    l.push(`  1. ${money(b.apVencidas)} a cuotas ya vencidas (de la más antigua a la más nueva)`);
+  if(b.apMora>0.009)        l.push(`  2. ${money(b.apMora)} a recargos por mora pendientes`);
+  if(b.apMesEnCurso>0.009)  l.push(`  3. ${money(b.apMesEnCurso)} a la cuota de ${b.label}`);
+  if(b.apCredito>0.009)     l.push(`  4. ${money(b.apCredito)} quedaron como saldo a favor`);
+  l.push('El orden lo fija la política de cobro: vencidas → mora → mes en curso.');
+  return l.join('\n');
+}
+function _tipSaldo(b,prev){
+  if(b.saldoIni===undefined) return '';
+  const mo = prev ? (b.moraPrev||0) : (b.mora||0);
+  const sa = prev ? (b.saldoPrev||0) : (b.saldo||0);
+  if(prev) return `Saldo con la regla anterior.`;
+  return `Saldo anterior ${money(b.saldoIni)} + cuota ${money(b.cuota)} + recargo ${money(mo)} − pagos ${money(b.pagado)} = ${money(sa)}.\n`
+       + (sa<-0.009 ? 'Negativo = saldo a favor del propietario.' : '');
+}
 function _renderEstado(e){
   const cmp = !!e.moraDifiere;                 // la cuenta cambió con la regla nueva
   const prev = cmp && CMP_VISTA==='antes';     // se está viendo el cálculo anterior
@@ -747,15 +792,16 @@ function _renderEstado(e){
       <div style="margin-top:8px;padding:10px 13px;border:1px solid var(--ac-border);border-left:3px solid ${prev?'var(--ac-muted)':'var(--ac-teal)'};border-radius:8px;background:${prev?'#fafafa':'var(--ac-teal-50)'}">
         <div style="font-weight:700;font-size:.78rem;color:${prev?'var(--ac-muted)':'var(--ac-teal-700)'};text-transform:uppercase;letter-spacing:.03em">Cómo se calcula la mora ${prev?'en la regla anterior':'ahora'}</div>
         <div class="muted" style="font-size:.78rem;line-height:1.55;margin-top:4px">${prev
-          ? 'Cargo único del <b>10% de la cuota</b>, de abril en adelante, si <b>dentro del mes no entraba el equivalente a una cuota</b>. Sólo miraba la caja de ese mes: si el propietario pagaba una cuota en julio, julio se daba por cubierto <b>aunque ese dinero estuviera tapando junio</b>.'
-          : 'Cargo único del <b>10% de la cuota</b>, de abril en adelante. Los pagos <b>saldan primero el mes más atrasado</b>, así que un mes genera recargo si <b>al cierre su cuota sigue descubierta</b> — aunque ese mes haya entrado dinero, si ese dinero tapó un mes anterior. Un <b>saldo a favor</b> arrastrado sí cubre el mes y evita el recargo.'}</div>
+          ? 'Cargo único de abril en adelante, calculado sobre <b>la porción de la cuota que quedó sin cubrir</b>: si de una cuota de 45.00 se abonaban 40.50, el recargo era el 10% de 4.50. Producía montos como 4.05 o 4.30, imposibles de verificar a mano.'
+          : 'Cargo único del <b>10% de la cuota íntegra</b>, de abril en adelante, cuando al cierre del mes esa cuota sigue sin cubrirse del todo. Un abono parcial <b>no</b> reduce el recargo. Los pagos se imputan <b>cuotas vencidas → recargos por mora → cuota del mes en curso</b>, y la mora <b>nunca genera mora</b>.'}</div>
         <div style="font-size:.78rem;margin-top:6px">${prev
           ? 'Vista de comparación: los saldos vigentes son los de «Ahora».'
           : 'En esta cuenta el recargo del año pasa de <b>'+money(e.moraCargadaPrev)+'</b> a <b style="color:var(--ac-coral)">'+money(e.moraCargada)+'</b>.'}</div>
       </div>
     </div>`:''}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
-    <tbody>${e.mensual.map(b=>{
+    <tbody>${e.mensual.map((b,_i,_arr)=>{
+      const esUltimo=_i===_arr.length-1;
       const vs=b.vouchers||[];
       const pagadoCell = b.pagado
         ? (vs.length
@@ -770,11 +816,12 @@ function _renderEstado(e){
       // en la vista "ahora" se marcan los meses cuyo recargo aparece con la regla nueva
       const nuevoCargo = cmp && !prev && b.mora>0.009 && !(b.moraPrev>0.009);
       return `<tr style="${nuevoCargo?'background:#fff3e8':(sa>0.009?'background:#fff7f4':'')}"><td>${b.label}${nuevoCargo?' <span class="pill" style="font-size:.55rem;background:var(--ac-coral);color:#fff">nueva</span>':''}</td>
-      <td class="num mCuota">${b.cuota?money(b.cuota):'—'}</td>
-      <td class="num">${moraCell}</td>
-      <td class="num">${pagadoCell}</td>
-      <td class="num" style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido.${cmp?'':' La <b>mora</b> es un cargo único del 10% de la cuota cuando, al cierre del mes, la cuota sigue sin cubrirse: los pagos saldan primero el mes más atrasado.'}</div>
+      <td class="num mCuota"${_tip(_tipCuota(e,b))}>${b.cuota?money(b.cuota):'—'}</td>
+      <td class="num"${_tip(prev?'':_tipMora(e,b,esUltimo))}>${moraCell}</td>
+      <td class="num"${_tip(_tipPagado(e,b))}>${pagadoCell}</td>
+      <td class="num"${_tip(_tipSaldo(b,prev))} style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido.${cmp?'':' La <b>mora</b> es un cargo único del 10% de la cuota íntegra cuando, al cierre del mes, esa cuota sigue sin cubrirse.'}
+      <b style="color:var(--ac-teal-600)">Pasa el cursor sobre cualquier monto de la tabla</b> para ver cómo se calculó.</div>
     ${(!prev && (e.detalleSaldo||[]).length)?`<div style="border:1px solid #cfe8d8;background:#f2faf5;border-radius:10px;padding:12px 15px;margin-bottom:12px">
       <div style="font-weight:700;font-size:.78rem;color:var(--ac-green-600,#1E8E5A);text-transform:uppercase;letter-spacing:.03em;margin-bottom:7px">De qué se compone el saldo</div>
       ${e.detalleSaldo.map(d=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.86rem">

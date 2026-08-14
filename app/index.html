@@ -108,16 +108,40 @@ function draw(){const q=document.getElementById('q').value.toLowerCase();
     <div class="lote">${c.lote}</div><div class="nm"><b>${c.nombre}</b><span>${c.residencial}</span></div>
     <div class="sal"><b>${money(c.saldoConMora)}</b><div>${pill(c.estado)}</div></div></div>`).join('')||'<p class="muted">Sin resultados.</p>';}
 document.getElementById('q').oninput=draw;
+// Explicación de cada mes con los criterios de cobro aprobados por la Junta.
+// En móvil no hay hover, así que se abre tocando la fila.
+function _expMes(e,b,esUltimo){
+  const L=[];
+  if(b.cuota) L.push(`<b>Cuota</b> ${money(b.cuota)} — vence el último día de ${b.label}, sin período de gracia.`);
+  if(b.condonada) L.push(`<b>Mora</b> — recargo condonado por la administración.`);
+  else if(b.mora>0.009) L.push(`<b>Mora</b> ${money(b.mora)} — 10% de la cuota íntegra (${money(b.cuota)}) porque al cerrar ${b.label} quedaban ${money(b.descubierto||0)} sin cubrir. Cargo único; la mora no genera mora.`);
+  else if(b.cuota&&esUltimo) L.push(`<b>Mora</b> — ${b.label} es el mes en curso: aún no vence.`);
+  else if(b.cuota&&b.ym&&b.ym<'2026-04') L.push(`<b>Mora</b> — la mora rige desde abril 2026.`);
+  else if(b.cuota) L.push(`<b>Mora</b> — sin recargo: la cuota de ${b.label} quedó cubierta.`);
+  if(b.saldoIni!==undefined&&b.pagado){
+    const a=[];
+    if(b.apVencidas>0.009)   a.push(`${money(b.apVencidas)} a cuotas vencidas`);
+    if(b.apMora>0.009)       a.push(`${money(b.apMora)} a recargos por mora`);
+    if(b.apMesEnCurso>0.009) a.push(`${money(b.apMesEnCurso)} a la cuota de ${b.label}`);
+    if(b.apCredito>0.009)    a.push(`${money(b.apCredito)} a saldo a favor`);
+    L.push(`<b>Pagado</b> ${money(b.pagado)} — se aplicó así: ${a.join(', ')}. El orden es: vencidas → mora → mes en curso.`);
+  }
+  if(b.saldoIni!==undefined) L.push(`<b>Saldo</b> = ${money(b.saldoIni)} anterior + ${money(b.cuota)} cuota + ${money(b.mora||0)} recargo − ${money(b.pagado)} pagos = ${money(b.saldo)}.`);
+  return L.join('<br>');
+}
+function expMes(tr){const n=tr.nextElementSibling;if(n&&n.classList.contains('exp'))n.style.display=n.style.display==='table-row'?'none':'table-row';}
 function openSheet(clave){const e=CUENTAS.find(c=>c.clave===clave);if(!e||!e.mensual)return;
   const color=e.saldoConMora>0.009?(e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)'):'var(--ac-ok)';
   document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${e.nombre}</div>
     <div style="font-size:.78rem;color:var(--ac-muted)">${e.residencial} · Lote ${e.lote} · Cuota ${money(e.cuota)}</div></div><button class="close" onclick="closeSheet()">×</button>`;
   document.getElementById('sheetBd').innerHTML=`<table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Mora</th><th class="n">Pagado</th><th class="n">Saldo total</th></tr></thead>
-    <tbody>${e.mensual.map(b=>`<tr><td>${b.label}</td><td class="n">${b.cuota?money(b.cuota):'—'}</td>
+    <tbody>${e.mensual.map((b,i,arr)=>`<tr onclick="expMes(this)" style="cursor:pointer"><td>${b.label}</td><td class="n">${b.cuota?money(b.cuota):'—'}</td>
       <td class="n" style="${b.mora>0.009?'color:var(--ac-coral)':''}">${b.condonada?'condon.':(b.mora>0.009?money(b.mora):'—')}</td>
       <td class="n">${b.pagado?money(b.pagado):(b.cuota?'0.00':'—')}</td>
-      <td class="n" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>`).join('')}</tbody></table>
+      <td class="n" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>
+      <tr class="exp" style="display:none"><td colspan="5" style="font-size:.72rem;line-height:1.6;color:var(--ac-muted);background:#f7f9fa;padding:8px 10px">${_expMes(e,b,i===arr.length-1)}</td></tr>`).join('')}</tbody></table>
     <div class="tot"><b>SALDO TOTAL</b><b style="color:${color}">${money(e.saldoNeto)}</b></div>
+    <div class="muted" style="font-size:.7rem;margin-top:8px">Toca cualquier mes para ver cómo se calculó.</div>
     <button style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--ac-teal);color:#fff;font:inherit;font-weight:600" onclick="mail('${e.clave}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>`;
   document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');}
 function closeSheet(){document.getElementById('sheetBg').classList.remove('show');document.getElementById('sheet').classList.remove('show');}
