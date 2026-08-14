@@ -180,15 +180,28 @@ function calcEstado(prop, pagosArr, asOf) {
     if (moraMesMap[b.idx] > 0.009) { b.mora = moraMesMap[b.idx]; b.moraMeses = 1; }
   });
 
-  // 4) aplicación del pago para repartir el saldo entre principal y mora: primero las
-  //    cuotas (de la más antigua a la más nueva) y la mora de último — la mora permanece
-  //    aunque se pague la cuota. El total no cambia; sólo define el desglose principal/mora.
+  // 4) aplicación del pago para repartir el saldo entre principal y mora. El total no
+  //    cambia nunca; esto sólo decide QUÉ renglones quedan pendientes.
+  //
+  //    Orden: cuotas de meses YA VENCIDOS (de la más antigua a la más nueva) → recargos
+  //    por mora → cuota del mes EN CURSO.
+  //
+  //    La cuota del mes corriente va al final a propósito. Cuando se aplicaba junto con
+  //    las demás, al abrir un mes nuevo su cuota se adelantaba a recargos viejos y les
+  //    quitaba el dinero: el estado de cuenta llegaba a mostrar "Cuota de agosto 36.00"
+  //    con 0.00 pagado en agosto, y moras de abril y mayo que en el corte de julio
+  //    figuraban saldadas reaparecían pendientes en el de agosto.
   var pool = _round2(totalPagado + credito2025);
   buckets.forEach(function (b) { b.pagado = 0; b.saldo = b.monto; b.moraPagado = 0; b.moraSaldo = b.mora; });
-  var moraList = buckets.filter(function (b) { return b.mora > 0; });
-  function _aplicaPrincipal() { buckets.forEach(function (b) { var ap = Math.min(pool, b.saldo); b.pagado = _round2(b.pagado + ap); b.saldo = _round2(b.saldo - ap); pool = _round2(pool - ap); }); }
-  function _aplicaMora() { moraList.forEach(function (b) { var ap = Math.min(pool, b.moraSaldo); b.moraPagado = _round2(b.moraPagado + ap); b.moraSaldo = _round2(b.moraSaldo - ap); pool = _round2(pool - ap); }); }
-  if (moraOrden === 'mora') { _aplicaMora(); _aplicaPrincipal(); } else { _aplicaPrincipal(); _aplicaMora(); }
+  var esMesEnCurso = function (b) { return b.tipo === 'cuota' && b.month === mesActual; };
+  function _pagaCuota(b) { var ap = Math.min(pool, b.saldo); b.pagado = _round2(b.pagado + ap); b.saldo = _round2(b.saldo - ap); pool = _round2(pool - ap); }
+  function _pagaMora(b) { var ap = Math.min(pool, b.moraSaldo); b.moraPagado = _round2(b.moraPagado + ap); b.moraSaldo = _round2(b.moraSaldo - ap); pool = _round2(pool - ap); }
+  function _aplicaVencidas() { buckets.forEach(function (b) { if (!esMesEnCurso(b)) _pagaCuota(b); }); }
+  function _aplicaMora() { buckets.forEach(function (b) { if (b.mora > 0) _pagaMora(b); }); }
+  function _aplicaMesEnCurso() { buckets.forEach(function (b) { if (esMesEnCurso(b)) _pagaCuota(b); }); }
+  if (moraOrden === 'mora') { _aplicaMora(); _aplicaVencidas(); }
+  else { _aplicaVencidas(); _aplicaMora(); }
+  _aplicaMesEnCurso();
 
   // 5) totales
   var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
