@@ -14,6 +14,15 @@
 var CFG_PROP = 'AC_CONFIG';
 var _cfgCache = null;
 
+// Versión de la política de mora vigente. La política la fija la Junta y vive en el
+// código, no en la configuración guardada: si alguien había guardado Opciones antes de
+// un cambio de política, ese valor viejo se quedaba pegado en Script Properties y le
+// ganaba al nuevo valor por defecto (el orden de imputación siguió siendo el anterior
+// aunque el deploy hubiera pasado). Al subir esta versión, los campos de mora del
+// config guardado se descartan y se re-guardan con los de la política nueva.
+var MORA_POLITICA_V = '2026-08-orden-capital';
+var MORA_POLITICA_CAMPOS = ['moraOrden', 'moraBase'];
+
 function _cfgDefaults() {
   return {
     cuotaBase:         CONFIG.CUOTA_BASE,     // B/. cuota base / mes
@@ -27,6 +36,7 @@ function _cfgDefaults() {
                                               //   'cuota'   = cuotas vencidas -> mora -> cuota del mes en curso
                                               //   'mora'    = mora -> cuotas vencidas -> cuota del mes en curso
     moraBase:          'cuota',               // base del recargo: 'cuota' = 10% de la cuota íntegra vencida (ratificado); 'pendiente' = 10% de la parte sin cubrir
+    moraPolitica:      MORA_POLITICA_V,       // sello de la política vigente; ver _cfg()
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
     correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
@@ -55,6 +65,16 @@ function _cfg() {
   if (raw) { try { stored = JSON.parse(raw); } catch (e) {} }
   var d = _cfgDefaults(), out = {};
   Object.keys(d).forEach(function (k) { out[k] = (stored[k] !== undefined && stored[k] !== null) ? stored[k] : d[k]; });
+
+  // Migración de política: si lo guardado quedó de una política anterior, sus campos de
+  // mora se reemplazan por los vigentes y se persiste el sello, para que esto ocurra
+  // una sola vez y no en cada lectura.
+  if (stored.moraPolitica !== MORA_POLITICA_V) {
+    MORA_POLITICA_CAMPOS.forEach(function (k) { out[k] = d[k]; stored[k] = d[k]; });
+    out.moraPolitica = stored.moraPolitica = MORA_POLITICA_V;
+    try { PropertiesService.getScriptProperties().setProperty(CFG_PROP, JSON.stringify(stored)); } catch (e) {}
+  }
+
   _cfgCache = out;
   return out;
 }
@@ -94,6 +114,9 @@ function guardarConfig(nueva) {
   clean.moraCrece = !!clean.moraCrece;
   clean.moraOrden = (clean.moraOrden === 'mora' || clean.moraOrden === 'cuota') ? clean.moraOrden : 'capital';
   clean.moraBase = (clean.moraBase === 'pendiente') ? 'pendiente' : 'cuota';
+  // Guardar desde Opciones es un cambio deliberado de la Junta: se sella con la política
+  // vigente para que la migración no lo revierta en la siguiente lectura.
+  clean.moraPolitica = MORA_POLITICA_V;
   clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
   clean.moraAvisoMeses = Math.min(12, Math.max(1, Math.floor(Number(clean.moraAvisoMeses) || 2)));

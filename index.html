@@ -857,6 +857,11 @@ function _renderEstado(e){
           if(!m || Math.abs((m.apMesEnCurso||0)-d.abonado)>0.011) return null;
           const partes=[];
           if(m.apVencidas>0.009) partes.push(`${money(m.apVencidas)} a cuotas atrasadas`);
+          // Con el orden vigente el recargo se cobra DESPUÉS de la cuota del mes, así que
+          // aquí casi siempre es 0. Se deja porque el orden es configurable: si alguna vez
+          // los recargos vuelven a cobrarse antes, omitirlos haría que la frase no cuadre
+          // con el pago (decía "de 90.00 se fueron 45.00; llegaron 40.50" y faltaban 4.50).
+          if(m.apMora>0.009)     partes.push(`${money(m.apMora)} a recargos por mora`);
           if(!partes.length) return null;
           return `Del pago de ${d.label.toLowerCase()} (${money(m.pagado)}) se fueron ${partes.join(' y ')}; a esta cuota llegaron ${money(d.abonado)}.`;
         };
@@ -1323,10 +1328,17 @@ async function renderOpts(){
           <div class="help"><b>Fija:</b> la cuota morosa genera un único recargo de ${c.moraPct}% y no crece con el tiempo. <b>Crece:</b> suma ${c.moraPct}% por cada mes de atraso y deja de crecer el día en que se salda esa cuota.</div></div>
         <div class="field"><label>Orden de aplicación del pago</label>
           <div class="in"><select id="o_moraorden" style="width:100%;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-            <option value="cuota" ${c.moraOrden!=='mora'?'selected':''}>Primero las cuotas, la mora de último</option>
-            <option value="mora" ${c.moraOrden==='mora'?'selected':''}>Primero la mora, luego las cuotas</option>
+            <option value="capital" ${c.moraOrden==='capital'?'selected':''}>Vencidas → cuota del mes → mora  (política de la Junta)</option>
+            <option value="cuota" ${c.moraOrden==='cuota'?'selected':''}>Vencidas → mora → cuota del mes</option>
+            <option value="mora" ${c.moraOrden==='mora'?'selected':''}>Mora → vencidas → cuota del mes</option>
           </select></div>
-          <div class="help">A qué se abona primero cada pago. <b>Cuotas primero:</b> la mora queda pendiente hasta que el propietario se pone al día en cuotas. <b>Mora primero:</b> cada pago salda primero el recargo acumulado.</div></div>
+          <div class="help">A qué se abona primero cada pago. La <b>política ratificada por la Junta</b> deja el recargo de último: así no se come el pago ni deja corta la cuota del mes, que era como la mora terminaba generando mora. Las otras dos opciones existen sólo por si la Junta revisa el criterio.</div></div>
+        <div class="field"><label>Base del recargo</label>
+          <div class="in"><select id="o_morabase" style="width:100%;padding:7px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
+            <option value="cuota" ${c.moraBase!=='pendiente'?'selected':''}>${c.moraPct}% de la cuota íntegra  (política de la Junta)</option>
+            <option value="pendiente" ${c.moraBase==='pendiente'?'selected':''}>${c.moraPct}% de la parte que quedó sin cubrir</option>
+          </select></div>
+          <div class="help">Sobre qué monto se calcula el recargo. Con la <b>cuota íntegra</b>, un abono parcial no lo reduce y el recargo siempre es un número redondo. Con la <b>parte sin cubrir</b> salen montos como 4.05 que el propietario no puede verificar.</div></div>
         <div class="help">La mora <b>no se borra</b> al pagar la cuota: queda como saldo aparte (columna Mora del estado de cuenta). Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
       </div></div>
 
@@ -1462,6 +1474,7 @@ async function guardarOpts(){
     moraDesde:document.getElementById('o_moradesde').value,
     moraCrece:document.getElementById('o_moracrece').value==='crece',
     moraOrden:document.getElementById('o_moraorden').value,
+    moraBase:document.getElementById('o_morabase').value,
     enviosActivos:document.getElementById('o_maestro').checked,
     modoPrueba:document.getElementById('o_prueba').checked,
     correoPrueba:document.getElementById('o_correoprueba').value.trim(),
