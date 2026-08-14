@@ -404,13 +404,20 @@ function capturarComprobantes(maxThreads) {
         prop ? prop.clave : '', prop ? prop.nombre : nombreMatch, prop ? prop.lote : lote.raw,
         monto || '', refCap, estado, url, id,
         estado === 'pendiente' ? (metodo || 'sin-match') : '', new Date(), motivo,
-        metodoPago, cuentaDestino, beneficiario
+        metodoPago, cuentaDestino, beneficiario, ''   // pagoId: se llena al aplicar el comprobante
       ]);
       if (estado === 'pendiente') nuevos++; else descartados++;
     });
     try { th.addLabel(label); } catch (e) {}
   });
 
+  // Ajusta cada fila al ancho del esquema: si mañana se agrega una columna a
+  // COL_COMPROB, el lector no vuelve a romperse con "las columnas no coinciden".
+  filas = filas.map(function (f) {
+    f = f.slice(0, COL_COMPROB.length);
+    while (f.length < COL_COMPROB.length) f.push('');
+    return f;
+  });
   if (filas.length) sh.getRange(sh.getLastRow() + 1, 1, filas.length, COL_COMPROB.length).setValues(filas);
   return { nuevos: nuevos, descartados: descartados, buzon: buzon, revisados: threads.length };
 }
