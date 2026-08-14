@@ -190,6 +190,16 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .btn.green { background:var(--ac-green-600); } .btn:disabled { opacity:.5; cursor:not-allowed; }
 /* Barra de acciones del modal de estado de cuenta: 3 botones consistentes,
    fila alineada a la derecha en escritorio, apilados a lo ancho en móvil. */
+/* Cualquier cifra del estado de cuenta que trae explicación en su tooltip. */
+#modalBd [title] { cursor:help; }
+.dsg-grupo { font-size:.66rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+             color:var(--ac-muted); margin:10px 0 3px; }
+.dsg-fila  { display:flex; justify-content:space-between; align-items:baseline; gap:14px; padding:3px 0; font-size:.88rem; }
+.dsg-fila .nota { display:block; font-size:.72rem; color:var(--ac-muted); line-height:1.4; margin-top:1px; }
+.dsg-fila b { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.dsg-sub   { display:flex; justify-content:space-between; gap:14px; padding:4px 0 0; margin-top:3px;
+             border-top:1px dotted #cfe8d8; font-size:.78rem; color:var(--ac-muted); }
+.dsg-sub b { font-variant-numeric:tabular-nums; }
 .modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px; }
 .modal-actions .is-condonar { color:var(--ac-coral); border-color:var(--ac-coral); }
 .modal-actions .is-reactivar { color:var(--ac-green-600); border-color:var(--ac-green-600); }
@@ -725,7 +735,11 @@ function setCmpVista(v, clave){ CMP_VISTA=v; openEstado(clave); }
 // aprobados por la Junta. Se usa el tooltip NATIVO del navegador (atributo title) a
 // propósito: no deja overlays colgados como el preview del comprobante, y funciona
 // igual en todos los navegadores de la Junta.
-const _tip = txt => txt ? ` title="${_esc(txt)}" style="cursor:help"` : '';
+// Sólo el atributo title. Si además emitiera style o class, quedaban DOS atributos
+// iguales en la misma etiqueta y el navegador descartaba el segundo — se perdía la
+// alineación de las filas y el formato de la columna de saldo. El cursor lo pone una
+// regla CSS sobre [title].
+const _tip = txt => txt ? ` title="${_esc(txt)}"` : '';
 function _tipCuota(e,b){
   if(!b.cuota) return '';
   const partes=[`${e.lotes||1} lote(s) × ${money(45)}`];
@@ -824,22 +838,38 @@ function _renderEstado(e){
       <b style="color:var(--ac-teal-600)">Pasa el cursor sobre cualquier monto de la tabla</b> para ver cómo se calculó.</div>
     ${(!prev && (e.detalleSaldo||[]).length)?`<div style="border:1px solid #cfe8d8;background:#f2faf5;border-radius:10px;padding:12px 15px;margin-bottom:12px">
       <div style="font-weight:700;font-size:.78rem;color:var(--ac-green-600,#1E8E5A);text-transform:uppercase;letter-spacing:.03em">De qué se compone el saldo</div>
-      <div class="muted" style="font-size:.72rem;margin:2px 0 8px">Lo que sigue <b>pendiente</b> al corte. Lo que ya se pagó no aparece aquí.</div>
-      ${e.detalleSaldo.map(d=>{
-        // Una cuota abonada a medias se veía como "Cuota de mayo 4.50" y contradecía a la
-        // tabla, donde mayo muestra cuota 45.00 y un pago de 90.00. Se dice el resto.
-        const parcial = d.abonado>0.009 && d.original>d.monto+0.009;
-        const nota = parcial?` <span class="muted" style="font-size:.72rem">de ${money(d.original)} · ya abonados ${money(d.abonado)}</span>`:'';
-        const tip = d.tipo==='mora'
-          ? `Recargo de ${d.label}: 10% de la cuota íntegra. ${parcial?`Se abonaron ${money(d.abonado)} y quedan ${money(d.monto)}.`:'Sin abonar.'}`
-          : `Cuota de ${d.label} por ${money(d.original)}. ${parcial?`Los pagos ya cubrieron ${money(d.abonado)}; faltan ${money(d.monto)}.`:'Sin abonar.'}`;
-        return `<div${_tip(tip)} style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.86rem;cursor:help">
-        <span>${d.tipo==='mora'?`<span style="color:var(--ac-coral)">Recargo por mora · ${d.label}</span>`:`Cuota de ${d.label}`}${nota}</span>
-        <b style="${d.tipo==='mora'?'color:var(--ac-coral)':''};white-space:nowrap">${money(d.monto)}</b></div>`;}).join('')}
-      <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0 0;margin-top:6px;border-top:1px solid #cfe8d8;font-size:.9rem">
-        <b>Total</b><b>${money(e.detalleSaldo.reduce((a,d)=>a+d.monto,0))}</b></div>
+      <div class="muted" style="font-size:.72rem;margin:2px 0 4px">Sólo lo que sigue <b>pendiente</b>. Lo que ya se pagó no aparece aquí.</div>
+      ${(()=>{
+        // Se agrupa en cuotas y recargos, con subtotal cada uno. Todo mezclado en una
+        // sola lista era ilegible: el ojo no distinguía capital de mora, y una cuota
+        // abonada a medias parecía contradecir a la tabla de arriba.
+        const cuotas=e.detalleSaldo.filter(d=>d.tipo!=='mora'), moras=e.detalleSaldo.filter(d=>d.tipo==='mora');
+        const suma=a=>a.reduce((s,d)=>s+d.monto,0);
+        const fila=(d,rojo)=>{
+          const parcial = d.abonado>0.009 && d.original>d.monto+0.009;
+          const nota = parcial?`<span class="nota">De los ${money(d.original)} del mes ya se abonaron ${money(d.abonado)}.</span>`:'';
+          const tip = d.tipo==='mora'
+            ? `Recargo de ${d.label}: 10% de la cuota íntegra, cargado una sola vez.`
+            : (parcial ? `La cuota de ${d.label} es de ${money(d.original)}. Los pagos ya cubrieron ${money(d.abonado)}, así que faltan ${money(d.monto)}.`
+                       : `Cuota de ${d.label} por ${money(d.original)}, sin ningún abono.`);
+          return `<div class="dsg-fila"${_tip(tip)}><span${rojo?' style="color:var(--ac-coral)"':''}>${d.label}${nota}</span>
+            <b${rojo?' style="color:var(--ac-coral)"':''}>${money(d.monto)}</b></div>`;
+        };
+        let h='';
+        if(cuotas.length){
+          h+=`<div class="dsg-grupo">Cuotas pendientes</div>${cuotas.map(d=>fila(d,false)).join('')}`;
+          if(cuotas.length>1) h+=`<div class="dsg-sub"><span>Subtotal cuotas</span><b>${money(suma(cuotas))}</b></div>`;
+        }
+        if(moras.length){
+          h+=`<div class="dsg-grupo" style="color:var(--ac-coral)">Recargos por mora pendientes</div>${moras.map(d=>fila(d,true)).join('')}`;
+          if(moras.length>1) h+=`<div class="dsg-sub"><span>Subtotal recargos</span><b>${money(suma(moras))}</b></div>`;
+        }
+        return h;
+      })()}
+      <div style="display:flex;justify-content:space-between;gap:14px;padding:8px 0 0;margin-top:8px;border-top:1px solid #cfe8d8;font-size:.95rem">
+        <b>Saldo total</b><b style="font-variant-numeric:tabular-nums">${money(e.detalleSaldo.reduce((a,d)=>a+d.monto,0))}</b></div>
       ${(e.moraCubiertas||[]).length?`<div class="muted" style="font-size:.74rem;line-height:1.5;margin-top:9px;padding-top:8px;border-top:1px dashed #cfe8d8">
-        Los recargos de <b>${e.moraCubiertas.map(m=>m.label.toLowerCase()+' ('+money(m.monto)+')').join(', ')}</b> aparecen en la tabla porque se cobraron, pero <b style="color:var(--ac-ok)">ya están pagados</b> y por eso no suman al saldo.</div>`:''}
+        El recargo de <b>${e.moraCubiertas.map(m=>m.label.toLowerCase()+' ('+money(m.monto)+')').join(', ')}</b> aparece en la tabla porque se cobró, pero <b style="color:var(--ac-ok)">ya está pagado</b> y por eso no suma al saldo.</div>`:''}
     </div>`:''}
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
       ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${moraNota}</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
