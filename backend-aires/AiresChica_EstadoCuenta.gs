@@ -1,8 +1,12 @@
 /**
  * Motor de estado de cuenta.
  *
- * Regla de cobro (confirmada con el cliente):
- *   cuota mensual = 45.00 * lotes + 13.50 * cabañas
+ * Regla de cobro (ver cuotaDe() en AiresChica_Config.gs):
+ *   cuota mensual = cuotaBase * (1 + cabanaPct% * nº de cabañas)   — hoy 45.00 y 30%
+ *   o la cuota fija manual del propietario (cuotaMensual) cuando está definida.
+ *   El nº de LOTES no multiplica la cuota: quien tiene los lotes 6 y 7 paga una sola
+ *   cuota. La columna `cuota` de la hoja de Propietarios puede traer valores viejos de
+ *   una fórmula anterior; el motor siempre recalcula con cuotaDe().
  *
  * POLÍTICA DE MORA ratificada por la Junta (agosto 2026):
  *   1. Devengo — sin período de gracia. La cuota vence el último día del mes y el

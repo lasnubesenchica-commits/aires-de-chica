@@ -742,10 +742,14 @@ function setCmpVista(v, clave){ CMP_VISTA=v; openEstado(clave); }
 const _tip = txt => txt ? ` title="${_esc(txt)}"` : '';
 function _tipCuota(e,b){
   if(!b.cuota) return '';
-  const partes=[`${e.lotes||1} lote(s) × ${money(45)}`];
-  if(e.cabanas) partes.push(`${e.cabanas} cabaña(s) × ${money(13.5)}`);
-  return `Cuota de ${b.label}: ${partes.join(' + ')} = ${money(b.cuota)}.\n`
-       + `Vence el último día del mes. No hay período de gracia: el recargo se causa al día siguiente.`;
+  const l=[`Cuota de ${b.label}: ${money(b.cuota)}.`];
+  // La cuota NO se multiplica por lote: quien tiene dos lotes paga una sola. Decirlo
+  // aquí porque es la primera pregunta de quien ve "Lote 6/7" y una cuota de 45.00.
+  if(e.cabanas) l.push(`Es la cuota base más el recargo del 30% por cada una de sus ${e.cabanas} cabaña(s).`);
+  else l.push('Es la cuota base de la comunidad.');
+  if((e.lotes||1)>1) l.push(`Tiene ${e.lotes} lotes, pero la cuota es una sola: el número de lotes no la multiplica.`);
+  l.push('Vence el último día del mes. No hay período de gracia: el recargo se causa al día siguiente.');
+  return l.join('\n');
 }
 function _tipMora(e,b,esUltimo){
   if(b.condonada) return `El recargo de ${b.label} fue condonado por la administración.`;
