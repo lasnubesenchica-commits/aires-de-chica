@@ -845,12 +845,25 @@ function _renderEstado(e){
         // abonada a medias parecía contradecir a la tabla de arriba.
         const cuotas=e.detalleSaldo.filter(d=>d.tipo!=='mora'), moras=e.detalleSaldo.filter(d=>d.tipo==='mora');
         const suma=a=>a.reduce((s,d)=>s+d.monto,0);
+        // Para una cuota abonada a medias no basta con decir CUÁNTO se abonó: hay que
+        // decir DE DÓNDE sale ese monto, porque el pago del mes casi siempre es mayor y
+        // la diferencia se fue a meses anteriores. Se reconstruye del reparto de ese mes.
+        const origen=d=>{
+          const m=(e.mensual||[]).find(x=>x.ym===d.ym);
+          if(!m || Math.abs((m.apMesEnCurso||0)-d.abonado)>0.011) return null;
+          const partes=[];
+          if(m.apVencidas>0.009) partes.push(`${money(m.apVencidas)} a cuotas atrasadas`);
+          if(m.apMora>0.009)     partes.push(`${money(m.apMora)} a recargos por mora`);
+          if(!partes.length) return null;
+          return `Del pago de ${d.label.toLowerCase()} (${money(m.pagado)}) se fueron ${partes.join(' y ')}; a esta cuota llegaron ${money(d.abonado)}.`;
+        };
         const fila=(d,rojo)=>{
           const parcial = d.abonado>0.009 && d.original>d.monto+0.009;
-          const nota = parcial?`<span class="nota">De los ${money(d.original)} del mes ya se abonaron ${money(d.abonado)}.</span>`:'';
+          const detalle = parcial ? (origen(d) || `De los ${money(d.original)} de esta cuota ya se abonaron ${money(d.abonado)}.`) : '';
+          const nota = detalle?`<span class="nota">${detalle}</span>`:'';
           const tip = d.tipo==='mora'
             ? `Recargo de ${d.label}: 10% de la cuota íntegra, cargado una sola vez.`
-            : (parcial ? `La cuota de ${d.label} es de ${money(d.original)}. Los pagos ya cubrieron ${money(d.abonado)}, así que faltan ${money(d.monto)}.`
+            : (parcial ? `${detalle} Por eso faltan ${money(d.monto)}.`
                        : `Cuota de ${d.label} por ${money(d.original)}, sin ningún abono.`);
           return `<div class="dsg-fila"${_tip(tip)}><span${rojo?' style="color:var(--ac-coral)"':''}>${d.label}${nota}</span>
             <b${rojo?' style="color:var(--ac-coral)"':''}>${money(d.monto)}</b></div>`;
