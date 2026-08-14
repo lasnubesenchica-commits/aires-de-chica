@@ -823,12 +823,23 @@ function _renderEstado(e){
     <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido.${cmp?'':' La <b>mora</b> es un cargo único del 10% de la cuota íntegra cuando, al cierre del mes, esa cuota sigue sin cubrirse.'}
       <b style="color:var(--ac-teal-600)">Pasa el cursor sobre cualquier monto de la tabla</b> para ver cómo se calculó.</div>
     ${(!prev && (e.detalleSaldo||[]).length)?`<div style="border:1px solid #cfe8d8;background:#f2faf5;border-radius:10px;padding:12px 15px;margin-bottom:12px">
-      <div style="font-weight:700;font-size:.78rem;color:var(--ac-green-600,#1E8E5A);text-transform:uppercase;letter-spacing:.03em;margin-bottom:7px">De qué se compone el saldo</div>
-      ${e.detalleSaldo.map(d=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.86rem">
-        <span>${d.tipo==='mora'?`<span style="color:var(--ac-coral)">Recargo por mora · ${d.label}</span>`:`Cuota de ${d.label}${d.tipo==='cuota'&&d.label==='Saldo 2025'?'':''}`}</span>
-        <b style="${d.tipo==='mora'?'color:var(--ac-coral)':''};white-space:nowrap">${money(d.monto)}</b></div>`).join('')}
+      <div style="font-weight:700;font-size:.78rem;color:var(--ac-green-600,#1E8E5A);text-transform:uppercase;letter-spacing:.03em">De qué se compone el saldo</div>
+      <div class="muted" style="font-size:.72rem;margin:2px 0 8px">Lo que sigue <b>pendiente</b> al corte. Lo que ya se pagó no aparece aquí.</div>
+      ${e.detalleSaldo.map(d=>{
+        // Una cuota abonada a medias se veía como "Cuota de mayo 4.50" y contradecía a la
+        // tabla, donde mayo muestra cuota 45.00 y un pago de 90.00. Se dice el resto.
+        const parcial = d.abonado>0.009 && d.original>d.monto+0.009;
+        const nota = parcial?` <span class="muted" style="font-size:.72rem">de ${money(d.original)} · ya abonados ${money(d.abonado)}</span>`:'';
+        const tip = d.tipo==='mora'
+          ? `Recargo de ${d.label}: 10% de la cuota íntegra. ${parcial?`Se abonaron ${money(d.abonado)} y quedan ${money(d.monto)}.`:'Sin abonar.'}`
+          : `Cuota de ${d.label} por ${money(d.original)}. ${parcial?`Los pagos ya cubrieron ${money(d.abonado)}; faltan ${money(d.monto)}.`:'Sin abonar.'}`;
+        return `<div${_tip(tip)} style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.86rem;cursor:help">
+        <span>${d.tipo==='mora'?`<span style="color:var(--ac-coral)">Recargo por mora · ${d.label}</span>`:`Cuota de ${d.label}`}${nota}</span>
+        <b style="${d.tipo==='mora'?'color:var(--ac-coral)':''};white-space:nowrap">${money(d.monto)}</b></div>`;}).join('')}
       <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0 0;margin-top:6px;border-top:1px solid #cfe8d8;font-size:.9rem">
         <b>Total</b><b>${money(e.detalleSaldo.reduce((a,d)=>a+d.monto,0))}</b></div>
+      ${(e.moraCubiertas||[]).length?`<div class="muted" style="font-size:.74rem;line-height:1.5;margin-top:9px;padding-top:8px;border-top:1px dashed #cfe8d8">
+        Los recargos de <b>${e.moraCubiertas.map(m=>m.label.toLowerCase()+' ('+money(m.monto)+')').join(', ')}</b> aparecen en la tabla porque se cobraron, pero <b style="color:var(--ac-ok)">ya están pagados</b> y por eso no suman al saldo.</div>`:''}
     </div>`:''}
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
       ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${moraNota}</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}

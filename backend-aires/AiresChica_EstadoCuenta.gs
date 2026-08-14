@@ -61,21 +61,6 @@ function _condonSet(prop) {
 }
 
 /**
- * Calcula el estado de cuenta de un propietario.
- *
- * MORA (recargo por atraso): se trata APARTE del principal (cuotas). Una vez que
- * una cuota se vuelve morosa genera su recargo, y ese recargo PERMANECE como saldo
- * aunque después se pague la cuota (no se borra al aplicar el pago).
- *  - cfg.moraCrece=false (default): cargo fijo de una sola vez (moraPct % de la cuota).
- *  - cfg.moraCrece=true: crece moraPct % por cada mes de atraso, y se congela el mes
- *    en que la cuota queda saldada (fechado por aplicación cronológica del principal).
- *  - cfg.moraOrden='cuota' (default): los pagos cubren primero las cuotas y de último la mora.
- *    cfg.moraOrden='mora': los pagos cubren primero la mora y luego las cuotas.
- *  - prop.moraCondon: meses (o 'ALL') cuya mora fue condonada por el administrador.
- *
- * @return {Object} desglose por cuota + totales + KPIs de la cuenta.
- */
-/**
  * Libro de cuenta corriente: recorre el año mes a mes con UN SOLO carril de
  * obligaciones (cuotas y recargos por mora), de modo que el reparto del dinero y la
  * generación de la mora salgan del mismo recorrido. Antes eran dos pasadas
@@ -174,6 +159,19 @@ function _correrLibro(c, base, orden) {
   return { buckets: buckets, pool: pool, mensual: mensual, moraByIdx: moraByIdx, condonByIdx: condonByIdx };
 }
 
+/**
+ * Calcula el estado de cuenta de un propietario al corte indicado.
+ *
+ * Corre el libro dos veces: una con los criterios vigentes (los seis del encabezado
+ * del módulo) y otra con la regla anterior de mora, para poder mostrar ambas en las
+ * pestañas de comparación mientras la Junta valida el cambio. La segunda es
+ * informativa: no afecta ningún saldo.
+ *
+ * `prop.moraCondon` lista los meses ('2026-04,2026-05') o 'ALL' cuya mora condonó el
+ * administrador; un mes condonado no genera recargo aunque la cuota siga descubierta.
+ *
+ * @return {Object} desglose mensual, desglose del saldo, totales y KPIs de la cuenta.
+ */
 function calcEstado(prop, pagosArr, asOf) {
   asOf = _asOfDate(asOf);
   var cfg = _cfg();
@@ -326,14 +324,24 @@ function calcEstado(prop, pagosArr, asOf) {
   // Desglose de QUÉ compone el saldo: cuotas que siguen pendientes y recargos por mora
   // sin pagar, mes por mes. Sale de la aplicación en cascada de los pagos, así que la
   // suma de los renglones es exactamente el saldo total.
-  var detalleSaldo = [];
+  // Se incluye el monto original y lo ya abonado de cada renglón: sin eso, una cuota
+  // parcialmente cubierta aparecía como "Cuota de mayo 4.50" y contradecía a la tabla,
+  // que en mayo muestra la cuota de 45.00 y un pago de 90.00.
+  var detalleSaldo = [], moraCubiertas = [];
   buckets.forEach(function (b) {
     if (b.saldo > 0.009) detalleSaldo.push({ tipo: 'cuota', label: b.label,
-      ym: b.tipo === 'cuota' ? _ymKey(b.year, b.month) : '', monto: _round2(b.saldo) });
+      ym: b.tipo === 'cuota' ? _ymKey(b.year, b.month) : '', monto: _round2(b.saldo),
+      original: _round2(b.monto), abonado: _round2(b.pagado) });
   });
   buckets.forEach(function (b) {
-    if (b.moraSaldo > 0.009) detalleSaldo.push({ tipo: 'mora', label: b.label,
-      ym: _ymKey(b.year, b.month), monto: _round2(b.moraSaldo) });
+    if (b.moraSaldo > 0.009) {
+      detalleSaldo.push({ tipo: 'mora', label: b.label, ym: _ymKey(b.year, b.month),
+        monto: _round2(b.moraSaldo), original: _round2(b.mora), abonado: _round2(b.moraPagado) });
+    } else if (b.mora > 0.009) {
+      // recargos que SÍ se cargaron pero ya están pagados: no suman al saldo, pero si no
+      // se dicen, la tabla parece cobrar una mora que después desaparece del desglose.
+      moraCubiertas.push({ label: b.label, ym: _ymKey(b.year, b.month), monto: _round2(b.mora) });
+    }
   });
 
   return {
@@ -353,6 +361,7 @@ function calcEstado(prop, pagosArr, asOf) {
     saldoConMora: saldoConMora,
     saldoNeto: saldoNeto,          // saldo total con signo: positivo = debe; negativo = crédito a favor
     detalleSaldo: detalleSaldo,    // renglones que componen el saldo (cuotas y moras pendientes)
+    moraCubiertas: moraCubiertas,  // recargos ya pagados: no suman al saldo, pero se muestran para que no parezcan desaparecidos
     // comparación con la regla anterior de mora (informativa, para validar el cambio)
     moraCargadaPrev: moraCargadaPrev, saldoNetoPrev: saldoRunPrev,
     moraDifiere: Math.abs(_round2(moraCargada - moraCargadaPrev)) > 0.009,
@@ -513,7 +522,7 @@ function buildDashboard(asOf) {
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, saldoNeto: e.saldoNeto, creditoAFavor: e.creditoAFavor,
                moraCargadaPrev: e.moraCargadaPrev, saldoNetoPrev: e.saldoNetoPrev, moraDifiere: e.moraDifiere,
-               detalleSaldo: e.detalleSaldo,
+               detalleSaldo: e.detalleSaldo, moraCubiertas: e.moraCubiertas,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
                fechaVencimiento: e.fechaVencimiento,
