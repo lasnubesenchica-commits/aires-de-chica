@@ -520,11 +520,22 @@ function previsualizarComprobante(clave, monto) {
     if (apMora > 0.009) aplicacionMora.push({ label: b.label, mora: b.mora, aplicado: apMora, quedaPendiente: b.moraSaldo });
   });
 
+  // Cierre del mes en curso: es lo que decide si la cuota de ESTE mes generará recargo.
+  // Se manda para que quien confirma el pago vea si el abono alcanza a evitarlo.
+  var _cfgP = _cfg();
+  var _mesIdx = despues.asOf.getMonth();
   return {
     clave: clave, nombre: prop.nombre, lote: prop.lote, cuota: cuotaDe(prop), monto: monto,
     orden: despues.moraOrden,
-    antes:   { saldo: antes.saldo,   mora: antes.mora,   saldoConMora: antes.saldoConMora,   creditoAFavor: antes.creditoAFavor },
-    despues: { saldo: despues.saldo, mora: despues.mora, saldoConMora: despues.saldoConMora, creditoAFavor: despues.creditoAFavor },
+    mesActual: AC_MESES_LARGO[_mesIdx],
+    venceMes: despues.fechaVencimiento,
+    cuotaMes: despues.cuotaMes,
+    moraSiNoCubre: _round2(despues.cuotaMes * (Number(_cfgP.moraPct) || 0) / 100),
+    moraPct: Number(_cfgP.moraPct) || 0,
+    antes:   { saldo: antes.saldo,   mora: antes.mora,   saldoConMora: antes.saldoConMora,   creditoAFavor: antes.creditoAFavor,
+               pendienteMes: antes.pendienteMes,   cubiertoMes: antes.cubiertoMes,   estadoMes: antes.estadoMes },
+    despues: { saldo: despues.saldo, mora: despues.mora, saldoConMora: despues.saldoConMora, creditoAFavor: despues.creditoAFavor,
+               pendienteMes: despues.pendienteMes, cubiertoMes: despues.cubiertoMes, estadoMes: despues.estadoMes },
     aplicacion: aplicacion,
     aplicacionMora: aplicacionMora,
     totalAplicado: _round2(aplicacion.reduce(function (s, x) { return s + x.aplicado; }, 0) + aplicacionMora.reduce(function (s, x) { return s + x.aplicado; }, 0)),

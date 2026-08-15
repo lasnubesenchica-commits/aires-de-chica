@@ -975,9 +975,18 @@ function _prevManualHtml(d){
   const credito=d.creditoResultante>0.009, pend=d.pendienteResultante>0.009;
   const res = credito?`<span style="color:#16a34a;font-weight:700">Crédito a favor: ${_mny(d.creditoResultante)}</span>`
     :(pend?`<span style="color:#b45309;font-weight:700">Sigue pendiente: ${_mny(d.pendienteResultante)}</span>`:`<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
+  // Mismo aviso de cierre que en la revisión de comprobantes: si la cuota del mes
+  // queda descubierta, esa cuota se recargará al cerrar.
+  const pmD = Number(d.despues&&d.despues.pendienteMes)||0;
+  const cierre = !d.cuotaMes ? ''
+    : (pmD<=0.009
+       ? `<div style="margin-top:6px;color:var(--ac-ok)">✓ La cuota de ${d.mesActual} queda cubierta: no generará recargo al cierre del mes.</div>`
+       : `<div style="margin-top:6px;color:var(--ac-coral)">Quedan ${_mny(pmD)} sin cubrir de la cuota de ${d.mesActual}: si no se completan antes del cierre, se recargará ${_mny(d.moraSiNoCubre)}.</div>`);
   return `<div style="margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--ac-teal-50);font-size:.82rem">
     <div style="font-weight:600;margin-bottom:4px">Así se aplicará</div>
+    <div class="muted" style="font-size:.74rem;margin-bottom:5px">Orden: cuotas vencidas → cuota del mes en curso → recargos por mora.</div>
     ${filas}${moraFilas?`<div style="border-top:1px dashed var(--ac-border);margin:5px 0"></div>${moraFilas}`:''}
+    ${cierre}
     <div style="border-top:1px solid var(--ac-border);margin-top:6px;padding-top:5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span class="muted">Saldo: ${_mny(d.antes.saldoConMora)} → <b style="color:inherit">${_mny(d.despues.saldoConMora)}</b></span>${res}</div>
   </div>`;
@@ -1857,15 +1866,30 @@ function _preHtml(d,id){
     : (pend ? `<span style="color:#b45309;font-weight:700">Sigue pendiente: ${_mny(d.pendienteResultante)}</span>`
             : `<span style="color:#16a34a;font-weight:700">Cuenta al día ✓</span>`);
   const hayMora = d.antes.mora>0.009 || (d.aplicacionMora&&d.aplicacionMora.length);
-  const ordenTxt = d.orden==='mora' ? 'primero la mora, luego las cuotas' : 'primero las cuotas, la mora de último';
+  const ordenTxt = d.orden==='mora' ? 'recargos → cuotas vencidas → cuota del mes en curso'
+                 : d.orden==='cuota' ? 'cuotas vencidas → recargos → cuota del mes en curso'
+                 : 'cuotas vencidas → cuota del mes en curso → recargos';
   const moraFilas = (d.aplicacionMora||[]).map(a=>`<tr><td>${a.label} · mora</td><td class="num">${_mny(a.mora)}</td>
         <td class="num" style="color:var(--ac-coral);font-weight:700">${_mny(a.aplicado)}</td>
         <td class="num">${a.quedaPendiente>0.009?_mny(a.quedaPendiente):'<span style="color:#16a34a;font-weight:600">saldada ✓</span>'}</td></tr>`).join('');
   const moraBloque = !hayMora ? '' :
     `<div style="margin:2px 0 8px;padding:8px 10px;border-radius:8px;background:#fff5ef;border:1px solid #f4d9c8;font-size:.8rem">
-      <b>Este propietario tiene mora.</b> Orden configurado: <b>${ordenTxt}</b>. Recargo por mora: ${_mny(d.antes.mora)} → <b>${_mny(d.despues.mora)}</b>.
-      ${moraFilas?`<table style="width:auto;min-width:420px;margin-top:8px"><thead><tr><th>Recargo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead><tbody>${moraFilas}</tbody></table>`:' El pago no alcanza a abonar mora.'}
+      <b>Este propietario tiene mora.</b> Orden de imputación: <b>${ordenTxt}</b>. Recargo por mora: ${_mny(d.antes.mora)} → <b>${_mny(d.despues.mora)}</b>.
+      ${moraFilas?`<table style="width:auto;min-width:420px;margin-top:8px"><thead><tr><th>Recargo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead><tbody>${moraFilas}</tbody></table>`
+        :` El pago no alcanza a abonar mora: los recargos se cobran de último, después de las cuotas.`}
     </div>`;
+  // Lo que decide si la cuota de ESTE mes se recarga al cierre. Es la única parte del
+  // resultado sobre la que quien confirma todavía puede hacer algo: si falta poco,
+  // conviene decirlo antes de aplicar el pago.
+  const pmA = Number(d.antes&&d.antes.pendienteMes)||0, pmD = Number(d.despues&&d.despues.pendienteMes)||0;
+  const cierreBloque = !d.cuotaMes ? '' :
+    (pmD<=0.009
+      ? `<div style="margin:2px 0 8px;padding:8px 10px;border-radius:8px;background:#eefaf2;border:1px solid #cfe8d8;font-size:.8rem">
+           <b style="color:var(--ac-ok)">✓ La cuota de ${d.mesActual} queda cubierta.</b> Al cerrar el mes no generará recargo.
+           ${pmA>0.009?` Sin este pago quedaban ${_mny(pmA)} sin cubrir y se habría recargado ${_mny(d.moraSiNoCubre)}.`:''}</div>`
+      : `<div style="margin:2px 0 8px;padding:8px 10px;border-radius:8px;background:#fff5ef;border:1px solid #f4d9c8;font-size:.8rem">
+           <b style="color:var(--ac-coral)">Quedan ${_mny(pmD)} sin cubrir de la cuota de ${d.mesActual}.</b>
+           Si no se completan antes del cierre del mes, esa cuota generará un recargo de <b>${_mny(d.moraSiNoCubre)}</b> (${d.moraPct}% de la cuota íntegra).</div>`);
   return `<div style="font-size:.86rem">
     <div style="font-weight:700;margin-bottom:8px">Así se aplicará este pago</div>
     ${_verifBanner(COMPROB_VERIF[id])}
@@ -1874,6 +1898,7 @@ function _preHtml(d,id){
       <thead><tr><th>Cuota / saldo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead>
       <tbody>${filas}</tbody></table>
     ${moraBloque}
+    ${cierreBloque}
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px">
       <div>Total aplicado: <b>${_mny(d.totalAplicado)}</b></div>
       <div>${resultado}</div>
