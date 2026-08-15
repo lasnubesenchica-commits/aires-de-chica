@@ -2104,6 +2104,32 @@ function _gastosResultado(d){
     cats=Object.keys(gmap).map(k=>({categoria:k,ejecutado:gmap[k]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
   }
   const catRows=cats.map(t=>`<tr><td data-label="Categoría">${t.categoria}</td><td class="num" data-label="Monto">${money(t.ejecutado)}</td><td class="num" data-label="% de egresos">${egr>0?_ground1(t.ejecutado/egr*100):0}%</td></tr>`).join('');
+
+  // ── desglose de ingresos: de quién viene cada balboa que entró en el período ──
+  // El backend manda el detalle mensual por pagador; aquí se recorta al rango elegido.
+  const ingAgrup=ING_AGRUP==='propietario'?'propietario':'residencial';
+  const detPer=(d.ingresosDetalle||[]).map(r=>{
+    let t=0; (r.porMes||[]).forEach((v,i)=>{ if(i+1>=mi&&i+1<=mf) t=Math.round((t+(Number(v)||0))*100)/100; });
+    return {...r, monto:t};
+  }).filter(r=>r.monto>0.009);
+  let ingRows=[];
+  if(ingAgrup==='residencial'){
+    const g={};
+    detPer.forEach(r=>{ const k=r.residencial||'(sin residencial)';
+      g[k]=g[k]||{nombre:k,monto:0,cuentas:0};
+      g[k].monto=Math.round((g[k].monto+r.monto)*100)/100; g[k].cuentas++; });
+    ingRows=Object.values(g).sort((a,b)=>b.monto-a.monto)
+      .map(r=>({c1:r.nombre,c2:r.cuentas+(r.cuentas===1?' cuenta':' cuentas'),monto:r.monto}));
+  } else {
+    ingRows=detPer.slice().sort((a,b)=>b.monto-a.monto)
+      .map(r=>({c1:(r.lote?'<b>'+String(r.lote).replace(/</g,'&lt;')+'</b> · ':'')+String(r.nombre).replace(/</g,'&lt;'),
+                c2:r.tipo==='otro'?'<span style="color:var(--ac-teal-600)">Otro ingreso</span>':(r.residencial||''),
+                monto:r.monto}));
+  }
+  const ingRowsHtml=ingRows.map(r=>`<tr><td data-label="${ingAgrup==='residencial'?'Residencial':'Propietario'}">${r.c1}</td>
+    <td class="muted" data-label="Detalle" style="font-size:.82rem">${r.c2}</td>
+    <td class="num" data-label="Monto" style="font-weight:600">${money(r.monto)}</td>
+    <td class="num" data-label="% de ingresos">${ing>0?_ground1(r.monto/ing*100):0}%</td></tr>`).join('');
   // tabla mensual transpuesta: conceptos en filas, meses en columnas (solo meses del rango)
   let acc=0;
   const mcols=[];
@@ -2127,6 +2153,28 @@ function _gastosResultado(d){
       ${filtro}
       ${resumen}
       <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros efectivos (cuotas y otros ingresos); egresos = gastos registrados.</div>
+    </div></div>
+    <div class="card" style="margin-top:14px"><div class="hd"><h2>Desglose de ingresos ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
+      <div class="seg"><button class="seg-btn ${ingAgrup==='residencial'?'active':''}" onclick="ING_AGRUP='residencial';paintFinanzas()">Por residencial</button><button class="seg-btn ${ingAgrup==='propietario'?'active':''}" onclick="ING_AGRUP='propietario';paintFinanzas()">Por propietario</button></div></div>
+    <div class="bd" style="padding:12px 18px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-teal);border-radius:9px;padding:9px 13px">
+          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Cuotas de mantenimiento</div>
+          <div style="font-size:1.05rem;font-weight:700">${money(ingCuotas)}</div>
+          <div class="muted" style="font-size:.72rem">${ing>0?_ground1(ingCuotas/ing*100):0}% de los ingresos</div></div>
+        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-green-600);border-radius:9px;padding:9px 13px">
+          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Otros ingresos</div>
+          <div style="font-size:1.05rem;font-weight:700">${money(ingOtros)}</div>
+          <div class="muted" style="font-size:.72rem">${ing>0?_ground1(ingOtros/ing*100):0}% de los ingresos</div></div>
+        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-ink,#123);border-radius:9px;padding:9px 13px">
+          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Total recibido</div>
+          <div style="font-size:1.05rem;font-weight:700">${money(ing)}</div>
+          <div class="muted" style="font-size:.72rem">${detPer.length} ${detPer.length===1?'cuenta pagó':'cuentas pagaron'}</div></div>
+      </div>
+      ${ingRows.length?`<table class="stack-table"><thead><tr><th>${ingAgrup==='residencial'?'Residencial':'Propietario'}</th><th>${ingAgrup==='residencial'?'Cuentas que pagaron':'Residencial'}</th><th class="num">Monto</th><th class="num">% de ingresos</th></tr></thead><tbody>${ingRowsHtml}
+        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Total">TOTAL INGRESOS</td><td></td><td class="num" data-label="Monto">${money(ing)}</td><td class="num" data-label="%">100%</td></tr></tbody></table>`
+        :`<div class="muted" style="padding:10px 0;font-size:.85rem">Sin ingresos registrados en ${periodoTxt}.</div>`}
+      <div class="muted" style="font-size:.74rem;margin-top:9px">Base caja: es el dinero <b>recibido</b> en el período, no lo facturado. Un propietario que pagó tres cuotas atrasadas de una vez aparece aquí por el total del depósito.</div>
     </div></div>
     <div class="card" style="margin-top:14px"><div class="hd"><h2>Otros ingresos ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
       <button class="btn" style="padding:8px 13px;white-space:nowrap" onclick="openOtroIngreso()">+ Agregar ingreso</button></div>
@@ -2452,7 +2500,7 @@ async function guardarPresupuestoUI(){
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
-let FIN_VISTA='resultado', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria';
+let FIN_VISTA='resultado', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria', ING_AGRUP='residencial';
 async function renderFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';

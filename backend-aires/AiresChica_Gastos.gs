@@ -139,7 +139,25 @@ function getGastosData(anio) {
   // propietario). De estos últimos se devuelve el detalle para mostrarlo explícito.
   var pagos = getPagos();
   var _clavesProp = {};
-  getPropietarios(true).forEach(function (p) { if (p.clave) _clavesProp[p.clave] = 1; });
+  getPropietarios(true).forEach(function (p) { if (p.clave) _clavesProp[p.clave] = p; });
+  // Desglose de quién pagó, mes a mes. Se manda el detalle mensual (no sólo el total)
+  // para que Finanzas pueda recortarlo al período que el usuario tenga seleccionado
+  // sin volver a llamar al backend.
+  var detMap = {};
+  function _det(clave, p) {
+    if (!detMap[clave]) {
+      var pr = _clavesProp[clave];
+      detMap[clave] = {
+        clave: clave,
+        lote: pr ? String(pr.lote || '') : '',
+        nombre: pr ? String(pr.nombre || '') : String(p.nombre || clave || 'Otro ingreso'),
+        residencial: pr ? String(pr.residencial || '') : 'Otros ingresos',
+        tipo: pr ? 'cuota' : 'otro',
+        porMes: [0,0,0,0,0,0,0,0,0,0,0,0], total: 0, pagos: 0
+      };
+    }
+    return detMap[clave];
+  }
 
   var ingresosPorMes = [0,0,0,0,0,0,0,0,0,0,0,0], ingresosTotal = 0;
   var cuotasPorMes   = [0,0,0,0,0,0,0,0,0,0,0,0], cuotasTotal   = 0;
@@ -154,6 +172,10 @@ function getGastosData(anio) {
     var m = fp.getMonth(), monto = Number(p.monto) || 0;
     ingresosPorMes[m] = _round2(ingresosPorMes[m] + monto);
     ingresosTotal = _round2(ingresosTotal + monto);
+    var dt = _det(String(p.clave || '(sin clave)'), p);
+    dt.porMes[m] = _round2(dt.porMes[m] + monto);
+    dt.total = _round2(dt.total + monto);
+    dt.pagos++;
     if (_clavesProp[p.clave]) {
       cuotasPorMes[m] = _round2(cuotasPorMes[m] + monto);
       cuotasTotal = _round2(cuotasTotal + monto);
@@ -165,6 +187,9 @@ function getGastosData(anio) {
     }
   });
   otrosIngresos.sort(function (a, b) { return a.fecha - b.fecha; });
+
+  var ingresosDetalle = Object.keys(detMap).map(function (k) { return detMap[k]; })
+    .sort(function (a, b) { return b.total - a.total; });
 
   // años disponibles (para el selector)
   var yset = {}; yset[anio] = 1; yset[hoy.getFullYear()] = 1;
@@ -189,6 +214,7 @@ function getGastosData(anio) {
     cuotasPorMes: cuotasPorMes, cuotasTotal: cuotasTotal,
     otrosPorMes: otrosPorMes, otrosTotal: otrosTotal,
     otrosIngresos: otrosIngresos,
+    ingresosDetalle: ingresosDetalle,   // quién pagó, mes a mes (cuotas y otros ingresos)
     resultadoTotal: _round2(ingresosTotal - ejecutadoTotal),
     aniosDisponibles: anios
   };
