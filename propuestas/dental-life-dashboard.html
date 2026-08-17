@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard de Pacientes y Canales</title>
+<style>
+/* ─────────── Tokens: claro por defecto, oscuro por preferencia o estampado ─────────── */
+:root{
+  --ground:#EEF3F6;
+  --surface:#FFFFFF;
+  --surface-2:#F3F8FB;
+  --surface-3:#E7F1F6;
+  --ink:#0D2430;
+  --ink-2:#28454F;
+  --muted:#5D7883;
+  --border:#D3E3EB;
+  --border-strong:#B4CedA;
+  --brand:#0E6E96;
+  --brand-deep:#0A4E6B;
+  --brand-soft:#3FA3C9;
+  --signal:#C8103C;
+  --good:#2F7D52;
+  --warn:#A96A12;
+  --c1:#0F5E8C;   /* Google Ads   */
+  --c2:#D9662B;   /* YouTube      */
+  --c3:#8156B5;   /* Instagram    */
+  --c4:#3F8F5B;   /* Facebook     */
+  --neutral-bar:#9FB6C0;
+  --mockbar:#0A4E6B;
+  --mockbar-ink:#EAF6FB;
+  --shadow:0 6px 30px rgba(13,36,48,.13);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B1319;
+    --surface:#141C23;
+    --surface-2:#19232B;
+    --surface-3:#1E2C36;
+    --ink:#E7EFF3;
+    --ink-2:#C2D3DB;
+    --muted:#93A9B3;
+    --border:#2A3A45;
+    --border-strong:#3B505D;
+    --brand:#4FADD2;
+    --brand-deep:#8FCDE4;
+    --brand-soft:#2E7C9E;
+    --signal:#F2718F;
+    --good:#5CB585;
+    --warn:#D9A551;
+    --c1:#3D9CC8;
+    --c2:#CD7434;
+    --c3:#9E7ED4;
+    --c4:#46A87A;
+    --neutral-bar:#4C606C;
+    --mockbar:#0E3242;
+    --mockbar-ink:#DCEEF6;
+    --shadow:0 6px 30px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B1319;
+  --surface:#141C23;
+  --surface-2:#19232B;
+  --surface-3:#1E2C36;
+  --ink:#E7EFF3;
+  --ink-2:#C2D3DB;
+  --muted:#93A9B3;
+  --border:#2A3A45;
+  --border-strong:#3B505D;
+  --brand:#4FADD2;
+  --brand-deep:#8FCDE4;
+  --brand-soft:#2E7C9E;
+  --signal:#F2718F;
+  --good:#5CB585;
+  --warn:#D9A551;
+  --c1:#3D9CC8;
+  --c2:#CD7434;
+  --c3:#9E7ED4;
+  --c4:#46A87A;
+  --neutral-bar:#4C606C;
+  --mockbar:#0E3242;
+  --mockbar-ink:#DCEEF6;
+  --shadow:0 6px 30px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:13.2px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.doc{max-width:880px;margin:0 auto;background:var(--surface);box-shadow:var(--shadow);}
+.page{padding:40px 54px 46px;}
+h1,h2,h3,h4{text-wrap:balance;}
+p{margin:9px 0;}
+ul{margin:8px 0;padding-left:19px;}
+li{margin:4px 0;}
+strong{font-weight:700;}
+a{color:var(--brand);}
+.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;}
+.tnum{font-variant-numeric:tabular-nums;}
+
+/* ─────────── Portada ─────────── */
+.cover{
+  min-height:min(288mm,90vh);
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding:64px 62px 58px;
+  background:
+    radial-gradient(120% 80% at 85% 8%, rgba(255,255,255,.14) 0%, rgba(255,255,255,0) 55%),
+    linear-gradient(158deg,#062F44 0%,#0A4E6B 46%,#0E6E96 100%);
+  color:#F2FAFD;
+}
+.cover .rule{width:64px;height:4px;border-radius:2px;background:#E8567E;margin-bottom:26px;}
+.cover .eyebrow{font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:#9FD6EC;}
+.cover h1{
+  font-size:clamp(30px,4.6vw,42px);line-height:1.1;letter-spacing:-.02em;
+  font-weight:800;margin:16px 0 14px;max-width:16ch;
+}
+.cover .sub{font-size:16px;font-weight:400;color:#CDE8F3;max-width:46ch;margin:0;}
+.cover .meta{margin-top:60px;padding-top:26px;border-top:1px solid rgba(159,214,236,.28);
+  display:grid;grid-template-columns:1fr 1fr;gap:20px 26px;font-size:12.5px;}
+.cover .meta .k{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#8FC9E2;font-weight:700;margin-bottom:3px;}
+.cover .meta .v{color:#F2FAFD;font-weight:600;font-size:13.5px;}
+
+/* ─────────── Secciones ─────────── */
+.sec{margin:0 0 8px;padding-top:2px;}
+.sec + p, .sec + .lead{margin-top:6px;}
+h2.sec{
+  font-size:21px;font-weight:800;letter-spacing:-.015em;color:var(--brand-deep);
+  display:flex;align-items:baseline;gap:11px;
+}
+h2.sec .n{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;font-weight:700;color:var(--signal);
+  letter-spacing:0;padding-top:2px;
+}
+h3{font-size:14.5px;font-weight:800;color:var(--brand-deep);margin:22px 0 4px;}
+h4{font-size:13px;font-weight:800;color:var(--ink);margin:0 0 3px;}
+.lead{font-size:14.5px;line-height:1.58;color:var(--ink-2);max-width:62ch;}
+.muted{color:var(--muted);}
+.eyebrow-s{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--muted);}
+.hr{height:1px;background:var(--border);margin:30px 0 26px;border:0;}
+.page-break{page-break-before:always;break-before:page;}
+
+.card{border:1px solid var(--border);border-radius:12px;padding:16px 19px;margin:13px 0;background:var(--surface);}
+.card.tint{background:var(--surface-2);border-color:var(--border);}
+.card.flag{border-left:3px solid var(--signal);border-radius:6px 12px 12px 6px;}
+.card h4{color:var(--brand-deep);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:13px 0;}
+.grid2 > .card{margin:0;}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:13px 0;}
+.grid3 > .card{margin:0;}
+.avoid{page-break-inside:avoid;break-inside:avoid;}
+
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.2px;}
+th{
+  background:var(--surface-3);color:var(--brand-deep);text-align:left;
+  padding:8px 10px;font-size:10.8px;letter-spacing:.09em;text-transform:uppercase;font-weight:800;
+  border-bottom:1px solid var(--border-strong);
+}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--ink-2);}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+tbody tr:last-child td{border-bottom:0;}
+.table-wrap{overflow-x:auto;}
+tr.total td{font-weight:800;color:var(--ink);background:var(--surface-2);border-top:1px solid var(--border-strong);}
+
+code.snippet{
+  display:block;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;
+  padding:10px 13px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.4px;line-height:1.65;color:var(--ink-2);overflow-x:auto;white-space:pre-wrap;word-break:break-all;
+  margin:8px 0;
+}
+code.snippet b{color:var(--signal);font-weight:700;}
+
+/* ─────────── Cadena de conversión ─────────── */
+.chain{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;align-items:stretch;margin:14px 0 4px;}
+.chain .step{
+  position:relative;border:1px solid var(--border);border-radius:9px;padding:9px 10px;background:var(--surface-2);
+}
+.chain .step + .step::before{
+  content:"";position:absolute;left:-6px;top:50%;width:5px;height:5px;
+  border-top:1.5px solid var(--border-strong);border-right:1.5px solid var(--border-strong);
+  transform:translateY(-50%) rotate(45deg);
+}
+.chain .step .lbl{font-size:9.6px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--muted);}
+.chain .step .val{font-size:17px;font-weight:800;color:var(--brand-deep);font-variant-numeric:tabular-nums;line-height:1.3;}
+.chain .step .rate{font-size:10.3px;color:var(--muted);font-variant-numeric:tabular-nums;}
+
+/* ─────────── Mockup del dashboard ─────────── */
+.mock{
+  border:1px solid var(--border-strong);border-radius:14px;overflow:hidden;margin:14px 0 6px;
+  background:var(--surface);
+}
+.mock .bar{
+  display:flex;align-items:center;gap:8px;padding:9px 14px;
+  background:var(--mockbar);color:var(--mockbar-ink);font-size:11.5px;font-weight:700;letter-spacing:.03em;
+}
+.mock .bar .dot{width:8px;height:8px;border-radius:50%;background:#7FD1B0;}
+.mock .bar .right{margin-left:auto;font-weight:500;opacity:.85;font-size:11px;}
+.mock .body{padding:15px 16px 18px;background:var(--surface-2);}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.kpi .k{font-size:9.8px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+.kpi .v{font-size:21px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;}
+.kpi .d{font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+.kpi .d.up{color:var(--good);}
+.kpi .d.down{color:var(--signal);}
+
+.chart{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 14px 11px;}
+.chart .title{font-size:12px;font-weight:800;color:var(--ink);}
+.chart .note{font-size:10.5px;color:var(--muted);margin-bottom:9px;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--muted);margin:2px 0 11px;}
+.legend .it{display:flex;align-items:center;gap:5px;}
+.swatch{width:11px;height:9px;border-radius:2px;display:inline-block;}
+.swatch.hollow{background:var(--neutral-bar);}
+
+.rows{display:flex;flex-direction:column;gap:11px;}
+.row .name{font-size:11px;font-weight:700;color:var(--ink-2);display:flex;justify-content:space-between;gap:10px;}
+.row .name .roas{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;}
+.track{margin-top:4px;display:flex;flex-direction:column;gap:3px;}
+.bar-line{display:grid;grid-template-columns:1fr 74px;align-items:center;gap:8px;}
+.bar-line .fill{display:block;height:11px;border-radius:0 3px 3px 0;min-width:2px;}
+.bar-line .fill.thin{height:6px;background:var(--neutral-bar);border-radius:0 2px 2px 0;}
+.bar-line .v{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;}
+.bar-line .v.strong{color:var(--ink);font-weight:700;}
+.axis{margin-top:10px;padding-top:6px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 74px;gap:8px;font-size:9.8px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.axis .ticks{display:flex;justify-content:space-between;}
+
+.pill{
+  display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--border-strong);color:var(--muted);
+}
+.pill.good{color:var(--good);border-color:currentColor;}
+.pill.warn{color:var(--warn);border-color:currentColor;}
+
+/* ─────────── Fases ─────────── */
+.phase{display:grid;grid-template-columns:74px 1fr;gap:14px;padding:13px 0;border-bottom:1px solid var(--border);}
+.phase:last-of-type{border-bottom:0;}
+.phase .when{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;font-weight:700;
+  color:var(--signal);letter-spacing:-.01em;padding-top:2px;
+}
+.phase h4{margin-bottom:2px;}
+.phase p{margin:2px 0 0;font-size:12.4px;color:var(--ink-2);}
+
+/* ─────────── Precio ─────────── */
+.price{
+  display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0 6px;
+}
+.price .box{
+  border:1px solid var(--border-strong);border-radius:14px;padding:20px 22px;background:var(--surface-2);text-align:center;
+}
+.price .box.main{border:2px solid var(--brand);background:var(--surface-3);}
+.price .box .k{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted);}
+.price .box .amt{font-size:38px;font-weight:800;color:var(--brand-deep);line-height:1.05;margin:6px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+.price .box .per{font-size:12.5px;color:var(--muted);font-weight:600;}
+.chk{color:var(--good);font-weight:800;}
+
+.foot{
+  margin-top:34px;padding-top:13px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:10.8px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+
+/* ─────────── Móvil ─────────── */
+@media (max-width:720px){
+  .page{padding:30px 22px 34px;}
+  .cover{padding:44px 26px;min-height:auto;}
+  .cover .meta{grid-template-columns:1fr;gap:14px;padding-top:36px;}
+  .grid2,.grid3,.kpis,.price{grid-template-columns:1fr;}
+  .chain{grid-template-columns:repeat(2,1fr);}
+  .chain .step + .step::before{display:none;}
+  .phase{grid-template-columns:1fr;gap:2px;}
+}
+
+/* ─────────── Impresión / PDF ─────────── */
+@media print{
+  @page{size:A4;margin:0;}
+  :root{
+    --ground:#FFFFFF;--surface:#FFFFFF;--surface-2:#F3F8FB;--surface-3:#E7F1F6;
+    --ink:#0D2430;--ink-2:#28454F;--muted:#5D7883;--border:#D3E3EB;--border-strong:#B4CEDA;
+    --brand:#0E6E96;--brand-deep:#0A4E6B;--signal:#C8103C;--good:#2F7D52;--warn:#A96A12;
+    --c1:#0F5E8C;--c2:#D9662B;--c3:#8156B5;--c4:#3F8F5B;--neutral-bar:#9FB6C0;
+    --mockbar:#0A4E6B;--mockbar-ink:#EAF6FB;--shadow:none;
+  }
+  html,body{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;background:#fff;}
+  .doc{max-width:none;box-shadow:none;}
+  .cover{min-height:297mm;}
+  .no-print{display:none !important;}
+}
+
+/* ─────────── Barra de acciones (no se imprime) ─────────── */
+.toolbar{
+  position:sticky;top:0;z-index:50;display:flex;justify-content:flex-end;gap:8px;
+  padding:9px 16px;background:var(--mockbar);
+}
+.toolbar button{
+  font:inherit;font-size:12px;font-weight:700;border:1px solid rgba(255,255,255,.4);
+  background:transparent;color:var(--mockbar-ink);border-radius:8px;padding:7px 14px;cursor:pointer;
+}
+.toolbar button:hover{background:rgba(255,255,255,.12);}
+.toolbar button:focus-visible{outline:2px solid #7FD1B0;outline-offset:2px;}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button type="button" onclick="window.print()">Exportar a PDF</button>
+</div>
+
+<div class="doc">
+
+<!-- ══════════════ PORTADA ══════════════ -->
+<section class="cover">
+  <div class="rule"></div>
+  <div class="eyebrow">Propuesta de servicio · Agosto 2026</div>
+  <h1>Dashboard de pacientes y canales digitales</h1>
+  <p class="sub">Saber cuánto invierte cada canal, cuántos pacientes trae de verdad
+     y cuánto factura cada uno. En un solo panel, actualizado todos los días.</p>
+  <div class="meta">
+    <div>
+      <div class="k">Preparado para</div>
+      <div class="v">Dental Life Panamá</div>
+      <div class="v" style="font-weight:400;opacity:.85">Dr. Mario A. Chalhoub M. · Director clínico</div>
+    </div>
+    <div>
+      <div class="k">Preparado por</div>
+      <div class="v">[Nombre / empresa del proveedor]</div>
+      <div class="v" style="font-weight:400;opacity:.85">[correo] · [teléfono]</div>
+    </div>
+    <div>
+      <div class="k">Alcance</div>
+      <div class="v" style="font-weight:400;opacity:.9">Web + Google Ads, YouTube, Instagram y Facebook</div>
+    </div>
+    <div>
+      <div class="k">Validez de la oferta</div>
+      <div class="v" style="font-weight:400;opacity:.9">30 días a partir de la fecha</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 1 ══════════════ -->
+<section class="page">
+  <h2 class="sec"><span class="n">01</span> El problema</h2>
+  <p class="lead">Hoy la clínica invierte en cuatro canales digitales y recibe pacientes todos los meses.
+     Lo que no existe es la línea que conecta una cosa con la otra.</p>
+
+  <p>Cada plataforma reporta sus propias métricas —impresiones, clics, "conversaciones iniciadas"— y todas
+     se atribuyen el mismo resultado. Ninguna sabe qué pasó después: si esa persona agendó, si asistió,
+     qué tratamiento se hizo y cuánto pagó. Esa parte ocurre en WhatsApp, en el teléfono y en la recepción.</p>
+
+  <div class="card flag">
+    <h4>Cuatro preguntas que hoy no tienen respuesta con números</h4>
+    <ul>
+      <li>De los pacientes nuevos de este mes, <strong>¿cuántos vinieron de cada canal?</strong></li>
+      <li>¿Cuánto cuesta conseguir <strong>un paciente</strong> (no un clic, no un mensaje) en cada canal?</li>
+      <li>¿Qué canal trae ortodoncia e implantes y cuál trae solo consultas de limpieza?
+          <span class="muted">El ticket no es el mismo, así que el ROI tampoco.</span></li>
+      <li>Si hay que mover presupuesto entre canales, <strong>¿de cuál se quita y a cuál se pasa?</strong></li>
+    </ul>
+  </div>
+
+  <p>Sin esas respuestas, el presupuesto se reparte por intuición y por lo que reporta cada plataforma
+     —que siempre reporta bien de sí misma—. Esta propuesta resuelve exactamente eso.</p>
+
+  <hr class="hr">
+
+  <h2 class="sec"><span class="n">02</span> Qué proponemos</h2>
+  <p class="lead">Un sistema en cuatro bloques que rastrea al paciente desde el anuncio hasta el
+     tratamiento facturado, y lo muestra en un panel web propio de la clínica.</p>
+
+  <div class="grid2">
+    <div class="card avoid">
+      <h4>1 · Instrumentación</h4>
+      <p class="muted" style="font-size:12.3px;margin:0">Etiquetamos la web, los anuncios y los enlaces de WhatsApp
+        para que cada visita traiga consigo de dónde vino.</p>
+    </div>
+    <div class="card avoid">
+      <h4>2 · Registro de origen</h4>
+      <p class="muted" style="font-size:12.3px;margin:0">Una planilla simple donde recepción marca el origen y el
+        estado de cada paciente nuevo: contactó, agendó, asistió, se trató, facturó.</p>
+    </div>
+    <div class="card avoid">
+      <h4>3 · Conexión de plataformas</h4>
+      <p class="muted" style="font-size:12.3px;margin:0">La inversión y las métricas de Google&nbsp;Ads, YouTube,
+        Instagram y Facebook se descargan solas todos los días. Nadie copia y pega nada.</p>
+    </div>
+    <div class="card avoid">
+      <h4>4 · Dashboard</h4>
+      <p class="muted" style="font-size:12.3px;margin:0">Un panel web con contraseña: inversión, pacientes,
+        ingreso atribuido, ROI y costo por paciente, por canal y por campaña.</p>
+    </div>
+  </div>
+
+  <div class="card tint">
+    <h4>La idea en una frase</h4>
+    <p style="margin:0">Que al cerrar el mes usted pueda decir, con números:
+      <em>"Google Ads me costó B/.450 y me trajo 14 pacientes que facturaron B/.3,850.
+      Facebook me costó B/.260 y me trajo 6 que facturaron B/.1,180."</em></p>
+  </div>
+</section>
+
+<!-- ══════════════ 3 ══════════════ -->
+<section class="page page-break">
+  <h2 class="sec"><span class="n">03</span> Cómo se rastrea de dónde viene cada paciente</h2>
+  <p class="lead">Este es el corazón del trabajo. La cadena tiene cinco eslabones y cada uno cubre
+     una fuga distinta.</p>
+
+  <h3>a. Enlaces etiquetados en todos los anuncios</h3>
+  <p>Cada anuncio, publicación y enlace en biografía sale con etiquetas UTM estandarizadas.
+     Así la web sabe, sin ambigüedad, de qué canal, campaña y anuncio llegó cada visita.</p>
+  <code class="snippet">dentallifepanama.com/ortodoncia?<b>utm_source</b>=instagram&amp;<b>utm_medium</b>=paid&amp;<b>utm_campaign</b>=ortodoncia-adultos&amp;<b>utm_content</b>=video-antes-despues</code>
+
+  <h3>b. Medición en la web (GA4 + Google Tag Manager)</h3>
+  <p>Instalamos y configuramos el etiquetado del sitio para registrar lo que realmente importa:
+     clic en WhatsApp, clic en llamar, envío del formulario de cita, y qué página de servicio
+     estaba viendo la persona cuando lo hizo (ortodoncia, muelas del juicio, periodoncia…).</p>
+
+  <h3>c. WhatsApp con código de referencia <span class="pill">clave</span></h3>
+  <p>El botón verde de WhatsApp es hoy la puerta principal de la clínica, y también el punto donde
+     se pierde el rastro: la conversación llega sin origen. Lo resolvemos haciendo que el enlace
+     abra el chat con un <strong>mensaje prellenado que incluye un código corto</strong>, distinto para
+     cada canal y campaña:</p>
+  <code class="snippet">wa.me/50761304046?text=Hola,%20quiero%20información%20sobre%20ortodoncia%20<b>(ref:%20IG-4821)</b></code>
+  <p>Recepción ve <span class="mono">IG-4821</span> en el primer mensaje y solo tiene que copiarlo en la ficha
+     del paciente. Ese código es el que amarra la conversación con el anuncio que la produjo.</p>
+
+  <h3>d. Pregunta de respaldo en recepción</h3>
+  <p>Para quien llega por teléfono, referido o recordando el nombre de la clínica, la ficha incluye
+     el campo <em>"¿cómo nos encontró?"</em> con opciones fijas. Es el respaldo para lo que la tecnología
+     no alcanza —y sirve además para medir cuánto se está escapando.</p>
+
+  <h3>e. Conversiones de vuelta a las plataformas</h3>
+  <p>Cuando un paciente se registra como tratado, esa conversión se puede devolver a Google&nbsp;Ads y
+     a Meta (Conversions API). No es solo reportería: es lo que permite a los algoritmos optimizar
+     hacia <strong>pacientes</strong> y no hacia clics baratos.</p>
+
+  <h3 style="margin-top:26px">La cadena completa</h3>
+  <div class="chain">
+    <div class="step"><div class="lbl">Impresión</div><div class="val tnum">148,000</div><div class="rate">&nbsp;</div></div>
+    <div class="step"><div class="lbl">Clic</div><div class="val tnum">2,940</div><div class="rate">2.0% CTR</div></div>
+    <div class="step"><div class="lbl">Conversación</div><div class="val tnum">214</div><div class="rate">7.3% del clic</div></div>
+    <div class="step"><div class="lbl">Cita</div><div class="val tnum">96</div><div class="rate">45%</div></div>
+    <div class="step"><div class="lbl">Asistencia</div><div class="val tnum">71</div><div class="rate">74%</div></div>
+    <div class="step"><div class="lbl">Tratamiento</div><div class="val tnum">32</div><div class="rate">45%</div></div>
+  </div>
+  <p class="muted" style="font-size:11px">Ejemplo ilustrativo de un mes, para explicar la estructura. Los porcentajes
+     reales de la clínica se conocen al terminar el primer mes de medición — y son, en sí mismos, uno de los
+     hallazgos más útiles del sistema: muestran en qué eslabón se pierde el dinero.</p>
+</section>
+
+<!-- ══════════════ 4 ══════════════ -->
+<section class="page page-break">
+  <h2 class="sec"><span class="n">04</span> El dashboard</h2>
+  <p class="lead">Un panel web con la identidad de Dental Life, protegido con contraseña,
+     accesible desde la computadora de la clínica o el celular.</p>
+
+  <div class="mock avoid">
+    <div class="bar"><span class="dot"></span> Dental Life · Panel de marketing
+      <span class="right">Julio 2026 · actualizado hoy 6:00 a.m.</span></div>
+    <div class="body">
+      <div class="kpis">
+        <div class="kpi"><div class="k">Inversión</div><div class="v tnum">B/.1,210</div><div class="d muted tnum">+8% vs. junio</div></div>
+        <div class="kpi"><div class="k">Pacientes nuevos</div><div class="v tnum">32</div><div class="d up tnum">+6 vs. junio</div></div>
+        <div class="kpi"><div class="k">Ingreso atribuido</div><div class="v tnum">B/.7,790</div><div class="d up tnum">+21%</div></div>
+        <div class="kpi"><div class="k">ROAS</div><div class="v tnum">6.4×</div><div class="d up tnum">+0.7</div></div>
+      </div>
+
+      <div class="chart">
+        <div class="title">Inversión e ingreso atribuido por canal</div>
+        <div class="note">Julio 2026 · balboas</div>
+        <div class="legend">
+          <span class="it"><span class="swatch" style="background:var(--c1)"></span> Ingreso atribuido (color por canal)</span>
+          <span class="it"><span class="swatch hollow"></span> Inversión</span>
+        </div>
+        <div class="rows">
+          <div class="row">
+            <div class="name"><span>Google Ads · búsqueda</span><span class="roas">ROAS 8.6× · 14 pacientes · B/.32 por paciente</span></div>
+            <div class="track">
+              <div class="bar-line"><span class="fill" style="width:96.3%;background:var(--c1)"></span><span class="v strong">B/.3,850</span></div>
+              <div class="bar-line"><span class="fill thin" style="width:11.3%"></span><span class="v">B/.450</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name"><span>Instagram</span><span class="roas">ROAS 7.0× · 9 pacientes · B/.36 por paciente</span></div>
+            <div class="track">
+              <div class="bar-line"><span class="fill" style="width:56.0%;background:var(--c3)"></span><span class="v strong">B/.2,240</span></div>
+              <div class="bar-line"><span class="fill thin" style="width:8.0%"></span><span class="v">B/.320</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name"><span>Facebook</span><span class="roas">ROAS 4.5× · 6 pacientes · B/.43 por paciente</span></div>
+            <div class="track">
+              <div class="bar-line"><span class="fill" style="width:29.5%;background:var(--c4)"></span><span class="v strong">B/.1,180</span></div>
+              <div class="bar-line"><span class="fill thin" style="width:6.5%"></span><span class="v">B/.260</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name"><span>YouTube</span><span class="roas">ROAS 2.9× · 3 pacientes · B/.60 por paciente</span></div>
+            <div class="track">
+              <div class="bar-line"><span class="fill" style="width:13.0%;background:var(--c2)"></span><span class="v strong">B/.520</span></div>
+              <div class="bar-line"><span class="fill thin" style="width:4.5%"></span><span class="v">B/.180</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="axis"><span class="ticks"><span>0</span><span>B/.2,000</span><span>B/.4,000</span></span><span></span></div>
+      </div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:11px">Vista de ejemplo con datos ilustrativos, para mostrar la estructura del panel.
+     Las cifras reales salen de la operación de la clínica.</p>
+
+  <h3>Las cinco vistas del panel</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:30%">Vista</th><th>Qué responde</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Resumen del mes</strong></td><td>Inversión total, pacientes nuevos, ingreso atribuido, ROAS y ROI, con la comparación contra el mes anterior.</td></tr>
+      <tr><td><strong>Por canal</strong></td><td>Google Ads, YouTube, Instagram y Facebook lado a lado: costo por conversación, costo por cita, costo por paciente e ingreso generado.</td></tr>
+      <tr><td><strong>Por campaña y anuncio</strong></td><td>Dentro de cada canal, qué campaña específica trae pacientes y cuál solo consume presupuesto.</td></tr>
+      <tr><td><strong>Por tratamiento</strong></td><td>Qué canal trae ortodoncia, implantes, muelas del juicio o limpieza. Es la vista que más cambia las decisiones, porque el ticket es muy distinto.</td></tr>
+      <tr><td><strong>Embudo</strong></td><td>Dónde se cae la gente: ¿no hacen clic, no escriben, no agendan, o agendan y no asisten? Cada eslabón se arregla distinto.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card tint avoid">
+    <h4>Además</h4>
+    <ul style="margin-bottom:0">
+      <li><strong>Reporte mensual en PDF</strong> con la identidad de Dental Life, generado y enviado automáticamente.</li>
+      <li><strong>Alertas</strong> cuando una campaña supera el costo por paciente que la clínica defina como límite.</li>
+      <li><strong>Histórico</strong> mes a mes desde el arranque, para comparar temporadas.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════ 5 ══════════════ -->
+<section class="page page-break">
+  <h2 class="sec"><span class="n">05</span> Los indicadores y cómo se calculan</h2>
+  <p class="lead">Todo indicador del panel se define aquí, sin cajas negras. Si la clínica prefiere otra
+     definición, se ajusta antes de arrancar.</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:26%">Indicador</th><th style="width:38%">Cálculo</th><th>Para qué sirve</th></tr></thead>
+    <tbody>
+      <tr><td><strong>CPL</strong><br><span class="muted">costo por conversación</span></td><td class="mono">inversión ÷ conversaciones</td><td>Qué tan barato es hacer que alguien escriba o llame.</td></tr>
+      <tr><td><strong>CPC</strong><br><span class="muted">costo por cita agendada</span></td><td class="mono">inversión ÷ citas</td><td>Separa el interés real del clic curioso.</td></tr>
+      <tr><td><strong>CPP</strong><br><span class="muted">costo por paciente</span></td><td class="mono">inversión ÷ pacientes tratados</td><td><strong>El número que importa.</strong> Lo que cuesta cada paciente que sí se sentó en el sillón.</td></tr>
+      <tr><td><strong>Ticket promedio</strong></td><td class="mono">ingreso ÷ pacientes</td><td>Muestra por qué un canal caro puede ser el más rentable.</td></tr>
+      <tr><td><strong>Ingreso atribuido</strong></td><td class="mono">suma de lo facturado por los pacientes de ese canal</td><td>El ingreso real del período, sin proyecciones.</td></tr>
+      <tr><td><strong>ROAS</strong></td><td class="mono">ingreso atribuido ÷ inversión</td><td>Cuántos balboas entran por cada balboa invertido.</td></tr>
+      <tr><td><strong>ROI</strong></td><td class="mono">(ingreso atribuido − inversión) ÷ inversión</td><td>El retorno neto sobre la inversión publicitaria, en porcentaje.</td></tr>
+      <tr><td><strong>Cobertura de origen</strong></td><td class="mono">pacientes con origen identificado ÷ pacientes nuevos</td><td>La honestidad del sistema: qué porcentaje del total sí sabemos de dónde vino.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card flag avoid">
+    <h4>Dos decisiones que hay que tomar juntos</h4>
+    <p><strong>Ingreso facturado o ingreso del plan.</strong> Un caso de ortodoncia se cobra en cuotas durante 18 o 24 meses.
+      Se puede medir contra lo cobrado en el mes (conservador) o contra el valor total del plan aceptado (optimista).
+      Recomendamos <strong>registrar ambos</strong> y usar el valor del plan para comparar canales, porque es lo que
+      refleja el valor real que trajo el anuncio.</p>
+    <p style="margin-bottom:0"><strong>Ventana de atribución.</strong> Una persona puede ver el anuncio hoy y agendar en seis semanas.
+      Proponemos una ventana de <strong>90 días</strong> y atribución al <strong>último clic identificable</strong>, que es
+      simple de explicar y de auditar. El panel muestra aparte los casos con más de un contacto previo.</p>
+  </div>
+
+  <hr class="hr">
+
+  <h2 class="sec"><span class="n">06</span> Alcance, límites y datos</h2>
+
+  <h3>Lo que el sistema no hace</h3>
+  <ul>
+    <li><strong>No sustituye al software clínico ni al expediente.</strong> Es una herramienta de marketing:
+        registra origen, estado y monto, no historia clínica.</li>
+    <li><strong>No logra 100% de atribución, y nadie puede.</strong> Bloqueadores, cambios de dispositivo,
+        privacidad de iOS y el boca a boca dejan siempre un porcentaje sin identificar.
+        <strong>La meta comprometida es 80% o más de los pacientes nuevos con origen identificado</strong>
+        al segundo mes de operación; el resto queda visible como "origen no identificado", nunca repartido a la fuerza.</li>
+    <li><strong>No maneja las campañas.</strong> Esta propuesta es de medición. La gestión de pauta se puede
+        cotizar aparte si la clínica lo desea.</li>
+  </ul>
+
+  <h3>Datos y privacidad</h3>
+  <p>El registro guarda lo mínimo necesario: un identificador de paciente, la fecha, el canal de origen,
+     el tratamiento y el monto. No requiere diagnósticos ni datos clínicos. La información se aloja en la
+     cuenta institucional de Google de la clínica, con acceso restringido y bitácora de cambios, conforme a la
+     <strong>Ley 81 de 2019</strong> de protección de datos personales de Panamá.</p>
+
+  <h3>Lo que necesitamos de la clínica</h3>
+  <div class="grid2">
+    <div class="card avoid" style="margin:0">
+      <h4>Accesos</h4>
+      <ul style="margin-bottom:0;font-size:12.3px">
+        <li>Google Ads (acceso de administrador)</li>
+        <li>Meta Business Suite (Facebook e Instagram)</li>
+        <li>Canal de YouTube y Google Analytics, si ya existen</li>
+        <li>Panel de administración de dentallifepanama.com</li>
+        <li>Cuenta de Google institucional de la clínica</li>
+      </ul>
+    </div>
+    <div class="card avoid" style="margin:0">
+      <h4>Información y colaboración</h4>
+      <ul style="margin-bottom:0;font-size:12.3px">
+        <li>Lista de servicios con su ticket promedio</li>
+        <li>Inversión mensual actual por canal</li>
+        <li><strong>Una persona de recepción</strong> como contacto, y 45 minutos de capacitación</li>
+        <li>Un contacto para aprobar cambios en la web</li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted" style="font-size:11.5px">El único esfuerzo continuo de la clínica es de recepción:
+     marcar el origen y el estado de cada paciente nuevo. Son unos 20 segundos por paciente,
+     y es lo que sostiene todo lo demás.</p>
+</section>
+
+<!-- ══════════════ 7 ══════════════ -->
+<section class="page page-break">
+  <h2 class="sec"><span class="n">07</span> Plan de implementación</h2>
+  <p class="lead">Seis semanas desde la firma hasta el panel operando con datos reales.
+     Las semanas indican el orden de trabajo, no días exactos.</p>
+
+  <div class="phase avoid">
+    <div class="when">Sem. 1</div>
+    <div>
+      <h4>Diagnóstico y accesos</h4>
+      <p>Revisión de lo que ya existe (etiquetas, píxeles, cuentas), inventario de campañas activas,
+         definición de servicios y tickets. <strong>Entregable:</strong> mapa del punto de partida y
+         plan de nomenclatura de campañas y UTMs.</p>
+    </div>
+  </div>
+  <div class="phase avoid">
+    <div class="when">Sem. 1–2</div>
+    <div>
+      <h4>Instrumentación de la web y los anuncios</h4>
+      <p>Google Tag Manager y GA4 en dentallifepanama.com, eventos de WhatsApp, llamada y formulario,
+         enlaces trazables por canal, píxel de Meta y conversiones de Google Ads.
+         <strong>Entregable:</strong> medición funcionando y verificada en el sitio.</p>
+    </div>
+  </div>
+  <div class="phase avoid">
+    <div class="when">Sem. 3</div>
+    <div>
+      <h4>Registro de pacientes y capacitación de recepción</h4>
+      <p>Puesta en marcha de la ficha de origen y estados, con el flujo adaptado a cómo trabaja hoy
+         la recepción. <strong>Entregable:</strong> registro en uso y personal capacitado.</p>
+    </div>
+  </div>
+  <div class="phase avoid">
+    <div class="when">Sem. 4–5</div>
+    <div>
+      <h4>Conexión de plataformas y dashboard v1</h4>
+      <p>Descarga automática diaria de inversión y métricas de Google Ads, Meta y YouTube; construcción
+         del panel con las cinco vistas. <strong>Entregable:</strong> dashboard en línea, con contraseña.</p>
+    </div>
+  </div>
+  <div class="phase avoid">
+    <div class="when">Sem. 6</div>
+    <div>
+      <h4>Calibración, reporte y entrega</h4>
+      <p>Cruce del primer mes contra los registros de la clínica para verificar que los números cuadran,
+         ajuste de definiciones, activación del reporte mensual automático y sesión de entrega con la dirección.
+         <strong>Entregable:</strong> sistema operando y primer reporte.</p>
+    </div>
+  </div>
+
+  <div class="card tint avoid">
+    <h4>Después del arranque</h4>
+    <p style="margin-bottom:0">Operación mensual: monitoreo de que los datos sigan entrando bien, reporte mensual,
+       ajustes de campañas y etiquetas cuando la clínica lance algo nuevo, y una <strong>reunión mensual de 30 minutos</strong>
+       para revisar los números y decidir dónde mover el presupuesto.</p>
+  </div>
+
+  <hr class="hr">
+
+  <h2 class="sec"><span class="n">08</span> Inversión</h2>
+
+  <div class="price">
+    <div class="box">
+      <div class="k">Implementación</div>
+      <div class="amt">B/.1,450</div>
+      <div class="per">pago único · semanas 1 a 6</div>
+    </div>
+    <div class="box main">
+      <div class="k">Operación</div>
+      <div class="amt">B/.350</div>
+      <div class="per">por mes · todo incluido</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:11.5px;text-align:center;margin-top:0">
+     La implementación se factura 50% al iniciar y 50% con la entrega. La mensualidad comienza el mes
+     siguiente a la entrega. No incluye la inversión publicitaria, que la clínica paga directamente a cada plataforma.</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:34%">La mensualidad incluye</th><th>Detalle</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chk">✓</span> <strong>Panel en línea 24/7</strong></td><td>Dashboard con la identidad de Dental Life, accesible desde cualquier dispositivo con contraseña.</td></tr>
+      <tr><td><span class="chk">✓</span> <strong>Datos actualizados a diario</strong></td><td>Descarga automática de inversión y métricas de los cuatro canales, sin trabajo manual.</td></tr>
+      <tr><td><span class="chk">✓</span> <strong>Reporte mensual en PDF</strong></td><td>Generado y enviado automáticamente a la dirección de la clínica.</td></tr>
+      <tr><td><span class="chk">✓</span> <strong>Mantenimiento del etiquetado</strong></td><td>Cuando se lanza una campaña o cambia la web, las etiquetas se actualizan y se verifican.</td></tr>
+      <tr><td><span class="chk">✓</span> <strong>Alojamiento, respaldos y monitoreo</strong></td><td>Infraestructura, copias de seguridad y vigilancia de que los datos sigan entrando correctamente.</td></tr>
+      <tr><td><span class="chk">✓</span> <strong>Soporte y reunión mensual</strong></td><td>Atención por WhatsApp o correo y 30 minutos al mes de revisión de resultados.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Opcionales</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:52%">Servicio adicional</th><th class="num">Costo</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Números de teléfono rastreables</strong><br><span class="muted">Un número distinto por canal para atribuir también las llamadas.</span></td><td class="num">B/.55 / mes</td></tr>
+      <tr><td><strong>Canal adicional</strong><br><span class="muted">TikTok, Waze, Google Business Profile u otro.</span></td><td class="num">B/.60 / mes</td></tr>
+      <tr><td><strong>Integración con el software clínico</strong><br><span class="muted">Si el sistema de la clínica permite exportar; se cotiza tras revisarlo.</span></td><td class="num">a cotizar</td></tr>
+      <tr><td><strong>Gestión de campañas</strong><br><span class="muted">Manejo de la pauta en los cuatro canales.</span></td><td class="num">a cotizar</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="muted" style="font-size:11.5px">Precios en balboas, sin ITBMS. Contrato mensual, sin permanencia mínima:
+     puede cancelarse con 30 días de aviso.</p>
+</section>
+
+<!-- ══════════════ 9 ══════════════ -->
+<section class="page page-break">
+  <h2 class="sec"><span class="n">09</span> Propiedad y autonomía</h2>
+  <p class="lead">La clínica es dueña de su información y de sus cuentas. El sistema que las procesa
+     se brinda como servicio con una mensualidad.</p>
+
+  <div class="grid2">
+    <div class="card avoid" style="margin:0">
+      <h4>Propiedad de Dental Life</h4>
+      <ul style="font-size:12.3px">
+        <li>Las cuentas de Google Ads, Meta, YouTube y Analytics.</li>
+        <li>El sitio dentallifepanama.com y su dominio.</li>
+        <li>Todos los datos: pacientes, orígenes, montos e histórico.</li>
+      </ul>
+      <p class="muted" style="font-size:12px;margin-bottom:0">Están a nombre de la clínica, son exportables en
+        cualquier momento y permanecen con ella incluso si el servicio termina.</p>
+    </div>
+    <div class="card avoid" style="margin:0">
+      <h4>Se brinda como servicio</h4>
+      <ul style="font-size:12.3px">
+        <li>El dashboard y su código.</li>
+        <li>Las conexiones automáticas con las plataformas.</li>
+        <li>Alojamiento, mantenimiento, respaldos y soporte.</li>
+      </ul>
+      <p class="muted" style="font-size:12px;margin-bottom:0">El panel es propiedad del proveedor; la clínica tiene
+        acceso de uso mientras la mensualidad esté vigente. Al terminar, los datos se entregan completos.</p>
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <h2 class="sec"><span class="n">10</span> Cómo sabremos que funcionó</h2>
+  <p class="lead">Tres compromisos medibles, revisables a los 90 días.</p>
+  <div class="grid3">
+    <div class="card avoid" style="margin:0;text-align:center">
+      <div class="amt" style="font-size:30px;font-weight:800;color:var(--brand-deep);line-height:1.1">80%</div>
+      <p style="font-size:12.2px;margin:4px 0 0">de los pacientes nuevos con <strong>origen identificado</strong>, al segundo mes.</p>
+    </div>
+    <div class="card avoid" style="margin:0;text-align:center">
+      <div class="amt" style="font-size:30px;font-weight:800;color:var(--brand-deep);line-height:1.1">4</div>
+      <p style="font-size:12.2px;margin:4px 0 0">canales con <strong>ROI calculado</strong> cada mes, sin trabajo manual de la clínica.</p>
+    </div>
+    <div class="card avoid" style="margin:0;text-align:center">
+      <div class="amt" style="font-size:30px;font-weight:800;color:var(--brand-deep);line-height:1.1">30&nbsp;min</div>
+      <p style="font-size:12.2px;margin:4px 0 0">al mes es todo lo que la dirección necesita para <strong>decidir el presupuesto</strong>.</p>
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <h2 class="sec"><span class="n">11</span> Próximos pasos</h2>
+  <ol style="padding-left:19px">
+    <li><strong>Reunión de 30 minutos</strong> para revisar esta propuesta y ajustar lo que haga falta.</li>
+    <li><strong>Confirmación</strong> del alcance y firma del acuerdo de servicio.</li>
+    <li><strong>Entrega de accesos</strong> a las plataformas — el arranque comienza el mismo día.</li>
+  </ol>
+
+  <div class="card tint avoid" style="margin-top:20px">
+    <h4>Para conversar</h4>
+    <p style="margin-bottom:0">[Nombre del proveedor] · [correo] · [teléfono]<br>
+      <span class="muted">Con gusto podemos hacer una demostración del panel con datos de prueba antes de decidir.</span></p>
+  </div>
+
+  <div class="foot">
+    <span>Propuesta preparada para Dental Life Panamá</span>
+    <span>Agosto 2026 · Documento confidencial</span>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
