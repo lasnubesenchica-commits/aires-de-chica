@@ -736,12 +736,6 @@ function openEstado(clave){
   // respaldo: si el detalle aún no vino en el dashboard, lo pide al backend
   jsonp('getEstadoCuenta',{clave}).then(_renderEstado).catch(ex=>{ if(!onAuthError(ex)) alert('Error: '+ex); });
 }
-// Comparación temporal con la regla de mora anterior, para que la Junta valide el cambio.
-// Se muestran las DOS versiones en la misma tabla de siempre, en pestañas: apilar el
-// valor viejo debajo del nuevo se leía confuso.
-let CMP_VISTA='ahora';   // 'ahora' | 'antes'
-function setCmpVista(v, clave){ CMP_VISTA=v; openEstado(clave); }
-
 // Explicaciones de cada cifra del estado de cuenta, redactadas con los criterios
 // aprobados por la Junta. Se usa el tooltip NATIVO del navegador (atributo title) a
 // propósito: no deja overlays colgados como el preview del comprobante, y funciona
@@ -786,48 +780,25 @@ function _tipPagado(e,b){
   l.push('El orden lo fija la política de cobro: cuotas vencidas → cuota del mes en curso → recargos por mora.');
   return l.join('\n');
 }
-function _tipSaldo(b,prev){
+function _tipSaldo(b){
   if(b.saldoIni===undefined) return '';
-  const mo = prev ? (b.moraPrev||0) : (b.mora||0);
-  const sa = prev ? (b.saldoPrev||0) : (b.saldo||0);
-  if(prev) return `Saldo con la regla anterior.`;
-  return `Saldo anterior ${money(b.saldoIni)} + cuota ${money(b.cuota)} + recargo ${money(mo)} − pagos ${money(b.pagado)} = ${money(sa)}.\n`
+  const sa = b.saldo||0;
+  return `Saldo anterior ${money(b.saldoIni)} + cuota ${money(b.cuota)} + recargo ${money(b.mora||0)} − pagos ${money(b.pagado)} = ${money(sa)}.\n`
        + (sa<-0.009 ? 'Negativo = saldo a favor del propietario.' : '');
 }
 function _renderEstado(e){
-  const cmp = !!e.moraDifiere;                 // la cuenta cambió con la regla nueva
-  const prev = cmp && CMP_VISTA==='antes';     // se está viendo el cálculo anterior
-  const vMora  = b => prev ? (b.moraPrev||0) : (b.mora||0);
-  const vSaldo = b => prev ? (b.saldoPrev||0) : (b.saldo||0);
-  const totMora  = prev ? e.moraCargadaPrev : e.moraCargada;
-  const totSaldo = prev ? e.saldoNetoPrev   : e.saldoNeto;
+  const totMora  = e.moraCargada, totSaldo = e.saldoNeto;
   const color = totSaldo>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   // Aclara si esos recargos ya se pagaron: con saldo a favor no era evidente que la mora
   // estuviera descontada, y se leía como si hubiera quedado pendiente aparte.
   const moraPend = Number(e.mora)||0;
-  const moraNota = prev ? ''
-    : (moraPend<=0.009 ? ' <span style="color:var(--ac-ok);font-weight:600">· ya cubiertos</span>'
-      : (moraPend < (Number(e.moraCargada)||0)-0.009 ? ` <span style="color:var(--ac-coral)">· ${money(moraPend)} sin pagar</span>` : ''));
+  const moraNota = moraPend<=0.009 ? ' <span style="color:var(--ac-ok);font-weight:600">· ya cubiertos</span>'
+      : (moraPend < (Number(e.moraCargada)||0)-0.009 ? ` <span style="color:var(--ac-coral)">· ${money(moraPend)} sin pagar</span>` : '');
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.1rem">${e.nombre}</div>
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
-    ${cmp?`<div style="margin:-4px 0 12px">
-      <div class="seg" style="display:inline-flex">
-        <button type="button" class="seg-btn ${prev?'':'active'}" onclick="setCmpVista('ahora','${e.clave}')">Ahora · regla nueva</button>
-        <button type="button" class="seg-btn ${prev?'active':''}" onclick="setCmpVista('antes','${e.clave}')">Antes · regla anterior</button>
-      </div>
-      <div style="margin-top:8px;padding:10px 13px;border:1px solid var(--ac-border);border-left:3px solid ${prev?'var(--ac-muted)':'var(--ac-teal)'};border-radius:8px;background:${prev?'#fafafa':'var(--ac-teal-50)'}">
-        <div style="font-weight:700;font-size:.78rem;color:${prev?'var(--ac-muted)':'var(--ac-teal-700)'};text-transform:uppercase;letter-spacing:.03em">Cómo se calcula la mora ${prev?'en la regla anterior':'ahora'}</div>
-        <div class="muted" style="font-size:.78rem;line-height:1.55;margin-top:4px">${prev
-          ? 'Mismo cargo del 10% de la cuota íntegra, pero los pagos se imputaban <b>cuotas vencidas → recargos por mora → cuota del mes en curso</b>. Al cobrarse antes que la cuota del mes, el recargo se comía parte del pago y dejaba esa cuota corta, lo que generaba un recargo nuevo: quien debía abril y mayo y pagaba 90.00 (las dos cuotas exactas) igual se recargaba en mayo.'
-          : 'Cargo único del <b>10% de la cuota íntegra</b>, de abril en adelante, cuando al cierre del mes esa cuota sigue sin cubrirse del todo. Un abono parcial <b>no</b> reduce el recargo. Los pagos se imputan <b>cuotas vencidas → cuota del mes en curso → recargos por mora</b>: el recargo se cobra de último para que no se coma el pago y deje corta la cuota del mes, que era como la mora terminaba generando mora.'}</div>
-        <div style="font-size:.78rem;margin-top:6px">${prev
-          ? 'Vista de comparación: los saldos vigentes son los de «Ahora».'
-          : 'En esta cuenta el recargo del año pasa de <b>'+money(e.moraCargadaPrev)+'</b> a <b style="color:var(--ac-coral)">'+money(e.moraCargada)+'</b>.'}</div>
-      </div>
-    </div>`:''}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map((b,_i,_arr)=>{
       const esUltimo=_i===_arr.length-1;
@@ -837,21 +808,19 @@ function _renderEstado(e){
             ? `<a href="${vs[0]}" target="_blank" class="cprev" title="Ver comprobante" style="color:var(--ac-teal-600);font-weight:600;text-decoration:none">${money(b.pagado)} 📎</a>`+(vs.length>1?`<span class="muted" style="font-size:.68rem"> +${vs.length-1}</span>`:'')
             : money(b.pagado))
         : (b.cuota?"<span style='color:var(--ac-coral)'>0.00</span>":'—');
-      const mo=vMora(b), sa=vSaldo(b);
+      const mo=b.mora||0, sa=b.saldo||0;
       let moraCell='—';
       if(all && (mo>0.009||b.condonada)) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`;
-      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span>`+(prev?'':`<span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`);
-      else if(mo>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(mo)}</span>`+(prev?'':`<span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`);
-      // en la vista "ahora" se marcan los meses cuyo recargo aparece con la regla nueva
-      const nuevoCargo = cmp && !prev && b.mora>0.009 && !(b.moraPrev>0.009);
-      return `<tr style="${nuevoCargo?'background:#fff3e8':(sa>0.009?'background:#fff7f4':'')}"><td>${b.label}${nuevoCargo?' <span class="pill" style="font-size:.55rem;background:var(--ac-coral);color:#fff">nueva</span>':''}</td>
+      else if(b.condonada) moraCell=`<span class="muted" style="font-size:.72rem">condonada</span><span class="moraAcc"> · <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',false,event)" style="font-size:.66rem">reactivar</a></span>`;
+      else if(mo>0.009) moraCell=`<span style="color:var(--ac-coral);font-weight:600">${money(mo)}</span><span class="moraAcc"> <a href="#" onclick="condonarMora('${e.clave}','${b.ym||''}',true,event)" style="font-size:.66rem" title="Condonar la mora de este mes">condonar</a></span>`;
+      return `<tr style="${sa>0.009?'background:#fff7f4':''}"><td>${b.label}</td>
       <td class="num mCuota"${_tip(_tipCuota(e,b))}>${b.cuota?money(b.cuota):'—'}</td>
-      <td class="num"${_tip(prev?'':_tipMora(e,b,esUltimo))}>${moraCell}</td>
+      <td class="num"${_tip(_tipMora(e,b,esUltimo))}>${moraCell}</td>
       <td class="num"${_tip(_tipPagado(e,b))}>${pagadoCell}</td>
-      <td class="num"${_tip(_tipSaldo(b,prev))} style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
-    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido.${cmp?'':' La <b>mora</b> es un cargo único del 10% de la cuota íntegra cuando, al cierre del mes, esa cuota sigue sin cubrirse.'}
+      <td class="num"${_tip(_tipSaldo(b))} style="font-weight:600;${sa>0.009?'color:var(--ac-danger)':sa<-0.009?'color:var(--ac-ok)':''}">${money(sa)}</td></tr>`;}).join('')}</tbody></table>
+    <div class="muted" style="font-size:.72rem;margin:-4px 0 12px">Saldo total del mes = saldo inicial + cuota del mes + recargo por mora del mes − pago recibido. La <b>mora</b> es un cargo único del 10% de la cuota íntegra cuando, al cierre del mes, esa cuota sigue sin cubrirse.
       <b style="color:var(--ac-teal-600)">Pasa el cursor sobre cualquier monto de la tabla</b> para ver cómo se calculó.</div>
-    ${(!prev && (e.detalleSaldo||[]).length)?`<div style="border:1px solid #cfe8d8;background:#f2faf5;border-radius:10px;padding:12px 15px;margin-bottom:12px">
+    ${((e.detalleSaldo||[]).length)?`<div style="border:1px solid #cfe8d8;background:#f2faf5;border-radius:10px;padding:12px 15px;margin-bottom:12px">
       <div style="font-weight:700;font-size:.78rem;color:var(--ac-green-600,#1E8E5A);text-transform:uppercase;letter-spacing:.03em">De qué se compone el saldo</div>
       <div class="muted" style="font-size:.72rem;margin:2px 0 4px">Sólo lo que sigue <b>pendiente</b>. Lo que ya se pagó no aparece aquí.</div>
       ${(()=>{
@@ -904,11 +873,10 @@ function _renderEstado(e){
         El recargo de <b>${e.moraCubiertas.map(m=>m.label.toLowerCase()+' ('+money(m.monto)+')').join(', ')}</b> aparece en la tabla porque se cobró, pero <b style="color:var(--ac-ok)">ya está pagado</b> y por eso no suma al saldo.</div>`:''}
     </div>`:''}
     <div style="display:flex;justify-content:flex-end"><div style="min-width:260px">
-      ${totMora>0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Cargos por mora del año${moraNota}</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
-      ${cmp?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--ac-muted)"><span>${prev?'Con la regla nueva sería':'Con la regla anterior era'}</span><b>${money(prev?e.saldoNeto:e.saldoNetoPrev)}</b></div>`:''}
-      ${totSaldo<-0.009?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-totSaldo)}</b></div>`:''}
-      <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
-        <b>SALDO TOTAL${prev?' (anterior)':''}</b><b style="color:${color};font-size:1.1rem">${money(totSaldo)}</b></div>
+      ${totMora>0.009?`<div style="display:flex;justify-content:space-between;gap:14px;padding:4px 0"><span class="muted">Cargos por mora del año${moraNota}</span><b style="color:var(--ac-coral)">${money(totMora)}</b></div>`:''}
+      ${totSaldo<-0.009?`<div style="display:flex;justify-content:space-between;gap:14px;padding:4px 0"><span class="muted">Crédito a favor</span><b style="color:var(--ac-ok)">${money(-totSaldo)}</b></div>`:''}
+      <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
+        <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(totSaldo)}</b></div>
     </div></div>
     <div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}

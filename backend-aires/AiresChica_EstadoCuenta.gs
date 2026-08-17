@@ -235,9 +235,6 @@ function calcEstado(prop, pagosArr, asOf) {
   });
 
   // 3) libro de cuenta corriente con los criterios aprobados por la Junta (ago-2026).
-  //    Se corre además con el orden ANTERIOR (el recargo se cobraba antes que la cuota
-  //    del mes en curso) para poder comparar ambos en pantalla mientras la Junta valida
-  //    el cambio. La comparación es informativa: no afecta ningún saldo.
   var _sumMes = 0;
   for (var _k in pagosMes) _sumMes = _round2(_sumMes + pagosMes[_k]);
   var ctxLibro = {
@@ -247,12 +244,9 @@ function calcEstado(prop, pagosArr, asOf) {
     // el crédito de 2025 y cualquier pago fechado fuera del año entran como saldo a favor inicial
     poolIni: _round2(credito2025 + (totalPagado - _sumMes))
   };
-  var libro     = _correrLibro(ctxLibro, moraBase, moraOrden);
-  var libroPrev = _correrLibro(ctxLibro, moraBase, 'cuota');
-
-  var buckets     = libro.buckets;
-  var pool        = libro.pool;
-  var moraPrevMap = libroPrev.moraByIdx;
+  var libro   = _correrLibro(ctxLibro, moraBase, moraOrden);
+  var buckets = libro.buckets;
+  var pool    = libro.pool;
 
   // 5) totales
   var facturado = 0, saldoTotal = 0, moraCargada = 0, moraPendiente = 0;
@@ -308,21 +302,17 @@ function calcEstado(prop, pagosArr, asOf) {
   // El "Saldo total" es un único saldo corriente que ya incluye la mora del mes; positivo
   // significa que debe y negativo significa crédito a favor.
   var condonByIdx = libro.condonByIdx;
-  var prevByIdx = {};
-  libroPrev.mensual.forEach(function (r) { prevByIdx[r.idx] = r; });
 
   var mensual = [];
-  var saldoRun = saldo2025, saldoRunPrev = saldo2025, moraCargadaPrev = 0;
-  if (saldo2025 !== 0) mensual.push({ label: saldo2025 < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, mora: 0, moraPrev: 0, pagado: 0, saldo: saldoRun, saldoPrev: saldoRun, condonada: false, vouchers: [] });
+  var saldoRun = saldo2025;
+  if (saldo2025 !== 0) mensual.push({ label: saldo2025 < 0 ? 'Saldo a favor 2025' : 'Saldo 2025', cuota: 0, mora: 0, pagado: 0, saldo: saldoRun, condonada: false, vouchers: [] });
   libro.mensual.forEach(function (r) {
     if (r.mes < mesInicio) return;
-    var p = prevByIdx[r.idx] || { mora: 0, saldo: r.saldo };
-    moraCargadaPrev = _round2(moraCargadaPrev + p.mora);
-    saldoRun = r.saldo; saldoRunPrev = p.saldo;
+    saldoRun = r.saldo;
     mensual.push({
       label: AC_MESES_LARGO[r.mes - 1], ym: _ymKey(year, r.mes),
-      cuota: r.cuota, mora: r.mora, moraPrev: p.mora,
-      pagado: r.pagado, saldo: r.saldo, saldoPrev: p.saldo,
+      cuota: r.cuota, mora: r.mora,
+      pagado: r.pagado, saldo: r.saldo,
       condonada: !!condonByIdx[r.idx], vouchers: vouchersMes[r.mes] || [],
       // trazabilidad para explicar cada cifra en pantalla (tooltips del estado de cuenta)
       saldoIni: r.saldoIni, cubierto: r.cubierto, descubierto: r.descubierto,
@@ -372,9 +362,6 @@ function calcEstado(prop, pagosArr, asOf) {
     saldoNeto: saldoNeto,          // saldo total con signo: positivo = debe; negativo = crédito a favor
     detalleSaldo: detalleSaldo,    // renglones que componen el saldo (cuotas y moras pendientes)
     moraCubiertas: moraCubiertas,  // recargos ya pagados: no suman al saldo, pero se muestran para que no parezcan desaparecidos
-    // comparación con la regla anterior de mora (informativa, para validar el cambio)
-    moraCargadaPrev: moraCargadaPrev, saldoNetoPrev: saldoRunPrev,
-    moraDifiere: Math.abs(_round2(moraCargada - moraCargadaPrev)) > 0.009,
     creditoAFavor: creditoAFavor,
     moraOrden: moraOrden, moraBase: moraBase, moraPct: cfg.moraPct, moraCrece: moraCrece,
     moraCondon: String(prop.moraCondon || ''), moraCondonAll: condon.all,
@@ -531,7 +518,6 @@ function buildDashboard(asOf) {
                cobradoMensual: cobradoMensualByClave[e.clave] || [0,0,0,0,0,0,0,0,0,0,0,0],
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, saldoNeto: e.saldoNeto, creditoAFavor: e.creditoAFavor,
-               moraCargadaPrev: e.moraCargadaPrev, saldoNetoPrev: e.saldoNetoPrev, moraDifiere: e.moraDifiere,
                detalleSaldo: e.detalleSaldo, moraCubiertas: e.moraCubiertas,
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
