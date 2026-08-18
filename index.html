@@ -215,10 +215,20 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
    entra el pago (y por tanto si esa cuota genera recargo). */
 .pgTable > tbody > tr > td { padding:6px 4px; border-bottom:1px solid var(--ac-border); }
 .pgTable > tbody > tr:last-child > td { border-bottom:0; }
-.pgTable input[type=date] { font:inherit; min-height:0; padding:3px 5px; width:auto;
-                            border:1px solid var(--ac-border); border-radius:6px; background:#fff; color:inherit; }
-.pgTable input[type=date]:hover { border-color:var(--ac-teal); }
-.pgTable input[type=date]:disabled { opacity:.5; }
+.pgTable input[type=date], .pgTable input[type=number] {
+  font:inherit; min-height:0; padding:3px 5px; width:auto;
+  border:1px solid var(--ac-border); border-radius:6px; background:#fff; color:inherit; }
+.pgTable input:hover { border-color:var(--ac-teal); }
+.pgTable input:disabled { opacity:.5; }
+/* Monto: el "B/." va fuera del campo para que el número quede alineado y editable solo. */
+.pgTable .pgMonto { display:inline-flex; align-items:baseline; gap:4px; }
+.pgTable .pgSim { color:var(--ac-muted); font-size:.72rem; }
+.pgTable input[type=number] { width:88px; text-align:right; font-weight:700;
+                              font-variant-numeric:tabular-nums; -moz-appearance:textfield; }
+/* Sin flechitas: evita que un giro de rueda o un clic distraído cambie un monto. */
+.pgTable input[type=number]::-webkit-outer-spin-button,
+.pgTable input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.pgTable td.acts { padding-left:10px; }
 .modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px; }
 .modal-actions .is-condonar { color:var(--ac-coral); border-color:var(--ac-coral); }
 .modal-actions .is-reactivar { color:var(--ac-green-600); border-color:var(--ac-green-600); }
@@ -935,29 +945,42 @@ async function loadPagoList(clave){
   const oLbl={comprobante:'comprobante',manual:'manual','carga-inicial':'histórico',conciliacion:'conciliación',banco:'banco'};
   const head=`<div style="border-top:1px dashed var(--ac-border);margin-top:12px;padding-top:10px"><div style="font-weight:600;font-size:.82rem;margin-bottom:6px">Pagos registrados (${list.length})</div>`;
   if(!list.length){ box.innerHTML=head+'<div class="muted" style="font-size:.78rem">Sin pagos registrados todavía.</div></div>'; return; }
-  box.innerHTML=head+`<div class="muted" style="font-size:.72rem;margin:-2px 0 6px">La fecha decide en qué mes entra el pago: cambiarla recalcula la mora del estado de cuenta.</div>
+  // Fecha y monto son editables en línea: la fecha decide en qué mes entra el dinero
+  // y el monto cuánto alcanza a cubrir; ambos mueven la mora.
+  const tipMonto = p => p.origen==='comprobante'
+    ? 'Monto aplicado. Ojo: el comprobante original conserva su cifra; corrígelo sólo si el sistema leyó mal el voucher.'
+    : 'Monto del pago. Cambiarlo recalcula qué cuotas cubre.';
+  box.innerHTML=head+`<div class="muted" style="font-size:.72rem;margin:-2px 0 6px">Fecha y monto se editan aquí mismo: la fecha decide en qué mes entra el pago y el monto cuánto cubre, así que ambos recalculan la mora.</div>
   <table class="stack-table pgTable" style="width:100%;font-size:.8rem"><tbody>${list.map(p=>`<tr>
     <td data-label="Fecha" style="white-space:nowrap">${p.id
-      ? `<input type="date" value="${_fISO(p.fecha)}" title="Fecha con la que se aplica el pago" onchange="cambiarFechaPago('${p.id}','${clave}',this)">`
-      : `<span title="Este pago no tiene id en la hoja: no se puede editar la fecha">${_fx(p.fecha)}</span>`}</td>
-    <td data-label="Monto" style="text-align:right"><b>${money(p.monto)}</b></td>
+      ? `<input type="date" value="${_fISO(p.fecha)}" title="Fecha con la que se aplica el pago" onchange="cambiarPagoCampo('${p.id}','${clave}',this,'fecha')">`
+      : `<span title="Este pago no tiene id en la hoja: no se puede editar">${_fx(p.fecha)}</span>`}</td>
+    <td data-label="Monto" style="text-align:right">${p.id
+      ? `<span class="pgMonto"><span class="pgSim">B/.</span><input type="number" inputmode="decimal" step="0.01" min="0.01" value="${(Number(p.monto)||0).toFixed(2)}" title="${_esc(tipMonto(p))}" onchange="cambiarPagoCampo('${p.id}','${clave}',this,'monto')"></span>`
+      : `<b>${money(p.monto)}</b>`}</td>
     <td data-label="Origen" class="muted" style="font-size:.72rem;padding-left:8px">${oLbl[p.origen]||p.origen||'—'}${p.referencia?' · '+String(p.referencia).replace(/</g,'&lt;'):''}</td>
     <td class="acts" style="text-align:right"><button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarPagoManual('${p.id}','${clave}',this)">Eliminar</button></td>
   </tr>`).join('')}</tbody></table></div>`;
 }
-// Cambia la fecha de aplicación de un pago y repinta el estado de cuenta ya recalculado.
-async function cambiarFechaPago(id, clave, input){
-  const nueva=input.value, previa=input.defaultValue;
-  if(!nueva){ input.value=previa; return; }
-  if(nueva===previa) return;
+// Guarda un campo del pago (fecha o monto) y repinta el estado de cuenta ya recalculado.
+async function cambiarPagoCampo(id, clave, input, campo){
+  const previa=input.defaultValue;
+  let valor=String(input.value||'').trim();
+  if(campo==='monto'){
+    const n=Number(valor);
+    if(!(n>0)){ alert('El monto debe ser mayor que cero.'); input.value=previa; return; }
+    valor=n.toFixed(2);
+  }
+  if(!valor){ input.value=previa; return; }
+  if(valor===previa) return;
   input.disabled=true;
   try{
-    await post('actualizarPago',{id, datos:{fecha:nueva}});
+    await post('actualizarPago',{id, datos:{[campo]:valor}});
     const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
     const f=document.getElementById('pgForm'); if(f) f.style.display='block';
     loadPagoList(clave);
     if(typeof renderDash==='function') renderDash();
-    toast('Fecha actualizada · saldos y mora recalculados');
+    toast((campo==='monto'?'Monto actualizado':'Fecha actualizada')+' · saldos y mora recalculados');
   }catch(err){ input.disabled=false; input.value=previa; if(!onAuthError(err)) alert('Error: '+err); }
 }
 async function eliminarPagoManual(id, clave, btn){

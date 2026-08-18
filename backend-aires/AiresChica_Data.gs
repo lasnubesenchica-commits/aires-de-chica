@@ -674,51 +674,77 @@ function eliminarPago(id) {
 }
 
 /**
- * Corrige la fecha con la que se aplica un pago ya registrado.
+ * Corrige la fecha y/o el monto de un pago ya registrado.
  *
- * La fecha manda: el libro del estado de cuenta reparte el dinero mes a mes según
- * la fecha del pago, así que moverla recalcula la mora. Un pago que se corrige de
- * septiembre a agosto puede cubrir la cuota de agosto y evitar su recargo (y al
- * revés, atrasarlo puede generarlo). Aquí sólo se toca la fecha: monto, clave y
- * origen se conservan.
+ * Las dos cosas mueven el estado de cuenta. La FECHA manda sobre el mes: el libro
+ * reparte el dinero mes a mes según ella, así que un pago corregido de septiembre
+ * a agosto puede cubrir la cuota de agosto y evitar su recargo (y al revés,
+ * atrasarlo puede generarlo). El MONTO manda sobre cuánto alcanza a cubrir: bajarlo
+ * puede dejar la cuota descubierta y generar recargo; subirlo puede cancelarlo.
+ * Clave, propietario y origen no se tocan aquí — para eso está eliminar y volver a
+ * registrar.
  *
  * @param {string} id      id del pago (columna 'id' de la hoja de pagos)
- * @param {Object} datos   { fecha: 'AAAA-MM-DD' }
+ * @param {Object} datos   { fecha: 'AAAA-MM-DD', monto: number } — al menos uno
  */
 function actualizarPago(id, datos) {
   ensureSheets();
   id = String(id || '').trim();
   if (!id) throw new Error('Falta el id del pago.');
-  var nueva = _fechaPagoDesdeISO((datos || {}).fecha);
-  if (!nueva) throw new Error('Fecha inválida. Se espera el formato AAAA-MM-DD.');
+  datos = datos || {};
+
+  var nuevaFecha = null, nuevoMonto = null;
+  if (datos.fecha !== undefined && datos.fecha !== null && datos.fecha !== '') {
+    nuevaFecha = _fechaPagoDesdeISO(datos.fecha);
+    if (!nuevaFecha) throw new Error('Fecha inválida. Se espera el formato AAAA-MM-DD.');
+  }
+  if (datos.monto !== undefined && datos.monto !== null && datos.monto !== '') {
+    nuevoMonto = _round2(Number(datos.monto));
+    if (!(nuevoMonto > 0)) throw new Error('El monto debe ser mayor que cero.');
+    if (nuevoMonto > 100000) throw new Error('Monto fuera de rango: ' + nuevoMonto);
+  }
+  if (nuevaFecha === null && nuevoMonto === null) throw new Error('Nada que actualizar: envía fecha y/o monto.');
 
   var sh = _ss().getSheetByName(SH.PAGOS);
   if (!sh) throw new Error('No existe la hoja de pagos.');
   var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
-  var iId = h.indexOf('id'), iFe = h.indexOf('fecha'), iMes = h.indexOf('mesAplicado'), iNo = h.indexOf('notas');
-  if (iId < 0 || iFe < 0) throw new Error('La hoja de pagos no tiene las columnas id/fecha.');
+  var iId = h.indexOf('id'), iFe = h.indexOf('fecha'), iMo = h.indexOf('monto'),
+      iMes = h.indexOf('mesAplicado'), iNo = h.indexOf('notas');
+  if (iId < 0 || iFe < 0 || iMo < 0) throw new Error('La hoja de pagos no tiene las columnas id/fecha/monto.');
 
   for (var r = vals.length - 1; r >= 1; r--) {
     if (String(vals[r][iId]) !== id) continue;
-    var antes = vals[r][iFe] instanceof Date ? vals[r][iFe] : new Date(vals[r][iFe]);
-    sh.getRange(r + 1, iFe + 1).setValue(nueva);
+    var fAntes = vals[r][iFe] instanceof Date ? vals[r][iFe] : new Date(vals[r][iFe]);
+    var mAntes = _round2(vals[r][iMo]);
+    var trazas = [];
 
-    // 'mesAplicado' sólo se reescribe cuando venía en formato AAAA-MM, es decir
-    // cuando es una etiqueta derivada de la fecha. Las etiquetas escritas a mano
-    // ("Ago 2026", "Histórico…") se respetan tal cual.
-    if (iMes >= 0 && /^\d{4}-\d{2}$/.test(String(vals[r][iMes] || '').trim())) {
-      sh.getRange(r + 1, iMes + 1).setValue(_ymKey(nueva.getFullYear(), nueva.getMonth() + 1));
+    if (nuevaFecha !== null) {
+      sh.getRange(r + 1, iFe + 1).setValue(nuevaFecha);
+      trazas.push('fecha ' + _fechaCorta(fAntes) + ' → ' + _fechaCorta(nuevaFecha));
+      // 'mesAplicado' sólo se reescribe cuando venía en formato AAAA-MM, es decir
+      // cuando es una etiqueta derivada de la fecha. Las etiquetas escritas a mano
+      // ("Ago 2026", "Histórico…") se respetan tal cual.
+      if (iMes >= 0 && /^\d{4}-\d{2}$/.test(String(vals[r][iMes] || '').trim())) {
+        sh.getRange(r + 1, iMes + 1).setValue(_ymKey(nuevaFecha.getFullYear(), nuevaFecha.getMonth() + 1));
+      }
+    }
+    if (nuevoMonto !== null) {
+      sh.getRange(r + 1, iMo + 1).setValue(nuevoMonto);
+      trazas.push('monto ' + mAntes.toFixed(2) + ' → ' + nuevoMonto.toFixed(2));
     }
 
-    // Rastro en notas: la fecha de un pago afecta la mora, así que el cambio queda escrito.
-    if (iNo >= 0) {
-      var traza = 'Fecha corregida ' + _fechaCorta(antes) + ' → ' + _fechaCorta(nueva) +
-                  ' el ' + _fechaCorta(_today()) + '.';
+    // Rastro en notas: fecha y monto mueven la mora, así que el cambio queda escrito.
+    if (iNo >= 0 && trazas.length) {
+      var traza = 'Corregido ' + trazas.join(' y ') + ' el ' + _fechaCorta(_today()) + '.';
       var prev = String(vals[r][iNo] || '').trim();
       sh.getRange(r + 1, iNo + 1).setValue(prev ? (prev + ' | ' + traza) : traza);
     }
 
-    return { ok: true, id: id, fecha: _fechaCorta(nueva), fechaAnterior: _fechaCorta(antes) };
+    return {
+      ok: true, id: id,
+      fecha: _fechaCorta(nuevaFecha || fAntes), fechaAnterior: _fechaCorta(fAntes),
+      monto: (nuevoMonto === null ? mAntes : nuevoMonto), montoAnterior: mAntes
+    };
   }
   throw new Error('Pago no encontrado: ' + id);
 }
