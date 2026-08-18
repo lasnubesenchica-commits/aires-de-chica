@@ -211,6 +211,14 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .dsg-sub   { display:flex; justify-content:space-between; gap:14px; padding:4px 0 0; margin-top:3px;
              border-top:1px dotted #cfe8d8; font-size:.78rem; color:var(--ac-muted); }
 .dsg-sub b { font-variant-numeric:tabular-nums; }
+/* Histórico de pagos del modal: la fecha es editable porque decide en qué mes
+   entra el pago (y por tanto si esa cuota genera recargo). */
+.pgTable > tbody > tr > td { padding:6px 4px; border-bottom:1px solid var(--ac-border); }
+.pgTable > tbody > tr:last-child > td { border-bottom:0; }
+.pgTable input[type=date] { font:inherit; min-height:0; padding:3px 5px; width:auto;
+                            border:1px solid var(--ac-border); border-radius:6px; background:#fff; color:inherit; }
+.pgTable input[type=date]:hover { border-color:var(--ac-teal); }
+.pgTable input[type=date]:disabled { opacity:.5; }
 .modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px; }
 .modal-actions .is-condonar { color:var(--ac-coral); border-color:var(--ac-coral); }
 .modal-actions .is-reactivar { color:var(--ac-green-600); border-color:var(--ac-green-600); }
@@ -927,12 +935,30 @@ async function loadPagoList(clave){
   const oLbl={comprobante:'comprobante',manual:'manual','carga-inicial':'histórico',conciliacion:'conciliación',banco:'banco'};
   const head=`<div style="border-top:1px dashed var(--ac-border);margin-top:12px;padding-top:10px"><div style="font-weight:600;font-size:.82rem;margin-bottom:6px">Pagos registrados (${list.length})</div>`;
   if(!list.length){ box.innerHTML=head+'<div class="muted" style="font-size:.78rem">Sin pagos registrados todavía.</div></div>'; return; }
-  box.innerHTML=head+`<table style="width:100%;font-size:.8rem"><tbody>${list.map(p=>`<tr>
-    <td style="white-space:nowrap">${_fx(p.fecha)}</td>
-    <td style="text-align:right"><b>${money(p.monto)}</b></td>
-    <td class="muted" style="font-size:.72rem;padding-left:8px">${oLbl[p.origen]||p.origen||'—'}${p.referencia?' · '+String(p.referencia).replace(/</g,'&lt;'):''}</td>
-    <td style="text-align:right"><button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarPagoManual('${p.id}','${clave}',this)">Eliminar</button></td>
+  box.innerHTML=head+`<div class="muted" style="font-size:.72rem;margin:-2px 0 6px">La fecha decide en qué mes entra el pago: cambiarla recalcula la mora del estado de cuenta.</div>
+  <table class="stack-table pgTable" style="width:100%;font-size:.8rem"><tbody>${list.map(p=>`<tr>
+    <td data-label="Fecha" style="white-space:nowrap">${p.id
+      ? `<input type="date" value="${_fISO(p.fecha)}" title="Fecha con la que se aplica el pago" onchange="cambiarFechaPago('${p.id}','${clave}',this)">`
+      : `<span title="Este pago no tiene id en la hoja: no se puede editar la fecha">${_fx(p.fecha)}</span>`}</td>
+    <td data-label="Monto" style="text-align:right"><b>${money(p.monto)}</b></td>
+    <td data-label="Origen" class="muted" style="font-size:.72rem;padding-left:8px">${oLbl[p.origen]||p.origen||'—'}${p.referencia?' · '+String(p.referencia).replace(/</g,'&lt;'):''}</td>
+    <td class="acts" style="text-align:right"><button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarPagoManual('${p.id}','${clave}',this)">Eliminar</button></td>
   </tr>`).join('')}</tbody></table></div>`;
+}
+// Cambia la fecha de aplicación de un pago y repinta el estado de cuenta ya recalculado.
+async function cambiarFechaPago(id, clave, input){
+  const nueva=input.value, previa=input.defaultValue;
+  if(!nueva){ input.value=previa; return; }
+  if(nueva===previa) return;
+  input.disabled=true;
+  try{
+    await post('actualizarPago',{id, datos:{fecha:nueva}});
+    const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
+    const f=document.getElementById('pgForm'); if(f) f.style.display='block';
+    loadPagoList(clave);
+    if(typeof renderDash==='function') renderDash();
+    toast('Fecha actualizada · saldos y mora recalculados');
+  }catch(err){ input.disabled=false; input.value=previa; if(!onAuthError(err)) alert('Error: '+err); }
 }
 async function eliminarPagoManual(id, clave, btn){
   if(!confirm('¿Eliminar este pago?\n\nSe recalcularán los saldos. Si el pago provenía de un comprobante, ese comprobante volverá a “Pendientes”. Esta acción no se puede deshacer.')) return;
@@ -1493,6 +1519,8 @@ async function guardarOpts(){
 function toggleDl(ev){ ev.stopPropagation(); const m=document.getElementById('dlMenu'); m.style.display = m.style.display==='none' ? 'block' : 'none'; }
 document.addEventListener('click',()=>{ const m=document.getElementById('dlMenu'); if(m) m.style.display='none'; });
 function _fx(v){ const d=new Date(v); return isNaN(d)?'' : `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; }
+// misma fecha que muestra _fx, en el formato AAAA-MM-DD que pide <input type="date">
+function _fISO(v){ const d=new Date(v); return isNaN(d)?'' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function _corteStr(){ const ae=document.getElementById('fAsOf'); return (ae&&ae.value)?ae.value:new Date().toISOString().slice(0,10); }
 // Corte con el que se construyó el tablero cargado. Los reportes SIEMPRE deben usar
 // éste: el control de pantalla puede haberse cambiado sin recargar, y entonces el
