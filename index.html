@@ -2019,6 +2019,48 @@ function _cobrosMensualSheet(cuentas, corte, nMonths){
   return ws;
 }
 function AC_MESES_LARGO_L(i){ return ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i]||''; }
+/* Origen de lo que cubrió la cuota del mes de corte.
+ *
+ * "Cobrado" es la caja que entró en el mes; "Cubierto" es cuánto de la cuota de ese
+ * mes quedó saldada. No son lo mismo: una cuota puede quedar cubierta con crédito que
+ * el propietario traía a favor (sin que entre un centavo ese mes), y una caja del mes
+ * puede irse completa a cuotas atrasadas sin cubrir nada del mes en curso.
+ *
+ * Esta columna separa esas fuentes para poder rastrear el origen y saber cuánto dinero
+ * entró de verdad en el mes.
+ */
+const _ORIG_LBL={comprobante:'comprobante por correo', manual:'registro manual', banco:'transferencia/depósito',
+  conciliacion:'conciliación bancaria', 'carga-inicial':'carga inicial', 'upd-jul2026':'carga de julio',
+  'otro-ingreso':'otro ingreso', simulado:'simulado'};
+function _viasCobro(c){
+  const o=c.pagadoMesOrigenes||{};
+  const ks=Object.keys(o).filter(k=>Math.abs(o[k])>0.009).sort((a,b)=>o[b]-o[a]);
+  if(!ks.length) return '';
+  if(ks.length===1) return _ORIG_LBL[ks[0]]||ks[0];
+  return ks.map(k=>(_ORIG_LBL[k]||k)+' '+money(o[k])).join(' + ');
+}
+function _origenCobroMes(c, ymCorte){
+  const caja=_r2(c.pagadoMes), cubierto=_r2(c.cubiertoMes);
+  const fila=(c.mensual||[]).find(m=>m.ym===ymCorte);
+  // El motor ya atribuye lo aplicado a la cuota del mes entre el crédito que el
+  // propietario traía y la caja entrada en el mes: no se puede deducir de
+  // apMesEnCurso, que suma las dos fuentes.
+  const deCaja=_r2(fila?(Number(fila.apMesDeCaja)||0):0);
+  const deCredito=_r2(fila?(Number(fila.apMesDeCredito)||0):0);
+  const vias=_viasCobro(c);
+  const sufijo=vias?' ('+vias+')':'';
+  if(cubierto<=0.009){
+    if(caja>0.009) return 'Pagó '+money(caja)+' en el mes, aplicado a meses anteriores'+sufijo;
+    return 'Sin cobro en el mes';
+  }
+  if(deCredito<=0.009) return 'Dinero entrado en el mes'+sufijo;
+  if(deCaja<=0.009){
+    return caja>0.009
+      ? 'Crédito a favor arrastrado; lo pagado en el mes fue a meses anteriores'+sufijo
+      : 'Crédito a favor arrastrado (no entró dinero en el mes)';
+  }
+  return 'Mixto: '+money(deCaja)+' entrado en el mes'+sufijo+' + '+money(deCredito)+' de crédito arrastrado';
+}
 async function descargarCartera(){
   document.getElementById('dlMenu').style.display='none';
   if(!DASH){ alert('Primero carga el tablero (pestaña Estado de cuentas).'); return; }
@@ -2042,15 +2084,22 @@ async function descargarCartera(){
   // Cobros del mes de corte
   const elbl={pagado:'Pagó',parcial:'Parcial',pendiente:'Pendiente',na:'—'};
   const cmes=[...(DASH.cuentas||[])].filter(c=>c.cuotaMes>0).sort((a,b)=>(b.pendienteMes||0)-(a.pendienteMes||0));
-  const r5=cmes.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.cuotaMes,c.cubiertoMes,Number(c.pagadoMes)||0,c.pendienteMes,Number(c.saldoNeto)||0, elbl[c.estadoMes]||'—']);
-  const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pagadoMes'),_sum(cmes,'pendienteMes'),_sum(cmes,'saldoNeto'),''];
+  const _ymCorte=corte.slice(0,7);
+  const r5=cmes.map(c=>[String(c.lote||''),c.residencial,c.nombre,c.cuotaMes,c.cubiertoMes,Number(c.pagadoMes)||0,
+                        _origenCobroMes(c,_ymCorte),c.pendienteMes,Number(c.saldoNeto)||0, elbl[c.estadoMes]||'—']);
+  // el pie resume las tres fuentes, para leer de un vistazo cuánto fue caja del mes
+  const _cajaMes=_r2(cmes.reduce((a,c)=>{const f=(c.mensual||[]).find(m=>m.ym===_ymCorte);return a+(f?(Number(f.apMesDeCaja)||0):0);},0));
+  const _credMes=_r2(cmes.reduce((a,c)=>{const f=(c.mensual||[]).find(m=>m.ym===_ymCorte);return a+(f?(Number(f.apMesDeCredito)||0):0);},0));
+  const tot5=['','','TOTAL', _sum(cmes,'cuotaMes'),_sum(cmes,'cubiertoMes'),_sum(cmes,'pagadoMes'),
+              'De lo cubierto: '+money(_cajaMes)+' entró en el mes + '+money(_credMes)+' de crédito arrastrado',
+              _sum(cmes,'pendienteMes'),_sum(cmes,'saldoNeto'),''];
   // aviso explícito cuando el mes de corte todavía no registra ningún cobro, para que
   // una columna "Cobrado" vacía no se lea como un error del reporte.
   const _cobrTot=_sum(cmes,'pagadoMes');
   const _mesTxt=(DASH.mesActual||'')+' '+(DASH.anio||'');
   const _avisoSinCobros=_cobrTot>0.009 ? '' : ' ⚠ Al '+corte+' no hay ningún pago registrado con fecha de '+_mesTxt+', por eso la columna "Cobrado" aparece en cero. Si esperabas ver los pagos de otro mes, genera el reporte con esa fecha de corte.';
-  const notes5=['Lote o número de finca.','Residencial (Las Nubes / Quintas / Haras).','Nombre del propietario.','Cuota de mantenimiento correspondiente al mes de corte.','Parte de la cuota del mes cubierta con lo pagado dentro del mes más el saldo a favor que traía el propietario. Es el mismo criterio con el que se determina la mora, así que quien aparece cubierto no genera recargo por ese mes.','Dinero efectivamente recibido de este propietario durante el mes de corte. Puede ser mayor que "Cubierto" cuando parte del pago salda meses anteriores.','Parte de la CUOTA DEL MES que aún falta por cubrir (Cuota del mes − Cubierto). Se refiere sólo a ese mes, no a la deuda acumulada.','Saldo acumulado del propietario a la fecha de corte: arrastre de 2025 + cuotas + recargos por mora − todo lo pagado. Es el mismo SALDO TOTAL que muestra su estado de cuenta. En negativo significa saldo a favor.','Estado de la cuota del mes: Pagó (cubierta), Parcial (cubierta en parte) o Pendiente (sin cubrir).'];
-  const ws5=_tableSheet('Cobros del Mes','Corte al '+corte+' · Una cuota se considera cubierta con lo pagado dentro del mes más el saldo a favor arrastrado, igual que para la mora. "Cobrado" es la caja recibida en el mes y puede diferir de "Cubierto" si parte del pago se aplicó a meses anteriores. "Falta" es sólo de la cuota del mes; la deuda acumulada está en "Saldo total al corte". El total de "Cobrado" incluye sólo a los propietarios que ya facturan cuota, por lo que puede ser menor que "Cobrado del mes" de la hoja Resumen, que suma todos los ingresos del mes.'+_avisoSinCobros, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Cobrado','Falta del mes','Saldo total al corte','Estado del mes'], r5, [3,4,5,6,7], [8,13,26,13,12,12,13,15,14], {totalRow:tot5, estadoCol:8, notes:notes5});
+  const notes5=['Lote o número de finca.','Residencial (Las Nubes / Quintas / Haras).','Nombre del propietario.','Cuota de mantenimiento correspondiente al mes de corte.','Parte de la cuota del mes cubierta con lo pagado dentro del mes más el saldo a favor que traía el propietario. Es el mismo criterio con el que se determina la mora, así que quien aparece cubierto no genera recargo por ese mes.','Dinero efectivamente recibido de este propietario durante el mes de corte. Puede ser mayor que "Cubierto" cuando parte del pago salda meses anteriores.','De dónde salió lo que cubrió la cuota del mes, y por qué vía entró el dinero. "Dinero entrado en el mes" = depósito o transferencia recibida dentro del mes de corte. "Crédito a favor arrastrado" = la cuota quedó cubierta con saldo a favor que el propietario ya tenía, sin que entrara dinero nuevo ese mes. "Mixto" = una parte de cada fuente, con el monto de cada una. Entre paréntesis va el canal por el que se registró el pago (comprobante por correo, transferencia/depósito, registro manual, conciliación bancaria, carga inicial).','Parte de la CUOTA DEL MES que aún falta por cubrir (Cuota del mes − Cubierto). Se refiere sólo a ese mes, no a la deuda acumulada.','Saldo acumulado del propietario a la fecha de corte: arrastre de 2025 + cuotas + recargos por mora − todo lo pagado. Es el mismo SALDO TOTAL que muestra su estado de cuenta. En negativo significa saldo a favor.','Estado de la cuota del mes: Pagó (cubierta), Parcial (cubierta en parte) o Pendiente (sin cubrir).'];
+  const ws5=_tableSheet('Cobros del Mes','Corte al '+corte+' · Una cuota se considera cubierta con lo pagado dentro del mes más el saldo a favor arrastrado, igual que para la mora. "Cobrado" es la caja recibida en el mes y puede diferir de "Cubierto" si parte del pago se aplicó a meses anteriores. "Origen del cobro" separa lo que se cubrió con dinero entrado en el mes de lo que se cubrió con crédito que el propietario ya traía a favor: la suma de la columna "Cobrado" es la caja real del mes. "Falta" es sólo de la cuota del mes; la deuda acumulada está en "Saldo total al corte". El total de "Cobrado" incluye sólo a los propietarios que ya facturan cuota, por lo que puede ser menor que "Cobrado del mes" de la hoja Resumen, que suma todos los ingresos del mes.'+_avisoSinCobros, ['Lote','Residencial','Propietario','Cuota del mes','Cubierto','Cobrado','Origen del cobro','Falta del mes','Saldo total al corte','Estado del mes'], r5, [3,4,5,7,8], [8,13,26,13,12,12,52,13,15,14], {totalRow:tot5, estadoCol:9, notes:notes5});
   // Cobros por mes (pivote: propietarios × meses, agrupado por residencial)
   const cy=parseInt(corte.slice(0,4),10), cmo=parseInt(corte.slice(5,7),10)||12;
   const nMonths = (cy>(DASH.anio||cy)) ? 12 : Math.max(1,Math.min(12,cmo));

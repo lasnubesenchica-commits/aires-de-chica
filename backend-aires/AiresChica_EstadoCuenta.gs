@@ -135,6 +135,10 @@ function _correrLibro(c, base, orden) {
     var idx = c.year * 12 + mm, bMes = byIdx[idx] || null;
     var saldoIni = _saldoHasta(idx - 1);
     var pg = _round2(c.pagosMes[mm] || 0);
+    // saldo a favor que el propietario YA traía, antes de sumar la caja de este mes.
+    // Sirve para distinguir después qué parte de la cuota se cubrió con dinero nuevo
+    // y qué parte con crédito arrastrado.
+    var creditoIni = pool;
     pool = _round2(pool + pg);
 
     var apVenc = 0, apMora = 0, apMes = 0;
@@ -154,12 +158,22 @@ function _correrLibro(c, base, orden) {
         bMes.moraMeses = 1;
       }
     }
+    // De lo que se aplicó a la cuota DE ESTE MES, cuánto salió del crédito que ya
+    // traía y cuánto de la caja del mes. El crédito estaba antes, así que financia
+    // lo primero que se aplica; lo aplicado antes de la cuota del mes depende del
+    // orden de imputación vigente.
+    var antesDelMes = (orden === 'capital') ? apVenc : _round2(apVenc + apMora);
+    var credDisponible = Math.max(0, _round2(creditoIni - antesDelMes));
+    var apMesCredito = _round2(Math.min(apMes, credDisponible));
+
     moraByIdx[idx] = bMes ? bMes.mora : 0;
     condonByIdx[idx] = bMes ? bMes.condonada : false;
     mensual.push({
       idx: idx, mes: mm, saldoIni: saldoIni,
       cuota: bMes ? bMes.monto : 0, mora: bMes ? bMes.mora : 0, pagado: pg,
       apVencidas: apVenc, apMora: apMora, apMesEnCurso: apMes,
+      creditoIni: _round2(creditoIni),
+      apMesDeCredito: apMesCredito, apMesDeCaja: _round2(apMes - apMesCredito),
       apCredito: _round2(pg - apVenc - apMora - apMes),
       cubierto: bMes ? bMes.pagado : 0,
       descubierto: bMes ? bMes.saldo : 0,
@@ -316,7 +330,8 @@ function calcEstado(prop, pagosArr, asOf) {
       condonada: !!condonByIdx[r.idx], vouchers: vouchersMes[r.mes] || [],
       // trazabilidad para explicar cada cifra en pantalla (tooltips del estado de cuenta)
       saldoIni: r.saldoIni, cubierto: r.cubierto, descubierto: r.descubierto,
-      apVencidas: r.apVencidas, apMora: r.apMora, apMesEnCurso: r.apMesEnCurso, apCredito: r.apCredito
+      apVencidas: r.apVencidas, apMora: r.apMora, apMesEnCurso: r.apMesEnCurso, apCredito: r.apCredito,
+      apMesDeCaja: r.apMesDeCaja, apMesDeCredito: r.apMesDeCredito, creditoIni: r.creditoIni
     });
   });
   var saldoNeto = saldoRun; // saldo total con signo (debe positivo / crédito negativo)
@@ -450,6 +465,9 @@ function buildDashboard(asOf) {
   var _corteMs = asOf.getTime() + 86399999;
   var pagadoMesByClave = {};
   var cobradoMensualByClave = {};
+  // Por qué vía entró la plata del mes, por cuenta: { comprobante: 45, banco: 90, … }.
+  // Sirve para rastrear el origen de cada cobro en el reporte de cartera.
+  var pagadoMesOrigenByClave = {};
   pagos.forEach(function (p) {
     var d = new Date(p.fecha);
     if (d.getFullYear() !== year || d.getTime() > _corteMs) return;
@@ -459,6 +477,9 @@ function buildDashboard(asOf) {
     if ((mIdx + 1) === mesActual) {
       pagadoMes += Number(p.monto) || 0;
       pagadoMesByClave[p.clave] = _round2((pagadoMesByClave[p.clave] || 0) + (Number(p.monto) || 0));
+      var og = pagadoMesOrigenByClave[p.clave] || (pagadoMesOrigenByClave[p.clave] = {});
+      var oK = String(p.origen || 'manual').trim() || 'manual';
+      og[oK] = _round2((og[oK] || 0) + (Number(p.monto) || 0));
     }
   });
 
@@ -535,6 +556,7 @@ function buildDashboard(asOf) {
                inicioCobro: e.inicioCobro,
                cuotaMes: e.cuotaMes, cubiertoMes: e.cubiertoMes, pendienteMes: e.pendienteMes, estadoMes: e.estadoMes,
                pagadoMes: _round2(pagadoMesByClave[e.clave] || 0),
+               pagadoMesOrigenes: pagadoMesOrigenByClave[e.clave] || {},
                cobradoMensual: cobradoMensualByClave[e.clave] || [0,0,0,0,0,0,0,0,0,0,0,0],
                facturado: e.facturado, pagado: e.pagado,
                saldo: e.saldo, mora: e.mora, moraCargada: e.moraCargada, saldoConMora: e.saldoConMora, saldoNeto: e.saldoNeto, creditoAFavor: e.creditoAFavor,
