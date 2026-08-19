@@ -273,6 +273,29 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .rev-cmp-acc { display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap;
                margin-top:11px; padding-top:10px; border-top:1px solid var(--ac-border); }
 .rev-cmp-ok { color:var(--ac-ok); font-weight:700; font-size:.86rem; }
+/* Identidad de quien usa el panel (queda en la bitácora) */
+.quien { font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; margin-right:10px;
+         background:rgba(255,255,255,.16); color:#fff; border:1px solid rgba(255,255,255,.35);
+         border-radius:20px; padding:6px 13px; white-space:nowrap; }
+.quien:hover { background:rgba(255,255,255,.28); }
+.quien.sin { background:var(--ac-coral); border-color:var(--ac-coral); }
+/* Registro de cambios */
+.reg-dia { font-size:.72rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+           color:var(--ac-teal-700); margin:18px 0 6px; padding-bottom:5px; border-bottom:2px solid var(--ac-teal-50); }
+.reg-dia:first-child { margin-top:0; }
+.reg-tbl td { white-space:normal; vertical-align:top; font-size:.82rem; }
+.reg-tbl .hora { white-space:nowrap; color:var(--ac-muted); font-size:.76rem; font-variant-numeric:tabular-nums; }
+.reg-tbl .n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; font-weight:700; }
+.reg-tbl .det { font-size:.76rem; color:var(--ac-muted); line-height:1.5; }
+.reg-cambio { display:inline-flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.reg-cambio .a { text-decoration:line-through; color:var(--ac-muted); }
+.reg-cambio .b { font-weight:700; color:var(--ac-teal-700); }
+.reg-acc { display:inline-block; padding:2px 9px; border-radius:20px; font-size:.7rem; font-weight:700; white-space:nowrap; }
+.reg-acc.alta   { background:#e4f5ec; color:var(--ac-ok); }
+.reg-acc.edita  { background:#e8f6fa; color:var(--ac-teal-700); }
+.reg-acc.baja   { background:#fbe6e3; color:var(--ac-danger); }
+.reg-acc.otra   { background:#fbf0dc; color:var(--ac-warn); }
+.reg-tbl td.reg-autor { font-weight:600; white-space:nowrap; }
 .rev-o { border-top:1px dashed var(--ac-border); padding:9px 0; font-size:.82rem; line-height:1.55; }
 .rev-o:first-of-type { border-top:0; }
 .rev-o b { display:block; margin-bottom:2px; }
@@ -346,6 +369,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
   <img src="logo-airesdechica.jpeg" alt="Aires de Chicá"/>
   <div><h1>Aires de Chicá</h1><div class="sub">Estados de cuenta y cobros de mantenimiento · 2026</div></div>
   <div class="spacer"></div>
+  <button class="quien" id="btnAutor" onclick="cambiarAutor()" title="Quién está usando el panel. Queda registrado en cada cambio.">👤 <span id="autorNombre">Sin identificar</span></button>
   <button class="logout" onclick="logout()">Salir</button>
 </div></header>
 <div class="grad"></div>
@@ -359,6 +383,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
     <span class="tab-div" aria-hidden="true"></span>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
+    <button data-tab="registro">Registro</button>
     <button data-tab="opts">⚙ Opciones</button>
   </nav>
 
@@ -447,6 +472,36 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
       <span class="pill warn" id="revBancoPill"></span></div>
       <div class="bd" style="padding:18px">
         <div id="revBanco"></div>
+      </div></div>
+  </section>
+
+  <section id="tab-registro" style="display:none">
+    <div class="card"><div class="hd"><h2>Registro de cambios</h2>
+      <span class="muted" id="regTotal" style="font-size:.82rem"></span>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn ghost" onclick="descargarRegistro()" title="Exportar lo que se ve a Excel">📥 Descargar</button>
+      <button class="btn" onclick="cargarRegistro(this)">Actualizar</button></div>
+      <div class="bd" style="padding:18px">
+        <p class="muted" style="margin-top:0;font-size:.82rem">Toda acción que <b>modifica datos</b> queda anotada aquí con su autor: pagos registrados, corregidos o eliminados, condonaciones de mora, gastos, ingresos, comprobantes y cambios en Opciones. Las consultas no se registran. <b>La bitácora no se puede editar ni borrar desde el panel.</b></p>
+        <p class="muted" style="margin-top:-6px;font-size:.78rem">Los cambios del <b>18/08/2026</b> se cargaron como punto de partida a partir de la comparación de dos versiones del sheet: de ellos se conoce la fecha y el autor, pero <b>no la hora exacta</b>, así que la hora que se muestra es sólo para conservar el orden.</p>
+        <div class="controls" style="margin-bottom:14px">
+          <label>Desde <input type="date" id="regDesde"></label>
+          <label>Hasta <input type="date" id="regHasta"></label>
+          <label>Autor <select id="regAutor"><option value="">Todos</option></select></label>
+          <label>Acción <select id="regAccion"><option value="">Todas</option></select></label>
+          <label style="flex:1;min-width:180px">Buscar <input type="text" id="regQ" placeholder="lote, propietario, campo…" style="width:100%"></label>
+        </div>
+        <div id="regResult"></div>
+      </div></div>
+    <!-- Punto de partida: los cambios del 18/08/2026 se hicieron antes de que existiera
+         la bitácora, así que se cargan una sola vez para que el registro no arranque
+         con un hueco. El botón desaparece cuando ya están cargados. -->
+    <div class="card" id="regSeedCard" style="margin-top:16px"><div class="hd"><h2>Punto de partida</h2>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn ghost" onclick="cargarPuntoPartida(this)">Cargar los cambios del 18/08/2026</button></div>
+      <div class="bd" style="padding:18px">
+        <p class="muted" style="margin-top:0;font-size:.82rem">El 18 de agosto de 2026 se hicieron <b>21 cambios</b> (5 pagos nuevos, 6 pagos corregidos y 10 cambios en propietarios) antes de que existiera este registro. Se cargan una sola vez a nombre de <b>Doraida Castillo</b>, que fue quien los hizo, para que la bitácora arranque completa. De ahí en adelante se llena sola.</p>
+        <div id="regSeedMsg"></div>
       </div></div>
   </section>
 
@@ -571,8 +626,36 @@ function jsonp(action, params={}, opts={}){
     lanzar();
   });
 }
+/* ───────── Quién usa el panel ─────────
+ * Identidad DECLARADA, no autenticada: el sistema tiene una sola contraseña
+ * compartida, así que esto dice "quién dijo ser", no "quién demostró ser".
+ * Se envía en cada escritura para que la bitácora tenga autor.
+ */
+let AUTOR = localStorage.getItem('bc_autor') || '';
+function pintarAutor(){
+  const b=document.getElementById('btnAutor'), n=document.getElementById('autorNombre');
+  if(!b||!n) return;
+  n.textContent = AUTOR || 'Sin identificar';
+  b.classList.toggle('sin', !AUTOR);
+  b.title = AUTOR ? `Los cambios se registran a nombre de ${AUTOR}. Haz clic para cambiar.`
+                  : 'Nadie se ha identificado: los cambios quedarán como "Sin identificar". Haz clic para poner tu nombre.';
+}
+function cambiarAutor(){
+  const v=prompt('¿Quién está usando el panel?\n\nSu nombre queda registrado en cada cambio que haga.', AUTOR||'');
+  if(v===null) return;
+  AUTOR=String(v).trim().slice(0,60);
+  if(AUTOR) localStorage.setItem('bc_autor',AUTOR); else localStorage.removeItem('bc_autor');
+  pintarAutor();
+  if(AUTOR) toast('Los cambios se registrarán a nombre de '+AUTOR);
+}
+// Pide identificarse antes de la primera escritura, para no anotar cambios anónimos.
+function exigirAutor(){
+  if(AUTOR) return true;
+  cambiarAutor();
+  return !!AUTOR;
+}
 async function post(action,data={}){
-  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,...data})});
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,...data})});
   const j=await r.json(); if(!j.ok) throw j.error; return j.data;
 }
 function onAuthError(e){ if(String(e)==='no-auth'){ TOKEN=''; localStorage.removeItem('ac_token'); showGate(); return true; } return false; }
@@ -582,7 +665,8 @@ let GATE_MODE='login';
 function showGate(){ document.getElementById('app').style.display='none'; document.getElementById('gate').classList.add('show'); }
 function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block';
   // La revisión del estado de cuenta no consulta al servidor: se pinta al abrir el panel.
-  try{ renderRevBanco(); }catch(e){ console.warn('revBanco',e); } }
+  try{ renderRevBanco(); }catch(e){ console.warn('revBanco',e); }
+  try{ pintarAutor(); }catch(e){} }
 async function boot(){
   // Si no se puede consultar el estado de la sesión NO se asume que el sistema es nuevo:
   // mostrar "Crear contraseña" ante un fallo de red hacía creer que se había perdido
@@ -2114,6 +2198,83 @@ async function descargarCartera(){
   XLSX.writeFile(wb, `AiresDeChica_Cartera_${corte}.xlsx`);
 }
 
+/* ───────── Registro de cambios (bitácora) ───────── */
+let REG_DATA=null;
+async function cargarRegistro(btn){
+  const box=document.getElementById('regResult'); if(!box) return;
+  const t=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Cargando…';}
+  box.innerHTML='<div class="muted" style="padding:16px 0">Cargando el registro…</div>';
+  const g=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  let d;
+  try{ d=await jsonp('getRegistro',{desde:g('regDesde'),hasta:g('regHasta'),autor:g('regAutor'),
+                                    accionFiltro:g('regAccion'),q:g('regQ'),limite:1000}); }
+  catch(e){ if(btn){btn.disabled=false;btn.textContent=t;} if(onAuthError(e))return;
+    box.innerHTML='<div class="notice">No se pudo cargar: '+_esc(String(e))+'</div>'; return; }
+  if(btn){btn.disabled=false;btn.textContent=t;}
+  REG_DATA=d;
+  // los selectores se llenan con lo que existe, sin perder lo ya elegido
+  const selA=document.getElementById('regAutor'), va=selA.value;
+  selA.innerHTML='<option value="">Todos</option>'+(d.autores||[]).map(a=>`<option${a===va?' selected':''}>${_esc(a)}</option>`).join('');
+  const selAc=document.getElementById('regAccion'), vac=selAc.value;
+  selAc.innerHTML='<option value="">Todas</option>'+Object.entries(d.acciones||{}).map(([k,v])=>`<option value="${_esc(k)}"${k===vac?' selected':''}>${_esc(v)}</option>`).join('');
+  renderRegistro();
+}
+function _regTipo(a){
+  if(/\.(alta|aplica)$/.test(a)) return 'alta';
+  if(/\.(baja|rechaza)$/.test(a)) return 'baja';
+  if(/\.(edita|condona|reactiva)$/.test(a)) return 'edita';
+  return 'otra';
+}
+function renderRegistro(){
+  const box=document.getElementById('regResult'); if(!box||!REG_DATA) return;
+  const f=REG_DATA.filas||[];
+  document.getElementById('regTotal').textContent = f.length
+    ? `${f.length} cambio(s)${REG_DATA.total>f.length?` de ${REG_DATA.total}`:''}` : '';
+  if(!f.length){ box.innerHTML='<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">No hay cambios registrados con esos filtros.</div>'; return; }
+  // agrupado por día, lo más reciente arriba
+  const dias=[]; const porDia={};
+  f.forEach(r=>{ if(!porDia[r.ymd]){porDia[r.ymd]=[];dias.push(r.ymd);} porDia[r.ymd].push(r); });
+  const MES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const dLbl=ymd=>{ const [y,m,d]=String(ymd).split('-'); return d?`${+d} de ${MES[+m-1]} ${y}`:ymd; };
+  box.innerHTML=dias.map(dia=>{
+    const filas=porDia[dia].map(r=>{
+      const cambio = (r.antes||r.despues)
+        ? `<span class="reg-cambio">${r.antes?`<span class="a">${_esc(r.antes)}</span> →`:''}<span class="b">${_esc(r.despues||'—')}</span></span>` : '';
+      return `<tr>
+        <td class="hora" data-label="Hora">${_esc(r.hora)}</td>
+        <td data-label="Autor" class="reg-autor">${_esc(r.autor)}</td>
+        <td data-label="Acción"><span class="reg-acc ${_regTipo(r.accion)}">${_esc(r.accionLbl)}</span></td>
+        <td class="stack-col" data-label="Cuenta">${r.propietario?`<b>${_esc(r.propietario)}</b>`:''}${r.clave?` <span class="muted">· ${_esc(r.clave)}</span>`:''}</td>
+        <td class="n" data-label="Monto">${r.monto==null?'':money(r.monto)}</td>
+        <td class="stack-col" data-label="Cambio">${r.campo?`<span class="muted" style="font-size:.74rem">${_esc(r.campo)}: </span>`:''}${cambio}
+          ${r.detalle?`<span class="det" style="display:block">${_esc(r.detalle)}</span>`:''}</td></tr>`;
+    }).join('');
+    return `<div class="reg-dia">${dLbl(dia)} · ${porDia[dia].length} cambio(s)</div>
+      <table class="stack-table reg-tbl"><thead><tr><th>Hora</th><th>Autor</th><th>Acción</th><th>Cuenta</th><th class="num">Monto</th><th>Cambio</th></tr></thead><tbody>${filas}</tbody></table>`;
+  }).join('');
+}
+function descargarRegistro(){
+  if(!REG_DATA||!(REG_DATA.filas||[]).length){ alert('No hay nada que descargar. Carga el registro primero.'); return; }
+  const head=['Fecha','Hora','Autor','Acción','Entidad','Clave','Propietario','Campo','Antes','Después','Monto','Detalle','Origen'];
+  const rows=REG_DATA.filas.map(r=>[r.ymd,r.hora,r.autor,r.accionLbl,r.entidad,r.clave,r.propietario,
+                                    r.campo,r.antes,r.despues,(r.monto==null?'':r.monto),r.detalle,r.origen]);
+  const ws=_tableSheet('Registro de cambios','Bitacora de auditoria · '+rows.length+' cambio(s) · generado el '+new Date().toISOString().slice(0,10),
+    head, rows, [10], [12,8,20,24,12,12,28,16,26,26,12,44,14]);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Registro');
+  XLSX.writeFile(wb, `AiresDeChica_Registro_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+async function cargarPuntoPartida(btn){
+  if(!confirm('¿Cargar los 21 cambios del 18/08/2026 a nombre de Doraida Castillo?\n\nSólo agrega renglones al registro; no toca ningún dato de pagos ni propietarios. Se puede deshacer.')) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Cargando…';
+  const msg=document.getElementById('regSeedMsg');
+  try{
+    const r=await post('seedRegistro18Ago',{});
+    if(r && r.yaCargado){ msg.innerHTML='<div class="notice">'+_esc(r.msg)+'</div>'; btn.disabled=false; btn.textContent=t; return; }
+    msg.innerHTML='<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ '+_esc(r.msg)+'</div>';
+    btn.textContent='Ya cargado'; 
+    REG_DATA=null; await cargarRegistro();
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
+}
 /* ───────── Comprobantes por email ───────── */
 let COMPROB_PROPS=null;
 let COMPROB_VERIF={};
@@ -2909,13 +3070,20 @@ document.getElementById('tabs').addEventListener('click',e=>{
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','comprob','prop','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','registro','comprob','prop','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comprob')renderComprob();
   if(t==='gastos')renderGastos();
   if(t==='finanzas')renderFinanzas();
+  if(t==='registro' && !REG_DATA) cargarRegistro();
   if(t==='opts'){ renderOpts(); renderRecor(); }
 });
+// filtros del registro: los selectores y fechas recargan; el texto sólo repinta
+['regDesde','regHasta','regAutor','regAccion'].forEach(id=>{
+  const e=document.getElementById(id); if(e) e.addEventListener('change',()=>cargarRegistro());
+});
+(()=>{ const e=document.getElementById('regQ'); if(!e) return; let t;
+  e.addEventListener('input',()=>{ clearTimeout(t); t=setTimeout(()=>cargarRegistro(),350); }); })();
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal')closeModal(); });
 boot();
 </script>

@@ -239,7 +239,10 @@ function registrarGasto(g) {
   ensureSheets();
   if (!g || !(Number(g.monto) > 0)) throw new Error('Indica un monto válido.');
   if (!String(g.categoria || '').trim()) throw new Error('Selecciona una categoría.');
-  return { ok: true, id: _appendGasto(g) };
+  var _id = _appendGasto(g);
+  _reg('gasto.alta', { entidad: 'gasto', clave: String(g.categoria || ''), propietario: String(g.proveedor || ''),
+    monto: g.monto, detalle: String(g.detalle || '') + (g.fecha ? ' · ' + _gastoMes(new Date(g.fecha)) : '') });
+  return { ok: true, id: _id };
 }
 
 function registrarGastosBatch(arr) {
@@ -271,6 +274,19 @@ function actualizarGasto(id, data) {
       if (data.metodoPago !== undefined) set('metodoPago', data.metodoPago);
       if (data.notas !== undefined) set('notas', data.notas);
       if (data.grupoInforme !== undefined) set('grupoInforme', String(data.grupoInforme).trim());
+      var _an = [];
+      ['fecha','categoria','proveedor','detalle','monto','tipo','metodoPago','notas','grupoInforme'].forEach(function (c) {
+        if (data[c] === undefined) return;
+        var ci = h.indexOf(c); if (ci < 0) return;
+        var antes = vals[r][ci], desp = (c === 'monto') ? _round2(data[c]) : data[c];
+        if (c === 'fecha') { antes = _gastoMes(new Date(antes)); desp = _gastoMes(new Date(desp)); }
+        if (String(antes) === String(desp)) return;
+        _an.push({ accion: 'gasto.edita', entidad: 'gasto', clave: String(vals[r][h.indexOf('categoria')] || ''),
+          propietario: String(vals[r][h.indexOf('proveedor')] || ''), campo: c,
+          antes: String(antes), despues: String(desp),
+          monto: (c === 'monto' ? _round2(data[c]) : ''), detalle: 'Gasto ' + id });
+      });
+      _regBatch(_an);
       return { ok: true, id: id };
     }
   }
@@ -285,7 +301,14 @@ function eliminarGasto(id) {
   var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
   var iId = h.indexOf('id');
   for (var r = vals.length - 1; r >= 1; r--) {
-    if (String(vals[r][iId]) === id) { sh.deleteRow(r + 1); return { ok: true, id: id }; }
+    if (String(vals[r][iId]) === id) {
+      var _c = h.indexOf('categoria'), _p = h.indexOf('proveedor'), _m = h.indexOf('monto'), _d = h.indexOf('detalle');
+      var _row = vals[r];
+      sh.deleteRow(r + 1);
+      _reg('gasto.baja', { entidad: 'gasto', clave: String(_row[_c] || ''), propietario: String(_row[_p] || ''),
+        monto: _row[_m], antes: String(_row[_d] || ''), detalle: 'Gasto eliminado (' + id + ')' });
+      return { ok: true, id: id };
+    }
   }
   throw new Error('Gasto no encontrado: ' + id);
 }

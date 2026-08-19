@@ -18,7 +18,8 @@ var SH = {
   COMPROB: 'Comprobantes',
   GASTOS: 'Gastos',
   GRECUR: 'GastosRecurrentes',
-  PRESUP: 'Presupuesto'
+  PRESUP: 'Presupuesto',
+  REGISTRO: 'Registro'          // bitácora de auditoría (ver AiresChica_Registro.gs)
 };
 
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
@@ -53,7 +54,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v1-2026-08';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v2-2026-08-registro';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -66,7 +67,8 @@ function ensureSheets(force) {
   var ss = _ss();
   var created = [];
   [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
-   [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP]].forEach(function (pair) {
+   [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP],
+   [SH.REGISTRO, COL_REG]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }
@@ -333,6 +335,13 @@ function setMoraCondon(clave, mes, condonar) {
     // condonado ya no coincide con la clave 'AAAA-MM' y la condonación se pierde
     // en silencio (el recargo se sigue cobrando).
     sh.getRange(r + 1, col).setNumberFormat('@').setValue(out);
+    var _ni = header.indexOf('nombre');
+    _reg(condonar ? 'prop.condona' : 'prop.reactiva', {
+      clave: clave, propietario: _ni >= 0 ? String(vals[r][_ni] || '') : '',
+      campo: 'moraCondon', antes: cur, despues: out,
+      detalle: (mes.toUpperCase() === 'ALL'
+        ? (condonar ? 'Se perdona TODA la mora del propietario' : 'Se reactiva toda la mora del propietario')
+        : (condonar ? 'Se perdona el recargo de ' + mes : 'Se reactiva el recargo de ' + mes)) });
     return { ok: true, clave: clave, moraCondon: out };
   }
   throw new Error('No existe la cuenta ' + clave);
@@ -612,6 +621,8 @@ function registrarOtroIngreso(d) {
     origen: 'otro-ingreso', mesAplicado: _ymKey(fecha.getFullYear(), fecha.getMonth() + 1),
     notas: String(d.notas || '').trim()
   });
+  _reg('ingreso.alta', { entidad: 'ingreso', clave: OI_CLAVE, propietario: concepto, monto: monto,
+    despues: _fechaCorta(fecha), origen: 'otro-ingreso', detalle: String(d.notas || '').trim() });
   return { ok: true, id: id, concepto: concepto, monto: monto, fecha: fecha };
 }
 
@@ -625,7 +636,12 @@ function eliminarOtroIngreso(id) {
   for (var r = 1; r < vals.length; r++) {
     if (String(vals[r][ii]).trim() === id) {
       if (String(vals[r][ci]).trim() !== OI_CLAVE) throw new Error('Ese registro no es un otro ingreso.');
+      var _n = h.indexOf('nombre'), _m = h.indexOf('monto'), _f = h.indexOf('fecha');
+      var _row = vals[r];
       sh.deleteRow(r + 1);
+      _reg('ingreso.baja', { entidad: 'ingreso', clave: OI_CLAVE, propietario: String(_row[_n] || ''),
+        monto: _row[_m], antes: _fechaCorta(new Date(_row[_f])) + ' · ' + _round2(_row[_m]).toFixed(2),
+        origen: 'otro-ingreso', detalle: 'Otro ingreso eliminado (' + id + ')' });
       return { ok: true, id: id };
     }
   }
@@ -678,8 +694,15 @@ function eliminarPago(id) {
   var row = -1;
   for (var r = vals.length - 1; r >= 1; r--) { if (String(vals[r][iId]) === id) { row = r; break; } }
   if (row < 0) throw new Error('Pago no encontrado: ' + id);
+  var _iCl = h.indexOf('clave'), _iNo = h.indexOf('nombre'), _iMo = h.indexOf('monto'),
+      _iFe = h.indexOf('fecha'), _iOr = h.indexOf('origen');
+  var _f = vals[row][_iFe] instanceof Date ? vals[row][_iFe] : new Date(vals[row][_iFe]);
   sh.deleteRow(row + 1);
   var revert = _revertComprobantePorPago(id);
+  _reg('pago.baja', { clave: String(vals[row][_iCl] || ''), propietario: String(vals[row][_iNo] || ''),
+    monto: vals[row][_iMo], origen: String(vals[row][_iOr] || ''),
+    antes: _fechaCorta(_f) + ' · ' + _round2(vals[row][_iMo]).toFixed(2),
+    detalle: 'Pago eliminado' + (revert ? ' · su comprobante volvió a pendientes' : '') });
   return { ok: true, id: id, comprobanteRevertido: revert };
 }
 
@@ -750,6 +773,16 @@ function actualizarPago(id, datos) {
       sh.getRange(r + 1, iNo + 1).setValue(prev ? (prev + ' | ' + traza) : traza);
     }
 
+    var _iCl2 = h.indexOf('clave'), _iNo2 = h.indexOf('nombre'), _iOr2 = h.indexOf('origen');
+    var _com = { clave: String(vals[r][_iCl2] || ''), propietario: String(vals[r][_iNo2] || ''),
+                 origen: String(vals[r][_iOr2] || ''), detalle: 'Corrección desde el panel (id ' + id + ')' };
+    var _an = [];
+    if (nuevaFecha !== null) _an.push(Object.assign({ accion: 'pago.edita', campo: 'fecha',
+      antes: _fechaCorta(fAntes), despues: _fechaCorta(nuevaFecha),
+      monto: (nuevoMonto === null ? mAntes : nuevoMonto) }, _com));
+    if (nuevoMonto !== null) _an.push(Object.assign({ accion: 'pago.edita', campo: 'monto',
+      antes: mAntes.toFixed(2), despues: nuevoMonto.toFixed(2), monto: nuevoMonto }, _com));
+    _regBatch(_an);
     return {
       ok: true, id: id,
       fecha: _fechaCorta(nuevaFecha || fAntes), fechaAnterior: _fechaCorta(fAntes),
@@ -799,6 +832,10 @@ function registrarPago(pago) {
   }
   var id = appendPago(pago);
   var prop = _findProp(pago.clave);
+  _reg('pago.alta', { clave: pago.clave, propietario: (prop ? prop.nombre : ''),
+    monto: pago.monto, origen: pago.origen || 'manual',
+    despues: _fechaCorta(_fechaPagoDesdeISO(pago.fecha) || new Date(pago.fecha || _today())),
+    detalle: 'Pago registrado' + (pago.referencia ? ' · ref. ' + pago.referencia : '') });
   var resultado = { id: id, clave: pago.clave };
   if (pago.enviarCorreo && prop && prop.email) {
     try { resultado.correo = enviarEstadoCuenta(pago.clave); }

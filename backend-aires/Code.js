@@ -69,6 +69,8 @@ function doGet(e) {
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
+    else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
+        desde: p.desde, hasta: p.hasta, autor: p.autor, accion: p.accionFiltro, q: p.q, limite: p.limite }) }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
@@ -80,6 +82,11 @@ function doPost(e) {
   var data = {};
   try { data = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (x) {}
   var action = data.action || '';
+  // Quién dice ser el que hace el cambio. La bitácora lo usa como autor.
+  // Es una identidad DECLARADA por el panel, no autenticada: el sistema tiene una
+  // sola contraseña compartida. Al haber multiusuario real, _autor() debe leer la
+  // sesión y este renglón sobra.
+  AC_AUTOR = String(data.autor || '').trim().slice(0, 60);
   var out;
   try {
     // acciones de autenticación (públicas)
@@ -96,6 +103,8 @@ function doPost(e) {
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
     else if (action === 'actualizarPago')   out = { ok: true, data: actualizarPago(data.id, data.datos || {}) };
+    else if (action === 'seedRegistro18Ago') out = { ok: true, data: seedRegistro18Ago(!!data.force) };
+    else if (action === 'rollbackSeedRegistro18Ago') out = { ok: true, data: rollbackSeedRegistro18Ago() };
     else if (action === 'registrarGasto')   out = { ok: true, data: registrarGasto(data.gasto) };
     else if (action === 'registrarOtroIngreso') out = { ok: true, data: registrarOtroIngreso(data.ingreso || {}) };
     else if (action === 'eliminarOtroIngreso')  out = { ok: true, data: eliminarOtroIngreso(data.id) };

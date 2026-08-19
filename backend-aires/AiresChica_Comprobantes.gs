@@ -468,7 +468,11 @@ function resolverComprobante(data) {
       return { ok: true, estado: 'pendiente', pagoEliminado: elim };
     }
     if (String(vals[r][iEst]) !== 'pendiente') throw new Error('El comprobante ya fue ' + vals[r][iEst] + '.');
-    if (data.accion === 'rechazar') { sh.getRange(r + 1, iEst + 1).setValue('rechazado'); return { ok: true, estado: 'rechazado' }; }
+    if (data.accion === 'rechazar') { sh.getRange(r + 1, iEst + 1).setValue('rechazado');
+      _reg('comprob.rechaza', { clave: String(vals[r][iCl] || ''), propietario: String(vals[r][iNo] || ''),
+        monto: vals[r][iMo], origen: 'comprobante',
+        detalle: 'Comprobante ' + data.id + ' rechazado' + (data.motivo ? ' · ' + data.motivo : '') });
+      return { ok: true, estado: 'rechazado' }; }
     // aplicar
     var clave = (data.clave || vals[r][iCl] || '').toString().trim();
     var monto = _round2(Number(data.monto != null ? data.monto : vals[r][iMo]) || 0);
@@ -489,6 +493,9 @@ function resolverComprobante(data) {
     sh.getRange(r + 1, iLo + 1).setValue(prop.lote);
     var iPidA = h.indexOf('pagoId'); if (iPidA >= 0) sh.getRange(r + 1, iPidA + 1).setValue(pagoId);
     sh.getRange(r + 1, iEst + 1).setValue('aplicado');
+    _reg('comprob.aplica', { clave: clave, propietario: prop.nombre, monto: monto, origen: 'comprobante',
+      despues: _fechaCorta(new Date(vals[r][iFe])),
+      detalle: 'Comprobante ' + data.id + ' · ' + String(vals[r][iAs] || '').slice(0, 90) });
     return { ok: true, estado: 'aplicado', clave: clave, monto: monto, cuota: prop.cuota };
   }
   throw new Error('Comprobante no encontrado: ' + data.id);

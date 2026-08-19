@@ -136,8 +136,18 @@ function guardarConfig(nueva) {
   clean.cuentaNum = String(clean.cuentaNum || '').trim() || d.cuentaNum;
   clean.cuentaNombre = String(clean.cuentaNombre || '').trim() || d.cuentaNombre;
 
+  // Anotar en la bitácora SÓLO los campos que realmente cambiaron: guardar Opciones
+  // reescribe el objeto entero y registrarlo completo llenaría el registro de ruido.
+  var _antes = _cfg();
+  var _an = [];
+  Object.keys(clean).forEach(function (k) {
+    if (String(_antes[k]) === String(clean[k])) return;
+    _an.push({ accion: 'config.edita', entidad: 'config', campo: k,
+               antes: String(_antes[k]), despues: String(clean[k]), detalle: 'Opciones del sistema' });
+  });
   PropertiesService.getScriptProperties().setProperty(CFG_PROP, JSON.stringify(clean));
   _cfgCache = null;
+  _regBatch(_an);
 
   // reconciliar triggers de envío programado (puede requerir autorización)
   var triggerAviso = null;
