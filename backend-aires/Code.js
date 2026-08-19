@@ -61,7 +61,11 @@ function doGet(e) {
     else if (action === 'getComprobantes') { requireAuth(p.token); out = { ok: true, data: getComprobantes(p.estado || null) }; }
     else if (action === 'auditarDuplicados') { requireAuth(p.token); out = { ok: true, data: auditarDuplicados(p.tolDias) }; }
     else if (action === 'previsualizarComprobante') { requireAuth(p.token); out = { ok: true, data: previsualizarComprobante(p.clave, p.monto) }; }
-    else if (action === 'getEstadoCuenta') { requireAuth(p.token); out = { ok: true, data: getEstadoCuentaByKey(p.clave) }; }
+    else if (action === 'getEstadoCuenta') { requireAuth(p.token);
+      // simFecha + simMonto: calcula el estado COMO SI ese pago ya estuviera
+      // registrado, sin escribir nada (comparar antes/después de cargar un pago).
+      var _sim = (p.simFecha && Number(p.simMonto) > 0) ? { fecha: p.simFecha, monto: Number(p.simMonto) } : null;
+      out = { ok: true, data: getEstadoCuentaByKey(p.clave, _sim) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }

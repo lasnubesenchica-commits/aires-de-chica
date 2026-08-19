@@ -374,14 +374,34 @@ function calcEstado(prop, pagosArr, asOf) {
   };
 }
 
-function getEstadoCuentaByKey(clave) {
+/**
+ * Estado de cuenta de un propietario.
+ *
+ * @param {string} clave
+ * @param {Object} [simular]  pago hipotético { fecha:'AAAA-MM-DD', monto:number }.
+ *        Si viene, el estado se calcula COMO SI ese pago ya estuviera registrado,
+ *        sin tocar la hoja. Sirve para ver cómo quedaría una cuenta antes de
+ *        cargar un pago (conciliación bancaria, revisión de comprobantes).
+ */
+function getEstadoCuentaByKey(clave, simular) {
   var prop = _findProp(clave);
   if (!prop) throw new Error('No existe la cuenta ' + clave);
   var pagosC = getPagosByClave(clave);
+
+  var sim = null;
+  if (simular && Number(simular.monto) > 0) {
+    var f = _fechaPagoDesdeISO(simular.fecha);
+    if (!f) throw new Error('Fecha de simulación inválida. Se espera AAAA-MM-DD.');
+    sim = { clave: clave, fecha: f, monto: _round2(simular.monto), origen: 'simulado',
+            notas: 'Pago simulado — no está registrado' };
+    pagosC = pagosC.concat([sim]);
+  }
+
   var est = calcEstado(prop, pagosC, null);
   est.pagosHistorial = pagosC.map(function (p) {
     return { fecha: p.fecha, monto: p.monto, origen: p.origen, referencia: p.referencia, notas: p.notas };
   }).sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+  if (sim) { est.simulado = { fecha: simular.fecha, monto: sim.monto }; }
   return est;
 }
 

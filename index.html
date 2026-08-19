@@ -254,6 +254,26 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .rev-q p { margin:0 0 6px; font-size:.82rem; line-height:1.55; }
 .rev-q .ask { background:#fff; border-left:3px solid var(--ac-coral); padding:7px 10px; border-radius:0 6px 6px 0; }
 .rev-q .ask b { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-coral); margin-bottom:2px; }
+.rev-tbl tr.rev-click { cursor:pointer; }
+.rev-tbl tr.rev-click:hover { background:var(--ac-teal-50); }
+.rev-ver { display:block; margin-top:5px; font-size:.72rem; font-weight:700; color:var(--ac-teal-600); }
+/* Comparación antes/después dentro del modal de estado de cuenta */
+.rev-cmp { border:1px solid var(--ac-border); border-radius:10px; padding:12px 14px; margin-bottom:14px; background:var(--ac-teal-50); }
+.rev-cmp-tabs { display:flex; gap:6px; margin-bottom:11px; flex-wrap:wrap; }
+.rev-cmp-tabs button { flex:1; min-width:150px; font:inherit; font-size:.84rem; font-weight:700; cursor:pointer;
+  padding:8px 12px; border-radius:8px; border:1px solid var(--ac-border); background:#fff; color:var(--ac-muted); }
+.rev-cmp-tabs button:hover { border-color:var(--ac-teal-300); color:var(--ac-teal-700); }
+.rev-cmp-tabs button.on { background:var(--ac-teal-600); border-color:var(--ac-teal-600); color:#fff; }
+.rev-cmp-info { display:flex; flex-wrap:wrap; gap:8px 26px; }
+.rev-cmp-info > div { display:flex; flex-direction:column; }
+.rev-cmp-info .l { font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-muted); font-weight:700; }
+.rev-cmp-info .v { font-size:.95rem; font-weight:700; font-variant-numeric:tabular-nums; margin-top:1px; }
+.rev-cmp-info .fl { color:var(--ac-muted); font-weight:400; }
+.rev-cmp-nota { font-size:.78rem; line-height:1.5; margin-top:10px; padding:7px 10px; border-radius:7px; background:#fff; }
+.rev-cmp-nota.sim { background:#fffaf0; border:1px solid #e8d4a8; }
+.rev-cmp-pie { display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:7px; }
+.rev-cmp-glosa { font-size:.72rem; color:var(--ac-muted); font-style:italic; word-break:break-word; flex:1; min-width:180px; }
+.rev-cmp-pie .link-btn { font-size:.78rem; white-space:nowrap; }
 .rev-o { border-top:1px dashed var(--ac-border); padding:9px 0; font-size:.82rem; line-height:1.55; }
 .rev-o:first-of-type { border-top:0; }
 .rev-o b { display:block; margin-bottom:2px; }
@@ -846,7 +866,11 @@ function _tipSaldo(b){
   return `Saldo anterior ${money(b.saldoIni)} + cuota ${money(b.cuota)} + recargo ${money(b.mora||0)} − pagos ${money(b.pagado)} = ${money(sa)}.\n`
        + (sa<-0.009 ? 'Negativo = saldo a favor del propietario.' : '');
 }
-function _renderEstado(e){
+// opts.banner: HTML que se inserta arriba del todo (pestañas de comparación, avisos).
+// opts.sim: estado de SIMULACIÓN — se ocultan las acciones y el formulario de pago,
+//           porque en una vista "cómo quedaría" no hay nada que guardar ni enviar.
+function _renderEstado(e, opts){
+  opts = opts || {};
   const totMora  = e.moraCargada, totSaldo = e.saldoNeto;
   const color = totSaldo>0.009 ? (e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)') : 'var(--ac-ok)';
   // Aclara si esos recargos ya se pagaron: con saldo a favor no era evidente que la mora
@@ -859,6 +883,7 @@ function _renderEstado(e){
     <div class="muted">${e.residencial} · Lote ${e.lote} · ${e.lotes} lote(s)${e.cabanas?' · '+e.cabanas+' cabaña(s)':''} · Cuota ${money(e.cuota)}${e.inicioCobro?` · <span style="color:var(--ac-teal-600);font-weight:600">desde ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][(+e.inicioCobro.split('-')[1])-1]} ${e.inicioCobro.split('-')[0]}</span>`:''}</div></div>`;
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
+    ${opts.banner||''}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map((b,_i,_arr)=>{
       const esUltimo=_i===_arr.length-1;
@@ -938,7 +963,7 @@ function _renderEstado(e){
       <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:6px">
         <b>SALDO TOTAL</b><b style="color:${color};font-size:1.1rem">${money(totSaldo)}</b></div>
     </div></div>
-    <div class="modal-actions">
+    ${opts.sim?'':`<div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
       <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar pago</button>
       <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
@@ -958,7 +983,7 @@ function _renderEstado(e){
         <button class="btn green" id="pgSave" onclick="guardarPagoManual('${e.clave}')">Guardar pago</button>
       </div>
       <div id="pgList"></div>
-    </div>`;
+    </div>`}`;
   document.getElementById('modal').classList.add('show');
 }
 function closeModal(){ document.getElementById('modal').classList.remove('show'); }
@@ -1382,34 +1407,34 @@ const REV_BANCO = {
   // Cada movimiento del banco cuadra con la cadena de saldos del PDF, y las 9
   // partidas ya registradas calzan todas: no hay pagos huérfanos en el sistema.
   listos:[
-    {mov:1, fecha:'01/08', clave:'Q-20', nombre:'Roberto De Leon L', ubic:'El Quira lote 20', monto:49.50, aldia:true,
+    {mov:1, fecha:'01/08', iso:'2026-08-01', clave:'Q-20', nombre:'Roberto De Leon L', ubic:'El Quira lote 20', monto:49.50, aldia:true,
      banco:'BANCA MÓVIL DE ROBERTO ERNESTO DE LEON PLICET (THE BUFFALO HOUSE)',
      nota:'Queda al día. Los 4.50 de más pasan como crédito a favor de septiembre.'},
-    {mov:4, fecha:'03/08', clave:'Q-23', nombre:'Marianela Mcvay', ubic:'El Quira lote 23', monto:45.00, aldia:true,
+    {mov:4, fecha:'03/08', iso:'2026-08-03', clave:'Q-23', nombre:'Marianela Mcvay', ubic:'El Quira lote 23', monto:45.00, aldia:true,
      banco:'BANCA MÓVIL DE IAN JAMES MC VAY (O) MARIANELA DEL CARMEN QUINTERO de MC VAY',
      nota:'La cuenta es de Ian y Marianela Mc Vay; Marianela es la propietaria de Q-23 y debía exactamente 45.00. Ojo: existe también Q-22 (Gustavo Mcvay), pero su saldo es 49.50 y su correo es otro.'},
-    {mov:5, fecha:'04/08', clave:'H-15', nombre:'Diana Lorenzo; Javier Della Cella', ubic:'El Higuerón lote 15/16/17', monto:72.00, aldia:false,
+    {mov:5, fecha:'04/08', iso:'2026-08-04', clave:'H-15', nombre:'Diana Lorenzo; Javier Della Cella', ubic:'El Higuerón lote 15/16/17', monto:72.00, aldia:false,
      banco:'BANCA MÓVIL DE DIANA ESTELA LORENZO LORENZO (O) JAVIER ENRIQUE DELLA CELLA',
      nota:'Quedan 0.20 de mayo, residuo de un abono parcial anterior. La cuota que aplica el motor es 72.00, no los 162.00 que dice la columna “cuota” de Propietarios — ver observación 3.'},
-    {mov:6, fecha:'05/08', clave:'L-17', nombre:'Rosalina Pinzón', ubic:'Los Laureles lote 17', monto:45.00, aldia:true,
+    {mov:6, fecha:'05/08', iso:'2026-08-05', clave:'L-17', nombre:'Rosalina Pinzón', ubic:'Los Laureles lote 17', monto:45.00, aldia:true,
      banco:'BANCA EN LÍNEA DE ROSALINA ABIGAIL PINZON CUCA · “Pago a mantenimiento de areas”',
      nota:'Queda al día.'},
-    {mov:10, fecha:'11/08', clave:'Q-11', nombre:'Antonio Pinedo', ubic:'El Quira lote 11', monto:270.00, aldia:true,
+    {mov:10, fecha:'11/08', iso:'2026-08-11', clave:'Q-11', nombre:'Antonio Pinedo', ubic:'El Quira lote 11', monto:270.00, aldia:true,
      banco:'BANCA MÓVIL DE SIGWALDO ANTONIO PINEDO HOYVIK · “pago cuota semestral”',
      nota:'Era el mayor deudor de la cartera (328.50 al 31/07). Queda al día con 175.50 de crédito a favor.'},
-    {mov:12, fecha:'14/08', clave:'L-2', nombre:'Luis Ying Ho', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
+    {mov:12, fecha:'14/08', iso:'2026-08-14', clave:'L-2', nombre:'Luis Ying Ho', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
      banco:'BANCA MÓVIL DE LUIS YING HO · “Pago de Mantenimiento Agosto 2026 Luis Ying”',
      nota:'Queda al día.'},
-    {mov:19, fecha:'16/08', clave:'Q-5', nombre:'Yara Chung', ubic:'El Quira lote 5', monto:45.00, aldia:true,
+    {mov:19, fecha:'16/08', iso:'2026-08-16', clave:'Q-5', nombre:'Yara Chung', ubic:'El Quira lote 5', monto:45.00, aldia:true,
      banco:'BANCA MÓVIL DE YARA YVETH CHUNG PINILLO · “Mantenimiento agosto”',
      nota:'Queda al día.'},
-    {mov:20, fecha:'17/08', clave:'Q-7', nombre:'Annette Ayala', ubic:'El Quira lote 7', monto:45.00, aldia:true,
+    {mov:20, fecha:'17/08', iso:'2026-08-17', clave:'Q-7', nombre:'Annette Ayala', ubic:'El Quira lote 7', monto:45.00, aldia:true,
      banco:'BANCA EN LÍNEA DE ANNETTE YARELYS AYALA MARIN · “Annette mantenimiento mes corr”',
      nota:'Ya estaba al día; los 45.00 entran completos como crédito a favor de septiembre.'},
-    {mov:22, fecha:'17/08', clave:'Q-14AYB', nombre:'Alejandrina Escamilla', ubic:'El Quira lote 14A y B', monto:45.00, aldia:true,
+    {mov:22, fecha:'17/08', iso:'2026-08-17', clave:'Q-14AYB', nombre:'Alejandrina Escamilla', ubic:'El Quira lote 14A y B', monto:45.00, aldia:true,
      banco:'BANCA MÓVIL DE ALEJANDRINA JUDITH ESCAMILLA TRUJILLO · “mp y control de aires d…”',
      nota:'Propietaria nueva: su cobro inicia en agosto, es su primer mes. Del banco entraron 65.00; aquí se cargan 45.00 como cuota y los 20.00 restantes quedan por consultar.'},
-    {mov:23, fecha:'17/08', clave:'L-16', nombre:'Ana Tejada', ubic:'Los Laureles lote 16', monto:49.50, aldia:false,
+    {mov:23, fecha:'17/08', iso:'2026-08-17', clave:'L-16', nombre:'Ana Tejada', ubic:'Los Laureles lote 16', monto:49.50, aldia:false,
      banco:'BANCA MÓVIL DE ANA ROSA TEJADA TEJADA',
      nota:'ATENCIÓN: pagó 49.50 pero debía 103.50. Le quedan 40.50 de agosto sin cubrir, más recargos de abril, junio y julio. Si no completa antes del cierre se le generará OTRO recargo de 4.50 — conviene avisarle.'}
   ],
@@ -1456,7 +1481,7 @@ function renderRevBanco(){
     ['Pendiente de ingresar',money(c.pendiente),c.listosN+' listos + '+c.consultarN+' por consultar',true]
   ].map(k=>`<div class="${k[3]?'hot':''}"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="h">${_esc(k[2])}</div></div>`).join('');
 
-  const listos=R.listos.map(p=>`<tr>
+  const listos=R.listos.map(p=>`<tr class="rev-click" onclick="revComparar(${p.mov})" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
     <td data-label="Mov."><span class="rev-mov">${p.mov}</span></td>
     <td data-label="Fecha" style="white-space:nowrap">${p.fecha}</td>
     <td class="stack-col" data-label="Propietario"><b>${_esc(p.nombre)}</b> <span class="muted">· ${_esc(p.clave)}</span>
@@ -1464,7 +1489,8 @@ function renderRevBanco(){
       <span class="banco">${_esc(p.banco)}</span></td>
     <td class="n" data-label="Monto">${money(p.monto)}</td>
     <td data-label="Estado"><span class="pill ${p.aldia?'ok':'warn'}">${p.aldia?'Al día':'Con saldo'}</span></td>
-    <td class="nota stack-col" data-label="Observación">${_esc(p.nota)}</td></tr>`).join('');
+    <td class="nota stack-col" data-label="Observación">${_esc(p.nota)}
+      <span class="rev-ver">Ver estado de cuenta →</span></td></tr>`).join('');
 
   const consultar=R.consultar.map(q=>`<div class="rev-q">
     <div class="top"><span class="rev-mov">${q.mov}</span><span class="muted">${q.fecha}</span><span class="mto">${money(q.monto)}</span></div>
@@ -1478,7 +1504,7 @@ function renderRevBanco(){
     <p class="rev-sub" style="margin-top:0">${_esc(R.cuenta)} · revisado el ${_esc(R.revisado)}. Conciliación hecha contra el PDF del banco y los pagos ya registrados. <b>Nada se carga desde aquí</b>: es la lista para revisar antes de actualizar el sistema.</p>
     <div class="rev-ctrl">${ctrl}</div>
     <div class="rev-sec">A · Listos para ingresar — ${R.listos.length} pagos, ${money(c.listos)}</div>
-    <p class="rev-sub">El número en teal es el del movimiento en el estado de cuenta, en orden, para irlos marcando contra el PDF.</p>
+    <p class="rev-sub">El número en teal es el del movimiento en el estado de cuenta, en orden, para irlos marcando contra el PDF. <b>Haz clic en cualquier fila</b> para ver el estado de cuenta actual y cómo quedaría con el pago aplicado.</p>
     <table class="stack-table rev-tbl"><thead><tr><th>Mov.</th><th>Fecha</th><th>Propietario</th><th class="num">Monto</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${listos}</tbody></table>
     <div class="rev-sec">B · Por consultar con el cliente — ${R.consultar.length} partidas, ${money(c.consultar)}</div>
     <p class="rev-sub">Estas <b>no</b> se cargan hasta tener respuesta. El texto de “qué hay que preguntar” se le puede trasladar al cliente tal cual.</p>
@@ -1486,6 +1512,57 @@ function renderRevBanco(){
     <div class="rev-sec">C · Observaciones antes de cargar</div>
     <p class="rev-sub">No bloquean la carga, pero conviene decidirlas antes de correr la actualización.</p>
     ${obs}`;
+}
+/* Comparar una cuenta antes y después de aplicar un pago de la revisión.
+ * El "después" NO escribe nada: lo calcula el mismo motor del estado de cuenta
+ * con el pago añadido en memoria (parámetros simFecha / simMonto). */
+let REVCMP=null;
+async function revComparar(mov){
+  const p=((REV_BANCO&&REV_BANCO.listos)||[]).find(x=>x.mov===mov);
+  if(!p) return;
+  document.getElementById('modalHd').innerHTML=`<div style="font-weight:700">${_esc(p.nombre)}</div>`;
+  document.getElementById('modalBd').innerHTML='<div class="muted" style="padding:24px 0;text-align:center">Calculando el estado de cuenta…</div>';
+  document.getElementById('modal').classList.add('show');
+  let antes,despues;
+  try{
+    [antes,despues]=await Promise.all([
+      jsonp('getEstadoCuenta',{clave:p.clave}),
+      jsonp('getEstadoCuenta',{clave:p.clave, simFecha:p.iso, simMonto:p.monto})
+    ]);
+  }catch(ex){
+    if(onAuthError(ex)) return;
+    document.getElementById('modalBd').innerHTML='<div class="notice">No se pudo calcular: '+_esc(String(ex))+'</div>';
+    return;
+  }
+  REVCMP={p,antes,despues};
+  revCmpVista('despues');
+}
+function revCmpVista(v){
+  if(!REVCMP) return;
+  const {p,antes,despues}=REVCMP, e=(v==='antes')?antes:despues;
+  const dS=_r2(despues.saldoNeto-antes.saldoNeto), dM=_r2(despues.moraCargada-antes.moraCargada);
+  const col=s=>s>0.009?'var(--ac-warn)':'var(--ac-ok)';
+  const banner=`
+    <div class="rev-cmp">
+      <div class="rev-cmp-tabs">
+        <button class="${v==='antes'?'on':''}" onclick="revCmpVista('antes')">Hoy en el sistema</button>
+        <button class="${v==='despues'?'on':''}" onclick="revCmpVista('despues')">Con el pago aplicado</button>
+      </div>
+      <div class="rev-cmp-info">
+        <div><span class="l">Movimiento ${p.mov} · ${_esc(p.fecha)}</span><span class="v">${money(p.monto)}</span></div>
+        <div><span class="l">Saldo</span><span class="v">${money(antes.saldoNeto)} <span class="fl">→</span> <b style="color:${col(despues.saldoNeto)}">${money(despues.saldoNeto)}</b></span></div>
+        ${Math.abs(dS)>0.009?`<div><span class="l">Variación del saldo</span><span class="v" style="color:var(--ac-teal-700)">${dS<0?'−':'+'}${money(Math.abs(dS))}</span></div>`:''}
+        ${Math.abs(dM)>0.009?`<div><span class="l">Cambia la mora</span><span class="v" style="color:var(--ac-coral)">${money(antes.moraCargada)} <span class="fl">→</span> ${money(despues.moraCargada)}</span></div>`:''}
+      </div>
+      <div class="rev-cmp-nota ${v==='antes'?'':'sim'}">${v==='antes'
+        ? 'Así está la cuenta <b>ahora mismo</b> en el sistema, sin el pago del banco.'
+        : 'Así quedaría <b>si se carga</b> este pago. Es una <b>simulación</b>: el pago todavía no está registrado y aquí no se escribió nada.'}</div>
+      <div class="rev-cmp-pie">
+        <span class="rev-cmp-glosa">${_esc(p.banco)}</span>
+        <button class="link-btn" onclick="openEstado('${p.clave}')" title="Abre el estado de cuenta normal, con las acciones de registrar pago y enviar correo">Abrir estado de cuenta completo →</button>
+      </div>
+    </div>`;
+  _renderEstado(e,{sim:true, banner});   // _r2 ya está definido más arriba
 }
 async function auditarDup(btn){
   const box=document.getElementById('auditResult'); box.innerHTML='<div class="muted">Buscando…</div>';
