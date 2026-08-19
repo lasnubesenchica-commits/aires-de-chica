@@ -229,6 +229,34 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .pgTable input[type=number]::-webkit-outer-spin-button,
 .pgTable input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 .pgTable td.acts { padding-left:10px; }
+/* Revisión de un estado de cuenta bancario antes de cargarlo (tab Conciliación). */
+.rev-sec { font-size:.72rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+           color:var(--ac-teal-700); margin:22px 0 4px; padding-bottom:5px; border-bottom:2px solid var(--ac-teal-50); }
+.rev-sec:first-child { margin-top:0; }
+.rev-sub { font-size:.78rem; color:var(--ac-muted); margin:0 0 10px; line-height:1.5; }
+.rev-ctrl { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:4px; }
+.rev-ctrl > div { border:1px solid var(--ac-border); border-radius:10px; padding:10px 12px; background:var(--ac-teal-50); }
+.rev-ctrl .l { font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-muted); font-weight:700; }
+.rev-ctrl .v { font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; margin-top:2px; }
+.rev-ctrl .h { font-size:.7rem; color:var(--ac-muted); margin-top:1px; }
+.rev-ctrl > div.hot { background:#fbf0dc; border-color:#e8d4a8; }
+.rev-mov { display:inline-block; min-width:22px; text-align:center; font-size:.7rem; font-weight:700;
+           background:var(--ac-teal-600); color:#fff; border-radius:6px; padding:1px 5px; }
+.rev-tbl td { white-space:normal; vertical-align:top; font-size:.82rem; }
+.rev-tbl .n { white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+.rev-tbl .nota { font-size:.75rem; color:var(--ac-muted); line-height:1.5; }
+.rev-tbl .banco { font-size:.72rem; color:var(--ac-muted); font-style:italic; display:block; margin-top:3px; }
+.rev-q { border:1px solid #e8d4a8; background:#fffaf0; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+.rev-q .top { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+.rev-q .mto { font-weight:700; font-size:1rem; font-variant-numeric:tabular-nums; }
+.rev-q .glosa { font-size:.78rem; color:var(--ac-ink); background:#fff; border:1px dashed var(--ac-border);
+                border-radius:6px; padding:5px 8px; margin-bottom:7px; word-break:break-word; }
+.rev-q p { margin:0 0 6px; font-size:.82rem; line-height:1.55; }
+.rev-q .ask { background:#fff; border-left:3px solid var(--ac-coral); padding:7px 10px; border-radius:0 6px 6px 0; }
+.rev-q .ask b { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-coral); margin-bottom:2px; }
+.rev-o { border-top:1px dashed var(--ac-border); padding:9px 0; font-size:.82rem; line-height:1.55; }
+.rev-o:first-of-type { border-top:0; }
+.rev-o b { display:block; margin-bottom:2px; }
 .modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px; }
 .modal-actions .is-condonar { color:var(--ac-coral); border-color:var(--ac-coral); }
 .modal-actions .is-reactivar { color:var(--ac-green-600); border-color:var(--ac-green-600); }
@@ -389,6 +417,18 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
         <p class="muted" style="margin-top:0">Busca en los pagos ya registrados grupos del <b>mismo propietario, mismo monto y fecha cercana</b> (±3 días), por si algún pago quedó duplicado. Solo <b>muestra</b> los candidatos para que los revises; no borra nada.</p>
         <div id="auditResult"></div>
       </div></div>
+    <!-- Revisión de un estado de cuenta concreto, antes de cargarlo. Es una FOTO:
+         los datos viven en REV_BANCO (más abajo en el script). Cuando los pagos se
+         carguen, se reemplaza REV_BANCO por la revisión del siguiente estado de
+         cuenta, o se pone en null para ocultar la tarjeta. -->
+    <div class="card" id="revBancoCard" style="margin-top:16px;display:none"><div class="hd">
+      <h2>Revisión del estado de cuenta</h2>
+      <span class="muted" id="revBancoPeriodo" style="font-size:.82rem"></span>
+      <div class="spacer" style="flex:1"></div>
+      <span class="pill warn" id="revBancoPill"></span></div>
+      <div class="bd" style="padding:18px">
+        <div id="revBanco"></div>
+      </div></div>
   </section>
 
   <section id="tab-comprob" style="display:none">
@@ -521,7 +561,9 @@ function onAuthError(e){ if(String(e)==='no-auth'){ TOKEN=''; localStorage.remov
 /* ───────── Login gate ───────── */
 let GATE_MODE='login';
 function showGate(){ document.getElementById('app').style.display='none'; document.getElementById('gate').classList.add('show'); }
-function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block'; }
+function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block';
+  // La revisión del estado de cuenta no consulta al servidor: se pinta al abrir el panel.
+  try{ renderRevBanco(); }catch(e){ console.warn('revBanco',e); } }
 async function boot(){
   // Si no se puede consultar el estado de la sesión NO se asume que el sistema es nuevo:
   // mostrar "Crear contraseña" ante un fallo de red hacía creer que se había perdido
@@ -1322,6 +1364,128 @@ async function consolidar(){
   if(!sel.length) return alert('Selecciona al menos un pago con cuenta asignada.');
   try{ const r=await post('consolidarPagos',{pagos:sel,enviarCorreos:document.getElementById('sendMails').checked});
     alert('Consolidados: '+r.insertados+' pagos.'); renderDash(); }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
+}
+/* ─────────── Revisión de un estado de cuenta bancario, antes de cargarlo ───────────
+ * FOTO de una conciliación ya hecha a mano: sirve para que quien revisa pueda
+ * compararla contra el PDF del banco y consultarle al cliente lo que no se pudo
+ * asignar. No consulta al servidor: los datos son el resultado del análisis.
+ * Al cargar los pagos, se reemplaza por la revisión del siguiente estado de cuenta
+ * o se pone REV_BANCO = null para ocultar la tarjeta.
+ */
+const REV_BANCO = {
+  periodo:'01 – 18 de agosto de 2026',
+  cuenta:'Banco General · ahorros 04-02-98-706290-3',
+  revisado:'19/08/2026',
+  control:{ saldoIni:6987.88, abonos:1914.95, movs:24, saldoFin:8902.83,
+            yaEnSistema:934.95, yaMovs:9, pendiente:980.00,
+            listos:711.00, listosN:10, consultar:269.00, consultarN:3 },
+  // Cada movimiento del banco cuadra con la cadena de saldos del PDF, y las 9
+  // partidas ya registradas calzan todas: no hay pagos huérfanos en el sistema.
+  listos:[
+    {mov:1, fecha:'01/08', clave:'Q-20', nombre:'Roberto De Leon L', ubic:'El Quira lote 20', monto:49.50, aldia:true,
+     banco:'BANCA MÓVIL DE ROBERTO ERNESTO DE LEON PLICET (THE BUFFALO HOUSE)',
+     nota:'Queda al día. Los 4.50 de más pasan como crédito a favor de septiembre.'},
+    {mov:4, fecha:'03/08', clave:'Q-23', nombre:'Marianela Mcvay', ubic:'El Quira lote 23', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE IAN JAMES MC VAY (O) MARIANELA DEL CARMEN QUINTERO de MC VAY',
+     nota:'La cuenta es de Ian y Marianela Mc Vay; Marianela es la propietaria de Q-23 y debía exactamente 45.00. Ojo: existe también Q-22 (Gustavo Mcvay), pero su saldo es 49.50 y su correo es otro.'},
+    {mov:5, fecha:'04/08', clave:'H-15', nombre:'Diana Lorenzo; Javier Della Cella', ubic:'El Higuerón lote 15/16/17', monto:72.00, aldia:false,
+     banco:'BANCA MÓVIL DE DIANA ESTELA LORENZO LORENZO (O) JAVIER ENRIQUE DELLA CELLA',
+     nota:'Quedan 0.20 de mayo, residuo de un abono parcial anterior. La cuota que aplica el motor es 72.00, no los 162.00 que dice la columna “cuota” de Propietarios — ver observación 3.'},
+    {mov:6, fecha:'05/08', clave:'L-17', nombre:'Rosalina Pinzón', ubic:'Los Laureles lote 17', monto:45.00, aldia:true,
+     banco:'BANCA EN LÍNEA DE ROSALINA ABIGAIL PINZON CUCA · “Pago a mantenimiento de areas”',
+     nota:'Queda al día.'},
+    {mov:10, fecha:'11/08', clave:'Q-11', nombre:'Antonio Pinedo', ubic:'El Quira lote 11', monto:270.00, aldia:true,
+     banco:'BANCA MÓVIL DE SIGWALDO ANTONIO PINEDO HOYVIK · “pago cuota semestral”',
+     nota:'Era el mayor deudor de la cartera (328.50 al 31/07). Queda al día con 175.50 de crédito a favor.'},
+    {mov:12, fecha:'14/08', clave:'L-2', nombre:'Luis Ying Ho', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE LUIS YING HO · “Pago de Mantenimiento Agosto 2026 Luis Ying”',
+     nota:'Queda al día.'},
+    {mov:19, fecha:'16/08', clave:'Q-5', nombre:'Yara Chung', ubic:'El Quira lote 5', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE YARA YVETH CHUNG PINILLO · “Mantenimiento agosto”',
+     nota:'Queda al día.'},
+    {mov:20, fecha:'17/08', clave:'Q-7', nombre:'Annette Ayala', ubic:'El Quira lote 7', monto:45.00, aldia:true,
+     banco:'BANCA EN LÍNEA DE ANNETTE YARELYS AYALA MARIN · “Annette mantenimiento mes corr”',
+     nota:'Ya estaba al día; los 45.00 entran completos como crédito a favor de septiembre.'},
+    {mov:22, fecha:'17/08', clave:'Q-14AYB', nombre:'Alejandrina Escamilla', ubic:'El Quira lote 14A y B', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE ALEJANDRINA JUDITH ESCAMILLA TRUJILLO · “mp y control de aires d…”',
+     nota:'Propietaria nueva: su cobro inicia en agosto, es su primer mes. Del banco entraron 65.00; aquí se cargan 45.00 como cuota y los 20.00 restantes quedan por consultar.'},
+    {mov:23, fecha:'17/08', clave:'L-16', nombre:'Ana Tejada', ubic:'Los Laureles lote 16', monto:49.50, aldia:false,
+     banco:'BANCA MÓVIL DE ANA ROSA TEJADA TEJADA',
+     nota:'ATENCIÓN: pagó 49.50 pero debía 103.50. Le quedan 40.50 de agosto sin cubrir, más recargos de abril, junio y julio. Si no completa antes del cierre se le generará OTRO recargo de 4.50 — conviene avisarle.'}
+  ],
+  consultar:[
+    {mov:15, fecha:'15/08', monto:45.00,
+     banco:'BANCA MÓVIL DE CESAR AUGUSTO VASQUEZ GUTIERREZ · “Cuota mantenimiento lote 2 Lo…”',
+     porque:'Ningún propietario se llama César Vásquez. El único “lote 2” del sistema es L-2 (Luis Ying Ho), que ya pagó su agosto el día anterior desde una transferencia a su propio nombre. Hay 27 propietarios con saldo de exactamente 45.00, así que asignarlo por monto sería adivinar.',
+     ask:'¿A qué lote corresponde este pago? ¿César Vásquez es inquilino, familiar de algún propietario, o un propietario nuevo que paga por otro lote? Si es el lote 2 de Los Laureles, ¿por qué se pagó dos veces en agosto?'},
+    {mov:24, fecha:'18/08', monto:204.00,
+     banco:'DEPÓSITO CUENTA DE AHORROS SIN LIBRETA',
+     porque:'Depósito en efectivo, sin identificación del depositante. 204.00 no es múltiplo de ninguna cuota vigente (45.00 / 58.50 / 72.00 / 90.00 / 103.50), y se probaron todas las combinaciones de hasta 3 saldos pendientes: ninguna suma 204.00.',
+     ask:'¿Quién hizo el depósito del 18/08 y por qué concepto? ¿Es cuota de mantenimiento, aporte o reembolso? Si corresponde a varios propietarios, ¿cómo se reparte entre ellos?'},
+    {mov:22, fecha:'17/08', monto:20.00,
+     banco:'EXCEDENTE de ALEJANDRINA JUDITH ESCAMILLA TRUJILLO (Q-14AYB) · “mp y control de aires d…”',
+     porque:'Transfirió 65.00 y su cuota de agosto es 45.00. Los 20.00 de más no son cuota. La glosa menciona “control”, que en el residencial suele referirse al control remoto del portón.',
+     ask:'¿Los 20.00 adicionales son por un control remoto del portón, o por otro concepto? Si es una venta, se registran como OTRO INGRESO y no como crédito a favor en su cuenta.'}
+  ],
+  obs:[
+    {t:'Dos abonos quedaron consolidados en el sistema',
+     d:'Judith Araúz (L-14) hizo TRES transferencias ACH: 45.00 el 10/08, 45.00 el 13/08 y 4.50 el 17/08 (movimientos 8, 11 y 21). En el sistema figuran como una sola partida de 94.50 con fecha 10/08. Karlina Barrera (L-7) igual: 49.50 el 01/08 + 4.50 el 03/08 (movimientos 2 y 3) registrados como 54.00 el 01/08. No afecta ni el saldo ni la mora — mismo monto, mismo mes; sólo dificulta conciliar contra el banco más adelante.'},
+    {t:'Una fecha difiere en un día',
+     d:'Cristian Howell (Q-25, movimiento 14) figura en el sistema con fecha 14/08 y el banco lo acredita el 15/08. Mismo mes, así que no cambia la mora. Se corrige desde el histórico de pagos del estado de cuenta.'},
+    {t:'H-15 tiene la cuota desalineada en la hoja Propietarios',
+     d:'La columna “cuota” dice 162.00, pero el motor aplica 72.00 porque el número de LOTES no multiplica la cuota: 3 lotes y 2 cabañas = 45.00 × (1 + 2 × 30%) = 72.00. El propietario pagó exactamente 72.00, o sea que paga según el motor. Esa columna es un valor obsoleto que el sistema recalcula, pero conviene barrerla para que nadie la lea como cifra oficial.'},
+    {t:'Aviso a dar: Ana Tejada (L-16)',
+     d:'Pagó 49.50 el 17/08 pero debía 103.50. Le quedan 40.50 de agosto sin cubrir. Si no los completa antes del cierre del mes, el sistema le generará otro recargo de 4.50 sobre la cuota de agosto.'},
+    {t:'En el período no hubo un solo egreso',
+     d:'Los 24 movimientos del estado de cuenta son abonos: entre el 01 y el 18 de agosto no salió ni un pago de esta cuenta. Vale confirmar con Doraida si los gastos de agosto (honorarios, contratos de mantenimiento, préstamo, servicios del portón) están pendientes o se pagaron por otra vía.'}
+  ]
+};
+function renderRevBanco(){
+  const card=document.getElementById('revBancoCard'), box=document.getElementById('revBanco');
+  if(!card||!box) return;
+  if(!REV_BANCO){ card.style.display='none'; return; }
+  const R=REV_BANCO, c=R.control;
+  card.style.display='';
+  document.getElementById('revBancoPeriodo').textContent='· '+R.periodo;
+  document.getElementById('revBancoPill').textContent=money(c.pendiente)+' por ingresar';
+  const ctrl=[
+    ['Saldo al inicio',money(c.saldoIni),'01/08/2026',false],
+    ['Abonos del período',money(c.abonos),c.movs+' movimientos · sin egresos',false],
+    ['Saldo al cierre',money(c.saldoFin),'18/08/2026 · cuadra con el PDF',false],
+    ['Ya en el sistema',money(c.yaEnSistema),c.yaMovs+' partidas, todas conciliadas',false],
+    ['Pendiente de ingresar',money(c.pendiente),c.listosN+' listos + '+c.consultarN+' por consultar',true]
+  ].map(k=>`<div class="${k[3]?'hot':''}"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="h">${_esc(k[2])}</div></div>`).join('');
+
+  const listos=R.listos.map(p=>`<tr>
+    <td data-label="Mov."><span class="rev-mov">${p.mov}</span></td>
+    <td data-label="Fecha" style="white-space:nowrap">${p.fecha}</td>
+    <td class="stack-col" data-label="Propietario"><b>${_esc(p.nombre)}</b> <span class="muted">· ${_esc(p.clave)}</span>
+      <span class="muted" style="display:block;font-size:.72rem">${_esc(p.ubic)}</span>
+      <span class="banco">${_esc(p.banco)}</span></td>
+    <td class="n" data-label="Monto">${money(p.monto)}</td>
+    <td data-label="Estado"><span class="pill ${p.aldia?'ok':'warn'}">${p.aldia?'Al día':'Con saldo'}</span></td>
+    <td class="nota stack-col" data-label="Observación">${_esc(p.nota)}</td></tr>`).join('');
+
+  const consultar=R.consultar.map(q=>`<div class="rev-q">
+    <div class="top"><span class="rev-mov">${q.mov}</span><span class="muted">${q.fecha}</span><span class="mto">${money(q.monto)}</span></div>
+    <div class="glosa">${_esc(q.banco)}</div>
+    <p>${_esc(q.porque)}</p>
+    <div class="ask"><b>Qué hay que preguntar</b>${_esc(q.ask)}</div></div>`).join('');
+
+  const obs=R.obs.map((o,i)=>`<div class="rev-o"><b>${i+1}. ${_esc(o.t)}</b>${_esc(o.d)}</div>`).join('');
+
+  box.innerHTML=`
+    <p class="rev-sub" style="margin-top:0">${_esc(R.cuenta)} · revisado el ${_esc(R.revisado)}. Conciliación hecha contra el PDF del banco y los pagos ya registrados. <b>Nada se carga desde aquí</b>: es la lista para revisar antes de actualizar el sistema.</p>
+    <div class="rev-ctrl">${ctrl}</div>
+    <div class="rev-sec">A · Listos para ingresar — ${R.listos.length} pagos, ${money(c.listos)}</div>
+    <p class="rev-sub">El número en teal es el del movimiento en el estado de cuenta, en orden, para irlos marcando contra el PDF.</p>
+    <table class="stack-table rev-tbl"><thead><tr><th>Mov.</th><th>Fecha</th><th>Propietario</th><th class="num">Monto</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${listos}</tbody></table>
+    <div class="rev-sec">B · Por consultar con el cliente — ${R.consultar.length} partidas, ${money(c.consultar)}</div>
+    <p class="rev-sub">Estas <b>no</b> se cargan hasta tener respuesta. El texto de “qué hay que preguntar” se le puede trasladar al cliente tal cual.</p>
+    ${consultar}
+    <div class="rev-sec">C · Observaciones antes de cargar</div>
+    <p class="rev-sub">No bloquean la carga, pero conviene decidirlas antes de correr la actualización.</p>
+    ${obs}`;
 }
 async function auditarDup(btn){
   const box=document.getElementById('auditResult'); box.innerHTML='<div class="muted">Buscando…</div>';
