@@ -328,7 +328,11 @@ function setMoraCondon(clave, mes, condonar) {
     } else {
       throw new Error('Mes inválido para condonar: ' + mes);
     }
-    sh.getRange(r + 1, col).setValue(out);
+    // La celda se fuerza a TEXTO antes de escribir. Sin esto, Sheets interpreta
+    // "2026-04" como una fecha y guarda "Wed Apr 01 2026 …": al releerla, el mes
+    // condonado ya no coincide con la clave 'AAAA-MM' y la condonación se pierde
+    // en silencio (el recargo se sigue cobrando).
+    sh.getRange(r + 1, col).setNumberFormat('@').setValue(out);
     return { ok: true, clave: clave, moraCondon: out };
   }
   throw new Error('No existe la cuenta ' + clave);
