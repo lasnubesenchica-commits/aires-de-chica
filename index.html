@@ -648,17 +648,35 @@ function cambiarAutor(){
   pintarAutor();
   if(AUTOR) toast('Los cambios se registrarán a nombre de '+AUTOR);
 }
-// Pide identificarse antes de la primera escritura, para no anotar cambios anónimos.
+// Acciones de arranque/mantenimiento que el servidor permite sin autor humano.
+// Se replica aquí sólo para no molestar con el prompt; quien manda es el servidor.
+const SIN_AUTOR=new Set(['ensureSheets','seedInicial','seedGastos2026','seedRecurrentes',
+  'actualizarJulio2026','rollbackJulio2026','descargarInformePL','enviarInformePL','capturarComprobantes',
+  'verifyPassword','setPassword','resetPassword','guardarContrato']);
+// Pide identificarse antes de escribir, para no anotar cambios anónimos.
 function exigirAutor(){
   if(AUTOR) return true;
+  alert('Antes de hacer cambios tienes que identificarte.\n\nTu nombre queda registrado en cada modificación que hagas.');
   cambiarAutor();
   return !!AUTOR;
 }
 async function post(action,data={}){
+  // El servidor rechaza los cambios sin autor; aquí se pide el nombre antes de
+  // mandar, para que el usuario vea una petición clara y no un error del servidor.
+  if(!SIN_AUTOR.has(action) && !exigirAutor()) throw 'sin-autor';
   const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,...data})});
   const j=await r.json(); if(!j.ok) throw j.error; return j.data;
 }
-function onAuthError(e){ if(String(e)==='no-auth'){ TOKEN=''; localStorage.removeItem('ac_token'); showGate(); return true; } return false; }
+function onAuthError(e){
+  if(String(e)==='no-auth'){ TOKEN=''; localStorage.removeItem('ac_token'); showGate(); return true; }
+  // El servidor rechazó el cambio por no saber quién lo hacía.
+  if(String(e)==='sin-autor'){
+    if(!AUTOR){ exigirAutor(); if(AUTOR) toast('Ya puedes repetir la acción'); }
+    else alert('El cambio no se guardó: el servidor no recibió tu nombre. Vuelve a intentarlo.');
+    return true;
+  }
+  return false;
+}
 
 /* ───────── Login gate ───────── */
 let GATE_MODE='login';
@@ -726,9 +744,19 @@ document.getElementById('gateForm').addEventListener('submit', async e=>{
     }
     TOKEN=r.token; localStorage.setItem('ac_token',TOKEN);
     await renderDash(); showApp();
+    // Pedir el nombre al entrar, no en medio de una operación: la contraseña es
+    // compartida, así que entrar no dice quién es. Sin esto, el primer cambio del
+    // día interrumpe con un prompt justo cuando la persona está guardando algo.
+    if(!AUTOR) setTimeout(cambiarAutor, 350);
   }catch(ex){ err.textContent='Error: '+ex; }
 });
-function logout(){ TOKEN=''; localStorage.removeItem('ac_token'); setupGate('login'); }
+function logout(){
+  TOKEN=''; localStorage.removeItem('ac_token');
+  // También se olvida quién era: si la siguiente persona entra con la misma
+  // contraseña, sus cambios no deben quedar firmados por la anterior.
+  AUTOR=''; localStorage.removeItem('bc_autor'); pintarAutor();
+  setupGate('login');
+}
 
 /* ───────── Dashboard ───────── */
 let DASH=null, VISTA='cartera';

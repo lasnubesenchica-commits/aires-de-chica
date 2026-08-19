@@ -17,8 +17,35 @@ var COL_REG = ['id', 'fecha', 'autor', 'accion', 'entidad', 'clave', 'propietari
                'campo', 'antes', 'despues', 'monto', 'detalle', 'origen'];
 
 // Autor de la acción en curso. Lo fija doPost con lo que manda el panel.
+// Vacío significa que NO vino de una persona por el panel: es un trabajo automático
+// (envío programado, captura de comprobantes, migración ejecutada desde el editor).
 var AC_AUTOR = '';
-function _autor() { return String(AC_AUTOR || '').trim() || 'Sin identificar'; }
+function _autor() { return String(AC_AUTOR || '').trim() || 'Sistema (automático)'; }
+
+/**
+ * Acciones que NO exigen un autor humano: no tocan datos de la comunidad o son
+ * parte del arranque del sistema. Todo lo demás sí lo exige.
+ */
+var REG_SIN_AUTOR = {
+  ensureSheets: 1, seedInicial: 1, seedGastos2026: 1, seedRecurrentes: 1,
+  actualizarJulio2026: 1, rollbackJulio2026: 1,
+  descargarInformePL: 1, enviarInformePL: 1,
+  capturarComprobantes: 1
+};
+
+/**
+ * Corta la operación si nadie se identificó.
+ *
+ * Va en el SERVIDOR a propósito: el panel ya pide el nombre, pero el panel se puede
+ * saltar (un POST directo con el token bastaba para escribir de forma anónima). Sin
+ * esto, la bitácora tendría huecos justo en los cambios que a alguien le conviniera
+ * no firmar.
+ */
+function requireAutor(accion) {
+  if (REG_SIN_AUTOR[accion]) return true;
+  if (String(AC_AUTOR || '').trim()) return true;
+  throw new Error('sin-autor');
+}
 
 // Etiquetas legibles de cada acción, para no depender del código en pantalla.
 var REG_ACCIONES = {

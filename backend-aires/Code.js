@@ -98,6 +98,10 @@ function doPost(e) {
 
     // el resto exige token válido (permite bootstrap si aún no hay contraseña)
     requireAuth(data.token);
+    // …y además exige saber QUIÉN lo hace. Se valida en el servidor, no sólo en el
+    // panel: cualquiera con el token podría hacer un POST directo sin identificarse
+    // y la bitácora quedaría con cambios anónimos.
+    requireAutor(action);
     if (action === 'ensureSheets')          out = { ok: true, data: ensureSheets(true) };
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
