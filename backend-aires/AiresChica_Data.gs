@@ -560,9 +560,15 @@ function appendPago(pago) {
   if (!sh) { ensureSheets(); sh = ss.getSheetByName(SH.PAGOS); }
   var prop = pago.clave ? _findProp(pago.clave) : null;
   var id = pago.id || ('P' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000));
+  // Un 'AAAA-MM-DD' pelado se interpreta en UTC: new Date('2026-08-01') cae el 31 de
+  // julio en Panamá, y la fecha decide en qué mes entra el pago (y por tanto la mora).
+  // El formulario manual ya manda 'T12:00:00'; esto protege a cualquier otro que llame
+  // con la fecha sola, anclándola al mediodía local.
+  var fecha = (pago.fecha instanceof Date) ? pago.fecha
+            : (_fechaPagoDesdeISO(pago.fecha) || new Date(pago.fecha || _today()));
   sh.appendRow([
     id,
-    pago.fecha instanceof Date ? pago.fecha : new Date(pago.fecha || _today()),
+    fecha,
     String(pago.clave || '').trim(),
     pago.lote || (prop ? prop.lote : ''),
     pago.nombre || (prop ? prop.nombre : ''),

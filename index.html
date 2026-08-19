@@ -234,12 +234,6 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
            color:var(--ac-teal-700); margin:22px 0 4px; padding-bottom:5px; border-bottom:2px solid var(--ac-teal-50); }
 .rev-sec:first-child { margin-top:0; }
 .rev-sub { font-size:.78rem; color:var(--ac-muted); margin:0 0 10px; line-height:1.5; }
-.rev-ctrl { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:4px; }
-.rev-ctrl > div { border:1px solid var(--ac-border); border-radius:10px; padding:10px 12px; background:var(--ac-teal-50); }
-.rev-ctrl .l { font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-muted); font-weight:700; }
-.rev-ctrl .v { font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; margin-top:2px; }
-.rev-ctrl .h { font-size:.7rem; color:var(--ac-muted); margin-top:1px; }
-.rev-ctrl > div.hot { background:#fbf0dc; border-color:#e8d4a8; }
 .rev-mov { display:inline-block; min-width:22px; text-align:center; font-size:.7rem; font-weight:700;
            background:var(--ac-teal-600); color:#fff; border-radius:6px; padding:1px 5px; }
 .rev-tbl td { white-space:normal; vertical-align:top; font-size:.82rem; }
@@ -274,6 +268,11 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .rev-cmp-pie { display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:7px; }
 .rev-cmp-glosa { font-size:.72rem; color:var(--ac-muted); font-style:italic; word-break:break-word; flex:1; min-width:180px; }
 .rev-cmp-pie .link-btn { font-size:.78rem; white-space:nowrap; }
+.rev-tbl tr.rev-done { opacity:.62; }
+.rev-tbl tr.rev-done .rev-mov { background:var(--ac-ok); }
+.rev-cmp-acc { display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap;
+               margin-top:11px; padding-top:10px; border-top:1px solid var(--ac-border); }
+.rev-cmp-ok { color:var(--ac-ok); font-weight:700; font-size:.86rem; }
 .rev-o { border-top:1px dashed var(--ac-border); padding:9px 0; font-size:.82rem; line-height:1.55; }
 .rev-o:first-of-type { border-top:0; }
 .rev-o b { display:block; margin-bottom:2px; }
@@ -1465,6 +1464,13 @@ const REV_BANCO = {
      d:'Los 24 movimientos del estado de cuenta son abonos: entre el 01 y el 18 de agosto no salió ni un pago de esta cuenta. Vale confirmar con Doraida si los gastos de agosto (honorarios, contratos de mantenimiento, préstamo, servicios del portón) están pendientes o se pagaron por otra vía.'}
   ]
 };
+// Movimientos ya ingresados. Se guarda por período para que sobreviva a un refresco,
+// pero NO es la verdad: al abrir el modal se comprueba contra el historial real de
+// pagos del propietario, y si el pago no está, la marca se corrige sola.
+const REV_APL_KEY = 'bc_revApl_'+((REV_BANCO&&REV_BANCO.periodo)||'');
+let REV_APL = new Set();
+try{ REV_APL = new Set(JSON.parse(localStorage.getItem(REV_APL_KEY)||'[]')); }catch(e){}
+function _revAplGuardar(){ try{ localStorage.setItem(REV_APL_KEY, JSON.stringify([...REV_APL])); }catch(e){} }
 function renderRevBanco(){
   const card=document.getElementById('revBancoCard'), box=document.getElementById('revBanco');
   if(!card||!box) return;
@@ -1472,25 +1478,21 @@ function renderRevBanco(){
   const R=REV_BANCO, c=R.control;
   card.style.display='';
   document.getElementById('revBancoPeriodo').textContent='· '+R.periodo;
-  document.getElementById('revBancoPill').textContent=money(c.pendiente)+' por ingresar';
-  const ctrl=[
-    ['Saldo al inicio',money(c.saldoIni),'01/08/2026',false],
-    ['Abonos del período',money(c.abonos),c.movs+' movimientos · sin egresos',false],
-    ['Saldo al cierre',money(c.saldoFin),'18/08/2026 · cuadra con el PDF',false],
-    ['Ya en el sistema',money(c.yaEnSistema),c.yaMovs+' partidas, todas conciliadas',false],
-    ['Pendiente de ingresar',money(c.pendiente),c.listosN+' listos + '+c.consultarN+' por consultar',true]
-  ].map(k=>`<div class="${k[3]?'hot':''}"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="h">${_esc(k[2])}</div></div>`).join('');
-
-  const listos=R.listos.map(p=>`<tr class="rev-click" onclick="revComparar(${p.mov})" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
+  const nOk=R.listos.filter(p=>REV_APL.has(p.mov)).length;
+  const pill=document.getElementById('revBancoPill');
+  pill.textContent = nOk ? `${nOk} de ${R.listos.length} ingresados` : money(c.pendiente)+' por ingresar';
+  pill.className = 'pill '+(nOk===R.listos.length?'ok':'warn');
+  const listos=R.listos.map(p=>{ const ok=REV_APL.has(p.mov); return `<tr class="rev-click${ok?' rev-done':''}" id="revFila${p.mov}" onclick="revComparar(${p.mov})" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
     <td data-label="Mov."><span class="rev-mov">${p.mov}</span></td>
     <td data-label="Fecha" style="white-space:nowrap">${p.fecha}</td>
     <td class="stack-col" data-label="Propietario"><b>${_esc(p.nombre)}</b> <span class="muted">· ${_esc(p.clave)}</span>
       <span class="muted" style="display:block;font-size:.72rem">${_esc(p.ubic)}</span>
       <span class="banco">${_esc(p.banco)}</span></td>
     <td class="n" data-label="Monto">${money(p.monto)}</td>
-    <td data-label="Estado"><span class="pill ${p.aldia?'ok':'warn'}">${p.aldia?'Al día':'Con saldo'}</span></td>
+    <td data-label="Estado">${ok?'<span class="pill ok">Ingresado ✓</span>'
+                              :`<span class="pill ${p.aldia?'ok':'warn'}">${p.aldia?'Al día':'Con saldo'}</span>`}</td>
     <td class="nota stack-col" data-label="Observación">${_esc(p.nota)}
-      <span class="rev-ver">Ver estado de cuenta →</span></td></tr>`).join('');
+      <span class="rev-ver">${ok?'Revisar estado de cuenta →':'Revisar y aplicar →'}</span></td></tr>`; }).join('');
 
   const consultar=R.consultar.map(q=>`<div class="rev-q">
     <div class="top"><span class="rev-mov">${q.mov}</span><span class="muted">${q.fecha}</span><span class="mto">${money(q.monto)}</span></div>
@@ -1501,8 +1503,7 @@ function renderRevBanco(){
   const obs=R.obs.map((o,i)=>`<div class="rev-o"><b>${i+1}. ${_esc(o.t)}</b>${_esc(o.d)}</div>`).join('');
 
   box.innerHTML=`
-    <p class="rev-sub" style="margin-top:0">${_esc(R.cuenta)} · revisado el ${_esc(R.revisado)}. Conciliación hecha contra el PDF del banco y los pagos ya registrados. <b>Nada se carga desde aquí</b>: es la lista para revisar antes de actualizar el sistema.</p>
-    <div class="rev-ctrl">${ctrl}</div>
+    <p class="rev-sub" style="margin-top:0">${_esc(R.cuenta)} · revisado el ${_esc(R.revisado)}. Conciliación hecha contra el PDF del banco y los pagos ya registrados. Revisa cada fila contra el PDF y aplícala desde su estado de cuenta: <b>nada se registra hasta que lo confirmes</b>, uno por uno.</p>
     <div class="rev-sec">A · Listos para ingresar — ${R.listos.length} pagos, ${money(c.listos)}</div>
     <p class="rev-sub">El número en teal es el del movimiento en el estado de cuenta, en orden, para irlos marcando contra el PDF. <b>Haz clic en cualquier fila</b> para ver el estado de cuenta actual y cómo quedaría con el pago aplicado.</p>
     <table class="stack-table rev-tbl"><thead><tr><th>Mov.</th><th>Fecha</th><th>Propietario</th><th class="num">Monto</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${listos}</tbody></table>
@@ -1534,8 +1535,35 @@ async function revComparar(mov){
     document.getElementById('modalBd').innerHTML='<div class="notice">No se pudo calcular: '+_esc(String(ex))+'</div>';
     return;
   }
-  REVCMP={p,antes,despues};
-  revCmpVista('despues');
+  // ¿ya está ese pago en el historial? Misma fecha y mismo monto. Es la comprobación
+  // que manda: evita cargarlo dos veces aunque la marca local diga otra cosa.
+  const ya=(antes.pagosHistorial||[]).some(x=>String(x.fecha).slice(0,10)===p.iso && Math.abs(Number(x.monto)-p.monto)<0.005);
+  if(ya!==REV_APL.has(p.mov)){ ya?REV_APL.add(p.mov):REV_APL.delete(p.mov); _revAplGuardar(); renderRevBanco(); }
+  REVCMP={p,antes,despues,ya};
+  revCmpVista(ya?'antes':'despues');
+}
+// Registra en el sistema el pago que se está revisando.
+async function revAplicar(btn){
+  if(!REVCMP||REVCMP.ya) return;
+  const p=REVCMP.p;
+  if(!confirm(`¿Registrar este pago?\n\n${p.nombre} (${p.clave})\n${money(p.monto)} con fecha ${p.fecha}/2026\n\nSe recalcularán los saldos y la mora. No se envía ningún correo.`)) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Registrando…';
+  try{
+    await post('registrarPago',{pago:{
+      clave:p.clave, monto:p.monto, fecha:p.iso, origen:'banco',
+      referencia:'Estado de cuenta '+REV_BANCO.periodo+' · mov. '+p.mov,
+      notas:p.banco, enviarCorreo:false }});
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
+  REV_APL.add(p.mov); _revAplGuardar();
+  toast('Pago registrado · saldos y mora recalculados');
+  renderRevBanco();
+  if(typeof renderDash==='function') renderDash();
+  // se vuelve a pedir el estado para que lo que se ve sea ya lo guardado, no la simulación
+  try{
+    const act=await jsonp('getEstadoCuenta',{clave:p.clave});
+    REVCMP={p, antes:act, despues:act, ya:true};
+    revCmpVista('antes');
+  }catch(e){ closeModal(); }
 }
 function revCmpVista(v){
   if(!REVCMP) return;
@@ -1560,6 +1588,12 @@ function revCmpVista(v){
       <div class="rev-cmp-pie">
         <span class="rev-cmp-glosa">${_esc(p.banco)}</span>
         <button class="link-btn" onclick="openEstado('${p.clave}')" title="Abre el estado de cuenta normal, con las acciones de registrar pago y enviar correo">Abrir estado de cuenta completo →</button>
+      </div>
+      <div class="rev-cmp-acc">
+        ${REVCMP.ya
+          ? '<span class="rev-cmp-ok">✓ Este pago ya está registrado en el sistema.</span>'
+          : `<span class="muted" style="font-size:.78rem">Si el cotejo contra el PDF está correcto, ya se puede registrar.</span>
+             <button class="btn green" onclick="revAplicar(this)">Aplicar pago · ${money(p.monto)}</button>`}
       </div>
     </div>`;
   _renderEstado(e,{sim:true, banner});   // _r2 ya está definido más arriba
