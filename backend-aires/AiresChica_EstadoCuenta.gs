@@ -141,8 +141,17 @@ function _correrLibro(c, base, orden) {
     var creditoIni = pool;
     pool = _round2(pool + pg);
 
-    var apVenc = 0, apMora = 0, apMes = 0;
-    var _venc = function () { buckets.forEach(function (b) { if (b.idx < idx) apVenc = _round2(apVenc + _pagaCuota(b)); }); };
+    // apVenc se desglosa además en sus dos naturalezas: lo que fue a cuotas
+    // atrasadas DE ESTE AÑO y lo que fue al saldo arrastrado de 2025. El tablero
+    // las muestra por separado y la suma sigue siendo apVenc.
+    var apVenc = 0, apMora = 0, apMes = 0, ap2025 = 0, apAtras = 0;
+    var _venc = function () { buckets.forEach(function (b) {
+      if (b.idx >= idx) return;
+      var ap = _pagaCuota(b);
+      apVenc = _round2(apVenc + ap);
+      if (b.tipo === 'saldo2025') ap2025 = _round2(ap2025 + ap);
+      else apAtras = _round2(apAtras + ap);
+    }); };
     var _mora = function () { buckets.forEach(function (b) { apMora = _round2(apMora + _pagaMora(b)); }); };
     var _mes  = function () { if (bMes) apMes = _round2(apMes + _pagaCuota(bMes)); };
     if (orden === 'mora')         { _mora(); _venc(); _mes(); }
@@ -172,7 +181,8 @@ function _correrLibro(c, base, orden) {
       idx: idx, mes: mm, saldoIni: saldoIni,
       cuota: bMes ? bMes.monto : 0, mora: bMes ? bMes.mora : 0, pagado: pg,
       apVencidas: apVenc, apMora: apMora, apMesEnCurso: apMes,
-      creditoIni: _round2(creditoIni),
+      apD2025: ap2025, apAtras: apAtras,          // apVencidas = apD2025 + apAtras
+      creditoIni: _round2(creditoIni), creditoFin: _round2(pool),
       apMesDeCredito: apMesCredito, apMesDeCaja: _round2(apMes - apMesCredito),
       apCredito: _round2(pg - apVenc - apMora - apMes),
       cubierto: bMes ? bMes.pagado : 0,
@@ -359,6 +369,32 @@ function calcEstado(prop, pagosArr, asOf) {
     }
   });
 
+  // ─── Atribución del dinero: a qué obligación se aplicó cada balboa ───
+  // Sale del mismo libro que calcula los saldos, así que el tablero no puede
+  // contradecir al estado de cuenta. Se cumple, por construcción:
+  //   caja recibida + crédito que traía = lo aplicado + crédito que queda
+  var apAnCuotas = 0, apAn2025 = 0, apAnMora = 0;
+  buckets.forEach(function (b) {
+    if (b.tipo === 'cuota') apAnCuotas = _round2(apAnCuotas + b.pagado);
+    else if (b.tipo === 'saldo2025') apAn2025 = _round2(apAn2025 + b.pagado);
+    apAnMora = _round2(apAnMora + b.moraPagado);
+  });
+  var _rMes = null;
+  for (var _i = libro.mensual.length - 1; _i >= 0; _i--) {
+    if (libro.mensual[_i].mes === mesActual) { _rMes = libro.mensual[_i]; break; }
+  }
+  var aporte = {
+    anual: { caja: totalPagado, credIni: credito2025,
+             cuotas: apAnCuotas, d2025: apAn2025, mora: apAnMora, credFin: creditoAFavor },
+    mes:   { caja: _round2(pagosMes[mesActual] || 0),
+             credIni: _rMes ? _rMes.creditoIni : creditoAFavor,
+             cuota:   _rMes ? _rMes.apMesEnCurso : 0,
+             atras:   _rMes ? _rMes.apAtras : 0,
+             d2025:   _rMes ? _rMes.apD2025 : 0,
+             mora:    _rMes ? _rMes.apMora : 0,
+             credFin: _rMes ? _rMes.creditoFin : creditoAFavor }
+  };
+
   return {
     clave: prop.clave, lote: prop.lote, loteNum: prop.loteNum,
     residencial: prop.residencial, nombre: prop.nombre,
@@ -378,6 +414,7 @@ function calcEstado(prop, pagosArr, asOf) {
     detalleSaldo: detalleSaldo,    // renglones que componen el saldo (cuotas y moras pendientes)
     moraCubiertas: moraCubiertas,  // recargos ya pagados: no suman al saldo, pero se muestran para que no parezcan desaparecidos
     creditoAFavor: creditoAFavor,
+    aporte: aporte,                // a qué se aplicó el dinero (mes de corte y año)
     moraOrden: moraOrden, moraBase: moraBase, moraPct: cfg.moraPct, moraCrece: moraCrece,
     moraCondon: String(prop.moraCondon || ''), moraCondonAll: condon.all,
     diasVencido: diasVencido,
@@ -444,8 +481,18 @@ function buildDashboard(asOf) {
   var agingMonto = { 'al-dia': 0, '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   var morosos = 0, pendientes = 0, alDia = 0;
   var facturadoMes = 0, pagadoMes = 0;
+  // Conciliación "de dónde salió → a qué se aplicó", del mes de corte y del año.
+  // Se agrega desde la atribución que cada cuenta ya trae (e.aporte), que a su vez
+  // sale del libro. Por construcción origen = destino en ambas.
+  var recMes = { caja: 0, credIni: 0, cuota: 0, atras: 0, d2025: 0, mora: 0, credFin: 0 };
+  var recAnio = { caja: 0, credIni: 0, cuotas: 0, d2025: 0, mora: 0, credFin: 0 };
+  var cubiertoMesTot = 0;
 
   cuentas.forEach(function (e) {
+    var ap = e.aporte || { anual: {}, mes: {} };
+    Object.keys(recMes).forEach(function (k) { recMes[k] = _round2(recMes[k] + (Number(ap.mes[k]) || 0)); });
+    Object.keys(recAnio).forEach(function (k) { recAnio[k] = _round2(recAnio[k] + (Number(ap.anual[k]) || 0)); });
+    cubiertoMesTot = _round2(cubiertoMesTot + (Number(e.cubiertoMes) || 0));
     totalFacturado += e.facturado;
     totalPagado += e.pagado;
     carteraVencida += e.saldo;
@@ -545,8 +592,20 @@ function buildDashboard(asOf) {
       pagadoMesCuotas: _round2(pagadoMesCuotas),     // sólo cuotas de propietarios
       pagadoMesOtros: pagadoMesOtros,                // aportes u otros ingresos del mes
       tasaRecaudacionMes: facturadoMes ? _round2(pagadoMesCuotas / facturadoMes * 100) : 0,
-      tasaRecaudacionAnual: totalFacturado ? _round2(totalPagado / totalFacturado * 100) : 0
+      tasaRecaudacionAnual: totalFacturado ? _round2(totalPagado / totalFacturado * 100) : 0,
+
+      // ── Cobertura: qué parte de lo FACTURADO quedó cobrada ──
+      // Es la pregunta de cobranza, y la misma para el mes y para el año, así que
+      // las dos cifras son comparables entre sí y ninguna puede pasar de 100%.
+      // Las tasas de arriba miden otra cosa (caja recibida sobre lo facturado) y se
+      // conservan porque los reportes ya las usan.
+      cubiertoMes: cubiertoMesTot,
+      coberturaMes: facturadoMes ? _round2(cubiertoMesTot / facturadoMes * 100) : 0,
+      cobradoAnual: recAnio.cuotas,
+      coberturaAnual: totalFacturado ? _round2(recAnio.cuotas / totalFacturado * 100) : 0
     },
+    // Conciliación del dinero. origen (caja + crédito que traían) = destino.
+    recon: { mes: recMes, anio: recAnio },
     aging: aging,
     agingMonto: agingMonto,
     topMorosos: topMorosos,
@@ -565,6 +624,9 @@ function buildDashboard(asOf) {
                moraCondon: e.moraCondon, moraCondonAll: e.moraCondonAll,
                estado: e.estado, aging: e.aging, diasVencido: e.diasVencido, mesesMora: e.mesesMora,
                fechaVencimiento: e.fechaVencimiento,
+               // atribución por cuenta: con esto el tablero arma las listas de
+               // "quiénes componen este renglón" sin volver a llamar al servidor
+               aporte: e.aporte,
                // desglose mensual (caja real) para que el modal abra al instante (sin otra llamada)
                mensual: e.mensual };
     })

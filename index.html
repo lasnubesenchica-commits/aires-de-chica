@@ -47,6 +47,155 @@ nav.tabs .tab-gear { font-size:1.15rem; line-height:1; }
 .kpi .label { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ac-muted); font-weight:600; }
 .kpi .val { font-size:1.7rem; font-weight:700; margin-top:4px; }
 .kpi .hint { font-size:.75rem; color:var(--ac-muted); margin-top:2px; }
+
+/* ───── Tablero: el mes, el año y la foto de hoy, cada uno con su período ─────
+   Las dos tarjetas de arriba SON las pestañas del desglose que va debajo: la que
+   está seleccionada es la que se desglosa, así queda explícito de qué período
+   habla cada cifra. */
+.tb-par { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.tb-sel { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius);
+  box-shadow:var(--ac-shadow); overflow:hidden; cursor:pointer; position:relative; text-align:left;
+  font:inherit; color:inherit; padding:0; display:block; width:100%;
+  transition:border-color .13s, box-shadow .13s; }
+.tb-sel:hover { border-color:var(--ac-teal-300); }
+.tb-sel.on { border-color:var(--ac-teal); box-shadow:0 0 0 2px rgba(14,143,176,.16), var(--ac-shadow); }
+.tb-sel .hd { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  padding:9px 17px; background:#eef6f9; color:var(--ac-teal-700); border-bottom:1px solid var(--ac-border); }
+.tb-sel.on .hd { background:var(--ac-teal-700); color:#fff; border-bottom-color:var(--ac-teal-700); }
+.tb-sel.on.mes .hd { background:#2b6a55; }
+.tb-sel .hd .t { font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; }
+.tb-sel .hd .p { font-size:.73rem; opacity:.85; }
+.tb-sel .bd { padding:15px 17px; }
+.tb-cap { font-size:.75rem; color:var(--ac-muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+.tb-big { font-size:2.4rem; font-weight:800; line-height:1.02; letter-spacing:-.02em; margin-top:2px;
+  font-variant-numeric:tabular-nums; }
+.tb-big.g { color:var(--ac-green-600); } .tb-big.t { color:var(--ac-teal-700); }
+.tb-bar { height:8px; background:#e8f1f4; border-radius:6px; overflow:hidden; margin-top:9px; }
+.tb-bar span { display:block; height:100%; background:var(--ac-green); border-radius:6px; }
+.tb-bar.t span { background:var(--ac-teal); }
+.tb-den { font-size:.85rem; color:var(--ac-muted); margin-top:9px; } .tb-den b { color:var(--ac-ink); }
+.tb-caja { margin-top:11px; padding-top:10px; border-top:1px solid var(--ac-border);
+  font-size:.82rem; color:var(--ac-muted); } .tb-caja b { color:var(--ac-ink); }
+.tb-ver { font-size:.75rem; font-weight:700; color:var(--ac-teal); margin-top:9px; }
+.tb-sel.on .tb-ver { color:var(--ac-teal-700); }
+
+.tb-desg { background:#fff; border:1px solid var(--ac-teal); border-radius:var(--ac-radius);
+  box-shadow:var(--ac-shadow); margin-top:14px; overflow:hidden; }
+.tb-desg > .hd { padding:10px 18px; background:var(--ac-teal); color:#fff; display:flex;
+  justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.tb-desg > .hd .t { font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.tb-desg > .hd .p { font-size:.75rem; opacity:.9; }
+.tb-desg > .bd { padding:16px 18px; }
+.tb-recon { display:grid; grid-template-columns:minmax(0,.86fr) minmax(0,1.35fr); gap:20px; }
+/* Sin esto, una columna del grid no puede encogerse por debajo del ancho de su
+   tabla y el monto se sale de la tarjeta en pantallas angostas. */
+.tb-recon > div { min-width:0; }
+.tb-recon h4 { margin:0 0 8px; font-size:.68rem; text-transform:uppercase; letter-spacing:.09em;
+  color:var(--ac-muted); font-weight:700; }
+.tb-recon table { width:100%; border-collapse:collapse; font-size:.87rem; }
+.tb-recon td { padding:7px 4px; border-bottom:1px solid #eef5f8; vertical-align:middle; }
+.tb-recon td.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tb-recon tr.tot td { border-top:2px solid var(--ac-border); border-bottom:0; font-weight:800;
+  background:var(--ac-teal-50); padding:9px 8px; }
+.tb-recon .orig tr.tot td { background:#f7fbfc; }
+.tb-recon tr.d { cursor:pointer; }
+.tb-recon tr.d:hover td { background:#f2fafc; }
+.tb-recon tr.d.act td { background:var(--ac-teal-50); }
+.tb-recon tr.d.vacia { cursor:default; opacity:.55; }
+.tb-recon tr.d.vacia:hover td { background:transparent; }
+.tb-sw { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:9px; vertical-align:1px; }
+.tb-np { display:inline-block; font-size:.7rem; font-weight:700; color:var(--ac-teal-700);
+  background:var(--ac-teal-50); border:1px solid #cbe7f0; border-radius:20px; padding:1px 8px;
+  margin-left:8px; white-space:nowrap; }
+tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebee; }
+.tb-mas { font-size:.76rem; color:var(--ac-muted); margin-top:9px; line-height:1.5; }
+.tb-nota { background:var(--ac-teal-50); border:1px solid #cbe7f0; border-radius:10px;
+  padding:11px 14px; font-size:.83rem; color:var(--ac-teal-700); margin-top:13px; line-height:1.5; }
+
+/* Lista de "quiénes componen este renglón". Se abre debajo, no tapa nada. */
+.tb-det { border:1px solid var(--ac-border); border-radius:10px; margin-top:14px; overflow:hidden; background:#fdffff; }
+.tb-det .dh { display:flex; justify-content:space-between; align-items:center; gap:10px;
+  padding:9px 14px; background:var(--ac-teal-50); border-bottom:1px solid var(--ac-border); }
+.tb-det .dh .t { font-size:.8rem; font-weight:700; color:var(--ac-teal-700); }
+.tb-det .dh .x { border:0; background:none; font:inherit; color:var(--ac-muted); cursor:pointer;
+  font-size:1.15rem; line-height:1; padding:2px 7px; }
+.tb-det .dl { max-height:260px; overflow:auto; }
+.tb-det table { width:100%; border-collapse:collapse; font-size:.83rem; }
+.tb-det td { padding:6px 14px; border-bottom:1px solid #f0f6f8; }
+.tb-det td.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tb-det tr:hover td { background:var(--ac-teal-50); }
+.tb-det .lo { font-weight:700; width:84px; color:var(--ac-teal-700); }
+.tb-det .no { font-size:.74rem; color:var(--ac-muted); white-space:nowrap; }
+.tb-det .ec { font-size:.71rem; color:var(--ac-teal); opacity:0; white-space:nowrap; }
+.tb-det tr:hover .ec { opacity:1; }
+.tb-det .df { padding:8px 14px; border-top:1px solid var(--ac-border); font-size:.76rem;
+  color:var(--ac-muted); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fafdfe; }
+.tb-det .df b { color:var(--ac-ink); }
+
+.tb-hoy { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius);
+  box-shadow:var(--ac-shadow); margin-top:14px; overflow:hidden; }
+.tb-hoy > .hd { padding:9px 18px; background:#375c68; color:#fff; display:flex;
+  justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.tb-hoy > .hd .t { font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; }
+.tb-hoy > .hd .p { font-size:.73rem; opacity:.85; }
+.tb-hoy > .bd { padding:15px 18px; display:grid; grid-template-columns:.8fr 1.5fr; gap:16px; align-items:center; }
+.tb-chips { display:flex; flex-wrap:wrap; gap:9px; }
+.tb-chip { flex:1; min-width:136px; border:1px solid var(--ac-border); border-radius:10px;
+  padding:9px 12px; position:relative; overflow:hidden; background:#fff; font:inherit; text-align:left;
+  cursor:pointer; transition:border-color .13s, box-shadow .13s; }
+.tb-chip::before { content:''; position:absolute; inset:0 auto 0 0; width:3px; background:var(--ac-teal); }
+.tb-chip.ok::before { background:var(--ac-ok); }
+.tb-chip.w::before { background:var(--ac-warn); }
+.tb-chip.r::before { background:var(--ac-danger); }
+.tb-chip:hover { border-color:var(--ac-teal-300); box-shadow:0 2px 10px rgba(16,60,80,.09); }
+.tb-chip.act { border-color:var(--ac-teal); box-shadow:0 0 0 2px rgba(14,143,176,.15); }
+.tb-chip .n { font-size:1.45rem; font-weight:800; line-height:1.1; }
+.tb-chip .l { font-size:.74rem; color:var(--ac-muted); line-height:1.32; margin-top:1px; }
+.tb-chip .cf { font-size:.72rem; font-weight:700; color:var(--ac-teal-700); margin-top:5px;
+  padding-top:5px; border-top:1px solid #eef5f8; }
+
+#tbTip { position:fixed; z-index:90; background:#0f2b34; color:#fff; border-radius:10px;
+  padding:10px 12px; font-size:.78rem; line-height:1.42; box-shadow:0 12px 34px rgba(0,0,0,.28);
+  max-width:320px; display:none; pointer-events:none; }
+#tbTip .th { font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; opacity:.65;
+  margin-bottom:6px; font-weight:700; }
+#tbTip .r { display:flex; justify-content:space-between; gap:14px; padding:1.5px 0; }
+#tbTip .r .l { opacity:.9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#tbTip .r .v { font-weight:700; font-variant-numeric:tabular-nums; }
+#tbTip .f { margin-top:7px; padding-top:6px; border-top:1px solid rgba(255,255,255,.2);
+  font-size:.72rem; opacity:.75; }
+@media (max-width:820px){
+  .tb-par, .tb-recon, .tb-hoy > .bd { grid-template-columns:1fr; }
+  .tb-desg > .bd { padding:14px; }
+  #tbTip { display:none !important; }   /* en táctil no hay hover: se abre con un toque */
+  /* Las tablas de dos columnas pasan a renglón flexible: si no, la etiqueta larga
+     empuja el monto fuera de la tarjeta y se pierde justo la cifra. */
+  .tb-recon table, .tb-recon tbody, .tb-recon tr { display:block; width:100%; }
+  .tb-recon tr { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    padding:7px 2px; border-bottom:1px solid #eef5f8; }
+  /* OJO: width:auto en la celda. Con width:100% las dos celdas piden el ancho
+     entero y, como el monto no encoge, la etiqueta colapsa a cero y se parte
+     letra por letra. */
+  .tb-recon td { display:block; width:auto; border:0; padding:0; }
+  .tb-recon td:first-child { flex:1 1 auto; min-width:0; }
+  .tb-recon td.num { flex:0 0 auto; }
+  /* El panel trae white-space:nowrap heredado para las tablas; aquí la etiqueta
+     TIENE que poder partirse o el renglón no cabe. */
+  .tb-recon td:first-child { overflow-wrap:break-word; white-space:normal; }
+  .tb-recon tr.tot { padding:9px 8px; border-radius:8px; background:var(--ac-teal-50); }
+  .tb-recon .orig tr.tot { background:#f7fbfc; }
+  .tb-recon tr.tot td { padding:0; background:transparent; }
+  .tb-np { margin-left:6px; }
+  /* La lista de propietarios se apila igual: lote, nombre, monto y nota en un
+     renglón flexible, en vez de cuatro columnas que no caben. */
+  .tb-det tbody, .tb-det tr { display:block; width:100%; }
+  .tb-det tr { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px; padding:8px 12px; }
+  .tb-det td { display:block; width:auto; padding:0; border:0; }
+  .tb-det .ec { display:none; }        /* la fila entera ya abre el estado de cuenta */
+  .tb-det .lo { flex:0 0 auto; width:auto; white-space:nowrap; }
+  .tb-det td:nth-child(2) { flex:1 1 60px; min-width:0; overflow-wrap:break-word; white-space:normal; }
+  .tb-det td.num, .tb-det .no { flex:0 0 auto; }
+}
 .card { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius); box-shadow:var(--ac-shadow); }
 .card .hd { padding:14px 18px; border-bottom:1px solid var(--ac-border); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .card .hd h2 { margin:0; font-size:1.05rem; }
@@ -837,10 +986,257 @@ async function renderDash(opts){
 }
 // Pinta KPIs y tabla con el DASH ya cargado (desde el servidor o desde la caché).
 function _pintarDash(){
+  _tbPintar();
+  const rs=[...new Set(DASH.cuentas.map(c=>c.residencial))];
+  const fr=document.getElementById('fRes'), prevRes=fr.value;   // no perder el filtro al recargar
+  fr.innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
+  if(prevRes && rs.indexOf(prevRes)>=0) fr.value=prevRes;
+  renderTabla();
+}
+
+/* ═════════ Tablero: el mes, el año y la foto de hoy ═════════
+   Tres bloques con su período escrito, en vez de seis tarjetas que lo mezclaban.
+   Las dos tarjetas de arriba son las pestañas del desglose de abajo.
+
+   Todo sale de `c.aporte`, la atribución que el libro ya hace al calcular los
+   saldos: por eso el total de cada renglón y la lista de propietarios que hay
+   detrás salen del MISMO dato y no pueden discrepar. El desglose es una
+   conciliación: caja recibida + crédito que traían = lo aplicado + lo que queda. */
+let TB_VISTA='mes', TB_FILA=null, TB_CHIP=null;
+
+const TB_COL={cuota:'#0E8FB0',atras:'#F4A45C',d2025:'#8DC63F',mora:'#E8743B',cred:'#4FB4CE'};
+// Cada renglón sabe sacar su monto de una cuenta: con eso se arma el total y la lista.
+function _tbFilas(){
+  const a=(DASH.anio||new Date().getFullYear());
+  const mes=DASH.mesActual||'', ant=a-1;
+  return {
+    mes:[
+      {k:'cuota',  n:'Cuota de '+String(mes).toLowerCase(), c:TB_COL.cuota, v:x=>x.mes.cuota},
+      {k:'atras',  n:'Cuotas atrasadas de '+a,        c:TB_COL.atras, v:x=>x.mes.atras},
+      {k:'d2025',  n:'Saldos de '+ant,                c:TB_COL.d2025, v:x=>x.mes.d2025},
+      {k:'mora',   n:'Recargos por mora',             c:TB_COL.mora,  v:x=>x.mes.mora},
+      {k:'credFin',n:'Crédito a favor que queda',     c:TB_COL.cred,  v:x=>x.mes.credFin}
+    ],
+    anio:[
+      {k:'cuotas', n:'Cuotas de '+a,                  c:TB_COL.cuota, v:x=>x.anual.cuotas},
+      {k:'d2025',  n:'Saldos de '+ant,                c:TB_COL.d2025, v:x=>x.anual.d2025},
+      {k:'mora',   n:'Recargos por mora',             c:TB_COL.mora,  v:x=>x.anual.mora},
+      {k:'credFin',n:'Crédito a favor que queda',     c:TB_COL.cred,  v:x=>x.anual.credFin}
+    ]
+  };
+}
+// Propietarios que componen un renglón, de mayor a menor.
+function _tbLista(fila){
+  return (DASH.cuentas||[]).map(c=>({lote:c.lote,nombre:c.nombre,clave:c.clave,
+      monto:_r2(Number(fila.v(c.aporte||{mes:{},anual:{}}))||0)}))
+    .filter(x=>x.monto>0.009).sort((a,b)=>b.monto-a.monto);
+}
+// Las tres casillas de "Situación de las cuentas". Suman el total de cuentas, y
+// las dos con deuda suman el saldo por cobrar.
+function _tbChips(){
+  const C=DASH.cuentas||[];
+  return {
+    sin:{t:'Sin deuda', cls:'ok', L:C.filter(c=>(c.saldoConMora||0)<=0.009),
+         v:c=>c.creditoAFavor||0, nota:c=>((c.creditoAFavor||0)>0.009?'a favor':''),
+         col:'Crédito a favor', pie:'Ninguno debe nada al corte. Los que muestran monto tienen saldo a favor.'},
+    mes:{t:'Deben solo el mes en curso', cls:'w',
+         L:C.filter(c=>(c.saldoConMora||0)>0.009 && !((c.diasVencido||0)>0)),
+         v:c=>c.saldoConMora||0, nota:()=>'',
+         col:'Debe', pie:'La cuota del mes en curso, sin meses vencidos detrás. Todavía no generan mora.'},
+    atr:{t:'Con meses atrasados', cls:'r', L:C.filter(c=>(c.diasVencido||0)>0),
+         v:c=>c.saldoConMora||0, nota:c=>(c.diasVencido+' días'),
+         col:'Debe', pie:'Tienen al menos una cuota vencida. Son los que generan mora.'}
+  };
+}
+function tbVer(v){ TB_VISTA=v; TB_FILA=null; _tbPintar(); }
+function tbFila(k){ TB_FILA=(TB_FILA===k)?null:k; _tbOcultar(); _tbPintar();
+  if(TB_FILA) setTimeout(()=>{const e=document.querySelector('#tbDet .tb-det'); if(e) e.scrollIntoView({block:'nearest',behavior:'smooth'});},40); }
+function tbChip(k){ TB_CHIP=(TB_CHIP===k)?null:k; _tbOcultar(); _tbPintar();
+  if(TB_CHIP) setTimeout(()=>{const e=document.querySelector('#tbDetC .tb-det'); if(e) e.scrollIntoView({block:'nearest',behavior:'smooth'});},40); }
+
+function _tbPintar(){
+  const k=DASH.kpis, R=DASH.recon||{mes:{},anio:{}};
+  const corte=fmtDate(DASH.asOfStr||DASH.asOf), mes=DASH.mesActual||'', anio=DASH.anio||'';
+  // Si el backend aún no manda `recon` (deploy a medias), se cae al tablero viejo
+  // antes que mostrar una pantalla rota.
+  if(!DASH.recon || !(DASH.cuentas||[]).some(c=>c.aporte)){ _tbLegacy(); return; }
+
+  const covM=Math.max(0,Math.min(100,Number(k.coberturaMes)||0));
+  const covA=Math.max(0,Math.min(100,Number(k.coberturaAnual)||0));
+  const esMes=TB_VISTA==='mes';
+
+  document.getElementById('kpis').innerHTML=`
+    <div class="tb-par">
+      <button type="button" class="tb-sel mes${esMes?' on':''}" onclick="tbVer('mes')">
+        <div class="hd"><span class="t">El mes</span><span class="p">${_esc(mes)} ${_esc(anio)}</span></div>
+        <div class="bd">
+          <div class="tb-cap">Cuota de ${_esc(String(mes).toLowerCase())} cubierta</div>
+          <div class="tb-big g">${covM.toFixed(1)}%</div>
+          <div class="tb-bar"><span style="width:${covM}%"></span></div>
+          <div class="tb-den"><b>${money(k.cubiertoMes)}</b> de <b>${money(k.facturadoMes)}</b> facturados en el mes</div>
+          <div class="tb-caja">Entró en caja durante el mes <b>${money(R.mes.caja)}</b>${
+            (Number(k.pagadoMesOtros)||0)>0.009?` · +${money(k.pagadoMesOtros)} otros ingresos`:''}</div>
+          <div class="tb-ver">${esMes?'▾':'▸'} Ver a qué se aplicó</div>
+        </div>
+      </button>
+      <button type="button" class="tb-sel anio${esMes?'':' on'}" onclick="tbVer('anio')">
+        <div class="hd"><span class="t">El año</span><span class="p">${_esc(anio)} · al ${_esc(corte)}</span></div>
+        <div class="bd">
+          <div class="tb-cap">Cuotas del año cobradas</div>
+          <div class="tb-big t">${covA.toFixed(1)}%</div>
+          <div class="tb-bar t"><span style="width:${covA}%"></span></div>
+          <div class="tb-den"><b>${money(k.cobradoAnual)}</b> de <b>${money(k.totalFacturado)}</b> facturados en el año</div>
+          <div class="tb-caja">Entró en caja en el año <b>${money(R.anio.caja)}</b></div>
+          <div class="tb-ver">${esMes?'▸':'▾'} Ver a qué se aplicó</div>
+        </div>
+      </button>
+    </div>
+    ${_tbDesglose()}
+    ${_tbHoy()}
+    <div id="tbTip"></div>`;
+}
+
+function _tbDesglose(){
+  const R=DASH.recon, esMes=TB_VISTA==='mes';
+  const r=esMes?R.mes:R.anio, filas=_tbFilas()[esMes?'mes':'anio'];
+  const mes=DASH.mesActual||'', anio=DASH.anio||'', corte=fmtDate(DASH.asOfStr||DASH.asOf);
+  const origen=[[esMes?('Caja recibida en '+String(mes).toLowerCase()):'Caja recibida en el año', r.caja],
+                [esMes?('Crédito a favor que traían al empezar el mes'):('Crédito a favor que venía de '+(anio-1)), r.credIni]];
+  const totO=_r2(origen.reduce((s,x)=>s+x[1],0));
+  const cuerpo=filas.map(f=>{
+    const v=_r2(Number(r[f.k])||0), q=_tbLista(f).length;
+    return `<tr class="d${q?'':' vacia'}${TB_FILA===f.k?' act':''}"${q?` onclick="tbFila('${f.k}')"
+      onmouseenter="_tbTip(event,'${f.k}')" onmousemove="_tbMover(event)" onmouseleave="_tbOcultar()"`:''}>
+      <td><span class="tb-sw" style="background:${f.c}"></span>${_esc(f.n)}<span class="tb-np">${q} prop.</span></td>
+      <td class="num">${money(v)}</td></tr>`;
+  }).join('');
+  const totD=_r2(filas.reduce((s,f)=>s+(Number(r[f.k])||0),0));
+  const kpi=esMes
+    ? `El primer renglón <b>es</b> el numerador de la tarjeta: ${money(r.cuota)} ÷ ${money(DASH.kpis.facturadoMes)} facturados de ${_esc(String(mes).toLowerCase())} = <b>${(Number(DASH.kpis.coberturaMes)||0).toFixed(1)}%</b>. Los demás explican en qué se fue el resto.`
+    : `El primer renglón <b>es</b> el numerador de la tarjeta: ${money(r.cuotas)} ÷ ${money(DASH.kpis.totalFacturado)} facturados en el año = <b>${(Number(DASH.kpis.coberturaAnual)||0).toFixed(1)}%</b>. Quedan ${money(DASH.kpis.carteraVencida)} de cuotas del año sin cobrar.`;
+  return `<div class="tb-desg">
+    <div class="hd"><span class="t">A qué se aplicó · ${esMes?_esc(mes)+' '+_esc(anio):'Año '+_esc(anio)}</span>
+      <span class="p">clic en un renglón para ver de quiénes se compone</span></div>
+    <div class="bd">
+      <div class="tb-recon">
+        <div><h4>De dónde salió</h4>
+          <table class="orig"><tbody>
+            ${origen.map((x,i)=>`<tr><td>${i?'+ ':''}${_esc(x[0])}</td><td class="num">${money(x[1])}</td></tr>`).join('')}
+            <tr class="tot"><td>Total disponible</td><td class="num">${money(totO)}</td></tr>
+          </tbody></table>
+          <div class="tb-mas">El crédito no es plata nueva: son adelantos que los propietarios ya tenían
+            a su favor. Por eso puede aplicarse más de lo que entró en caja.</div>
+        </div>
+        <div><h4>A qué se aplicó</h4>
+          <table><tbody>${cuerpo}
+            <tr class="tot"><td>Total aplicado</td><td class="num">${money(totD)}</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      <div id="tbDet">${TB_FILA?_tbCajaDet(filas.find(f=>f.k===TB_FILA)):''}</div>
+      <div class="tb-nota">${kpi}<br><span style="opacity:.8">«Crédito a favor que queda» es el saldo al
+        ${_esc(corte)}: es el mismo mirado desde el mes o desde el año, porque es un saldo y no un flujo.</span></div>
+    </div></div>`;
+}
+function _tbCajaDet(f){
+  if(!f) return '';
+  const L=_tbLista(f), suma=_r2(L.reduce((s,x)=>s+x.monto,0));
+  const r=TB_VISTA==='mes'?DASH.recon.mes:DASH.recon.anio;
+  const cuadra=Math.abs(suma-(Number(r[f.k])||0))<0.02;
+  return `<div class="tb-det"><div class="dh">
+      <span class="t">${_esc(f.n)} · ${L.length} propietario${L.length===1?'':'s'}</span>
+      <button class="x" type="button" onclick="tbFila(null)" title="Cerrar">×</button></div>
+    <div class="dl"><table><tbody>${L.map(x=>
+      `<tr onclick="openEstado('${_esc(x.clave)}')"><td class="lo">${_esc(x.lote)}</td><td>${_esc(x.nombre)}</td>
+       <td class="num">${money(x.monto)}</td><td class="num ec">estado de cuenta →</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="df"><span>Suma de la lista <b>${money(suma)}</b></span>
+      <span>${cuadra?'✓ cuadra con el renglón':'⚠ no cuadra con el renglón'}</span></div></div>`;
+}
+
+function _tbHoy(){
+  const k=DASH.kpis, C=_tbChips(), corte=fmtDate(DASH.asOfStr||DASH.asOf);
+  const tot=(DASH.cuentas||[]).length;
+  const chip=(id,c)=>{
+    const suma=_r2(c.L.reduce((s,x)=>s+(Number(c.v(x))||0),0));
+    // El % de morosidad va junto al monto, no pegado a la etiqueta: ahí partía el
+    // renglón en dos líneas y se leía como parte del nombre de la casilla.
+    const pc=(id==='atr'&&tot)?` · ${_r2(c.L.length/tot*100).toFixed(2)}% de ${tot}`:'';
+    return `<button type="button" class="tb-chip ${c.cls}${TB_CHIP===id?' act':''}" onclick="tbChip('${id}')"
+      onmouseenter="_tbTipC(event,'${id}')" onmousemove="_tbMover(event)" onmouseleave="_tbOcultar()">
+      <div class="n">${c.L.length}</div><div class="l">${_esc(c.t)}</div>
+      ${suma>0.009?`<div class="cf">${money(suma)}${id==='sin'?' a favor':''}<span
+        style="font-weight:400;color:var(--ac-muted)">${pc}</span></div>`:''}</button>`;
+  };
+  return `<div class="tb-hoy">
+    <div class="hd"><span class="t">Situación de las cuentas</span><span class="p">Hoy · al ${_esc(corte)}</span></div>
+    <div class="bd">
+      <div>
+        <div class="tb-cap">Saldo total por cobrar</div>
+        <div class="tb-big" style="color:var(--ac-danger);font-size:2.05rem">${money(k.saldoTotalConMora)}</div>
+        <div class="tb-den">Cuotas <b>${money(k.carteraVencida)}</b> + mora
+          <b style="color:var(--ac-coral)">${money(k.moraAcumulada)}</b></div>
+      </div>
+      <div class="tb-chips">${chip('sin',C.sin)}${chip('mes',C.mes)}${chip('atr',C.atr)}</div>
+    </div>
+    <div id="tbDetC">${TB_CHIP?_tbCajaDetC(TB_CHIP):''}</div>
+  </div>`;
+}
+function _tbCajaDetC(id){
+  const c=_tbChips()[id]; if(!c) return '';
+  const L=c.L.map(x=>({lote:x.lote,nombre:x.nombre,clave:x.clave,
+      monto:_r2(Number(c.v(x))||0),nota:c.nota(x)})).sort((a,b)=>b.monto-a.monto);
+  const suma=_r2(L.reduce((s,x)=>s+x.monto,0));
+  return `<div style="padding:0 18px 16px"><div class="tb-det" style="margin-top:0">
+    <div class="dh"><span class="t">${_esc(c.t)} · ${L.length} propietario${L.length===1?'':'s'}</span>
+      <button class="x" type="button" onclick="tbChip(null)" title="Cerrar">×</button></div>
+    <div class="dl"><table><tbody>${L.map(x=>
+      `<tr onclick="openEstado('${_esc(x.clave)}')"><td class="lo">${_esc(x.lote)}</td><td>${_esc(x.nombre)}</td>
+       <td class="num">${x.monto>0.009?money(x.monto):'<span class="no">—</span>'}</td>
+       <td class="no">${_esc(x.nota||'')}</td><td class="num ec">estado de cuenta →</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="df"><span>${_esc(c.col)} · suma <b>${money(suma)}</b></span><span>${_esc(c.pie)}</span></div>
+  </div></div>`;
+}
+
+/* ── tooltip: un vistazo a los mayores sin abrir nada ── */
+function _tbTop(titulo,L,fmt){
+  const T=document.getElementById('tbTip'); if(!T) return null;
+  T.innerHTML=`<div class="th">${_esc(titulo)}</div>`+
+    L.slice(0,8).map(x=>`<div class="r"><span class="l">${_esc(x.lote)} · ${_esc(x.nombre)}</span>
+      <span class="v">${fmt(x)}</span></div>`).join('')+
+    `<div class="f">${L.length>8?('y '+(L.length-8)+' propietarios más · clic para ver todos'):'clic para abrir la lista'}</div>`;
+  T.style.display='block'; return T;
+}
+function _tbTip(e,k){
+  const f=_tbFilas()[TB_VISTA==='mes'?'mes':'anio'].find(x=>x.k===k); if(!f) return;
+  const r=TB_VISTA==='mes'?DASH.recon.mes:DASH.recon.anio;
+  if(_tbTop(f.n+' · '+money(r[k]||0),_tbLista(f),x=>money(x.monto))) _tbMover(e);
+}
+function _tbTipC(e,id){
+  const c=_tbChips()[id]; if(!c) return;
+  const L=c.L.map(x=>({lote:x.lote,nombre:x.nombre,monto:_r2(Number(c.v(x))||0),nota:c.nota(x)}))
+              .sort((a,b)=>b.monto-a.monto);
+  if(_tbTop(c.t+' · '+L.length+' prop.',L,x=>(x.monto>0.009?money(x.monto):'—')+
+      (x.nota?` <span style="opacity:.6;font-weight:400">${_esc(x.nota)}</span>`:''))) _tbMover(e);
+}
+function _tbMover(e){
+  const T=document.getElementById('tbTip'); if(!T||T.style.display==='none') return;
+  const m=14, r=T.getBoundingClientRect();
+  let x=e.clientX+m, y=e.clientY+m;
+  if(x+r.width>innerWidth-8) x=Math.max(8,e.clientX-r.width-m);
+  if(y+r.height>innerHeight-8) y=Math.max(8,e.clientY-r.height-m);
+  T.style.left=x+'px'; T.style.top=y+'px';
+}
+function _tbOcultar(){ const T=document.getElementById('tbTip'); if(T) T.style.display='none'; }
+
+/* Respaldo: si el backend todavía no manda la atribución, se pinta el tablero
+   anterior en vez de una pantalla vacía. */
+function _tbLegacy(){
   const k=DASH.kpis;
   const card=(l,v,h,c)=>`<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="hint">${h}</div></div>`;
   const barMes=Math.max(0,Math.min(100,k.tasaRecaudacionMes));
-  document.getElementById('kpis').innerHTML = `
+  document.getElementById('kpis').innerHTML=`
     <div class="kpis-hero">
       <div class="kpi hero red">
         <div class="label">Saldo total por cobrar · al ${fmtDate(DASH.asOfStr||DASH.asOf)}</div>
@@ -856,7 +1252,7 @@ function _pintarDash(){
         <div class="val">${k.tasaRecaudacionMes}%</div>
         <div class="bar"><span style="width:${barMes}%"></span></div>
         <div class="hero-sub">
-          <span><b>${money(k.pagadoMesCuotas!=null?k.pagadoMesCuotas:k.pagadoMes)}</b> de ${money(k.facturadoMes)} facturado${(Number(k.pagadoMesOtros)||0)>0.009?` · +${money(k.pagadoMesOtros)} otros ingresos`:''}</span>
+          <span><b>${money(k.pagadoMesCuotas!=null?k.pagadoMesCuotas:k.pagadoMes)}</b> de ${money(k.facturadoMes)} facturado</span>
           <span>Acumulado anual <b>${k.tasaRecaudacionAnual}%</b></span>
         </div>
       </div>
@@ -867,12 +1263,8 @@ function _pintarDash(){
       ${card('Al corriente', (k.pendientes||0), 'Mes en curso, sin vencidos','warn')}
       ${card('Al día', k.alDia, 'Sin saldo pendiente','')}
     </div>`;
-  const rs=[...new Set(DASH.cuentas.map(c=>c.residencial))];
-  const fr=document.getElementById('fRes'), prevRes=fr.value;   // no perder el filtro al recargar
-  fr.innerHTML='<option value="">Todos los residenciales</option>'+rs.map(r=>`<option>${r}</option>`).join('');
-  if(prevRes && rs.indexOf(prevRes)>=0) fr.value=prevRes;
-  renderTabla();
 }
+
 function renderTabla(){
   const q=document.getElementById('fQ').value.toLowerCase(), fr=document.getElementById('fRes').value;
   const head=document.getElementById('cuentasHead'), body=document.querySelector('#tblCuentas tbody');
