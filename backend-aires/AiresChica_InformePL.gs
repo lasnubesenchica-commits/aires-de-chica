@@ -202,16 +202,29 @@ function _informePLHtml(D, nota) {
     '<div style="color:' + B.muted + ';font-size:12px">Sin gastos en el período.</div>';
 
   // Estado de cobros
+  // Las tres casillas cubren TODAS las cuentas (antes salían sólo "al día" y
+  // "morosos", que no sumaban el total y dejaban invisibles a las que deben
+  // únicamente el mes en curso). Son las mismas del tablero.
+  var totCuentas = Number(k.cuentas) || 0;
+  var pctMora = totCuentas ? _round2(k.morosos / totCuentas * 100) : 0;
+  // El % de cobranza es el mismo criterio del tablero: qué parte de lo FACTURADO
+  // del año se cobró. La tasa anterior dividía toda la caja (que incluye deuda de
+  // años previos, mora y adelantos) entre las cuotas del año, y pasaba de 100%.
+  var cobrado = (k.coberturaAnual != null) ? k.coberturaAnual : k.tasaRecaudacionAnual;
+  var cobradoMonto = (k.cobradoAnual != null) ? k.cobradoAnual : k.totalPagado;
   var cobros = '<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate"><tr>' +
-    stat('Cuentas al día', k.alDia, B.teal) +
-    stat('Morosos', k.morosos, B.coral, 'Con cuota(s) vencida(s)') +
-    stat('% Recaudación (año)', k.tasaRecaudacionAnual + '%', GREEN) +
+    stat('Sin deuda', k.alDia, B.teal, 'No deben nada') +
+    stat('Deben sólo el mes', (k.pendientes || 0), B.amber, 'Sin meses vencidos') +
+    stat('Con meses atrasados', k.morosos, B.coral, pctMora + '% de ' + totCuentas + ' cuentas') +
     '</tr><tr><td colspan="3" style="height:8px"></td></tr><tr>' +
     stat('Por cobrar (cuotas)', _money(k.carteraVencida), B.ink) +
     stat('Mora acumulada', _money(k.moraAcumulada), B.coral) +
     stat('Total por cobrar', _money(k.saldoTotalConMora), B.coral) +
     '</tr></table>' +
-    '<div style="font-size:10.5px;color:' + B.muted + ';margin-top:6px">Estado de cobros a la fecha de emisión del informe.</div>';
+    '<div style="font-size:10.5px;color:' + B.muted + ';margin-top:6px">' +
+      'Estado de cobros a la fecha de emisión del informe. De las cuotas facturadas del año ' +
+      '(' + _money(k.totalFacturado) + ') se ha cobrado <b style="color:' + GREEN + '">' + cobrado + '%</b> ' +
+      '(' + _money(cobradoMonto) + ').</div>';
 
   // Nota
   var notaHtml = (nota && String(nota).trim()) ?

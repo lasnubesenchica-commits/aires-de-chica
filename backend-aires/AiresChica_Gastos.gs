@@ -216,6 +216,10 @@ function getGastosData(anio) {
     otrosIngresos: otrosIngresos,
     ingresosDetalle: ingresosDetalle,   // quién pagó, mes a mes (cuotas y otros ingresos)
     resultadoTotal: _round2(ingresosTotal - ejecutadoTotal),
+    // Fondo con el que arrancó el año. El Informe PDF lo usa para el "fondo
+    // disponible"; se manda también aquí para que Finanzas muestre la misma cifra
+    // sin depender de que Opciones se haya abierto antes.
+    fondoInicial: _round2(_cfg().fondoInicial || 0),
     aniosDisponibles: anios
   };
 }

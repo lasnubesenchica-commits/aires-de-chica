@@ -3072,9 +3072,28 @@ function _gastosResultado(d){
     <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Hasta <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; paintFinanzas()">${mopts(mf)}</select></label>
     ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;paintFinanzas()">Año completo</button>`:'<span class="muted" style="font-size:.78rem">(año completo)</span>'}
   </div>`;
+  // ── Fondo disponible: el mismo cálculo del Informe PDF ──
+  // fondo inicial del año + resultado acumulado desde ENERO hasta el mes final
+  // elegido (no sólo el rango): es cuánta plata hay, no cuánto rindió el período.
+  const fondoIni=Math.round((Number(d.fondoInicial)||0)*100)/100;
+  let resYTD=0;
+  for(let i=0;i<=mf-1;i++) resYTD=Math.round((resYTD+(im[i]||0)-(em[i]||0))*100)/100;
+  const fondoDisp=Math.round((fondoIni+resYTD)*100)/100;
+  const hastaTxt=(mf===12)?'':` hasta ${GMESES[mf-1]}`;
+  const fondoBanda=fondoIni>0.009
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+         border:1px solid var(--ac-border);border-left:4px solid var(--ac-teal);border-radius:10px;
+         background:var(--ac-teal-50);padding:11px 16px;margin-bottom:12px">
+        <div><div class="muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Fondo disponible${hastaTxt?' ('+GMESES[mf-1]+')':' a la fecha'}</div>
+          <div class="muted" style="font-size:.78rem;margin-top:2px">Fondo inicial del año (${money(fondoIni)}) + resultado acumulado (${money(resYTD)})</div></div>
+        <div style="font-size:1.45rem;font-weight:800;color:var(--ac-teal-700);white-space:nowrap">${money(fondoDisp)}</div>
+      </div>`
+    : `<div class="muted" style="font-size:.78rem;border:1px dashed var(--ac-border);border-radius:9px;
+         padding:9px 14px;margin-bottom:12px">Para ver el <b>fondo disponible</b> aquí y en el informe PDF,
+         registra el fondo inicial del año en <b>Opciones</b>.</div>`;
   // tarjetas resumen
   const cardKPI=(l,v,c,sub)=>`<div class="kpi ${c}" style="flex:1;min-width:200px"><div class="label">${l}</div><div class="val" style="font-size:1.5rem">${v}</div>${sub?`<div class="hint">${sub}</div>`:''}</div>`;
-  const resumen=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+  const resumen=`${fondoBanda}<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
     ${cardKPI('Ingresos',money(ing),'green',ingOtros>0.009?`Cuotas ${money(ingCuotas)} · Otros ${money(ingOtros)}`:'Cuotas de mantenimiento')}
     ${cardKPI('Egresos (gastos)',money(egr),'coral')}
     <div class="kpi ${positivo?'green':'red'}" style="flex:1;min-width:200px"><div class="label">${positivo?'Superávit del periodo':'Déficit del periodo'}</div><div class="val" style="font-size:1.5rem;color:${resCol}">${money(res)}</div><div class="hint">Ingresos − Egresos</div></div>
@@ -3100,14 +3119,22 @@ function _gastosResultado(d){
     let t=0; (r.porMes||[]).forEach((v,i)=>{ if(i+1>=mi&&i+1<=mf) t=Math.round((t+(Number(v)||0))*100)/100; });
     return {...r, monto:t};
   }).filter(r=>r.monto>0.009);
+  // "Cuentas que pagaron" son propietarios. Los aportes y reembolsos entran por
+  // la misma tabla pero no son cuentas: contarlos ahí inflaba el número.
+  const nCuentasPag=detPer.filter(r=>r.tipo!=='otro').length;
+  const nOtros=detPer.length-nCuentasPag;
   let ingRows=[];
   if(ingAgrup==='residencial'){
     const g={};
     detPer.forEach(r=>{ const k=r.residencial||'(sin residencial)';
-      g[k]=g[k]||{nombre:k,monto:0,cuentas:0};
+      g[k]=g[k]||{nombre:k,monto:0,cuentas:0,otro:r.tipo==='otro'};
       g[k].monto=Math.round((g[k].monto+r.monto)*100)/100; g[k].cuentas++; });
     ingRows=Object.values(g).sort((a,b)=>b.monto-a.monto)
-      .map(r=>({c1:r.nombre,c2:r.cuentas+(r.cuentas===1?' cuenta':' cuentas'),monto:r.monto}));
+      .map(r=>({c1:r.nombre,
+                // el renglón de aportes/reembolsos no son "cuentas": son conceptos
+                c2:r.cuentas+(r.otro?(r.cuentas===1?' concepto':' conceptos')
+                                    :(r.cuentas===1?' cuenta':' cuentas')),
+                monto:r.monto}));
   } else {
     ingRows=detPer.slice().sort((a,b)=>b.monto-a.monto)
       .map(r=>({c1:(r.lote?'<b>'+String(r.lote).replace(/</g,'&lt;')+'</b> · ':'')+String(r.nombre).replace(/</g,'&lt;'),
@@ -3157,7 +3184,8 @@ function _gastosResultado(d){
         <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-ink,#123);border-radius:9px;padding:9px 13px">
           <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Total recibido</div>
           <div style="font-size:1.05rem;font-weight:700">${money(ing)}</div>
-          <div class="muted" style="font-size:.72rem">${detPer.length} ${detPer.length===1?'cuenta pagó':'cuentas pagaron'}</div></div>
+          <div class="muted" style="font-size:.72rem">${nCuentasPag} ${nCuentasPag===1?'cuenta pagó':'cuentas pagaron'}${
+            nOtros?` · ${nOtros} otro${nOtros===1?'':'s'} ingreso${nOtros===1?'':'s'}`:''}</div></div>
       </div>
       ${ingRows.length?`<table class="stack-table"><thead><tr><th>${ingAgrup==='residencial'?'Residencial':'Propietario'}</th><th>${ingAgrup==='residencial'?'Cuentas que pagaron':'Residencial'}</th><th class="num">Monto</th><th class="num">% de ingresos</th></tr></thead><tbody>${ingRowsHtml}
         <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Total">TOTAL INGRESOS</td><td></td><td class="num" data-label="Monto">${money(ing)}</td><td class="num" data-label="%">100%</td></tr></tbody></table>`
