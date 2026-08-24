@@ -1076,8 +1076,8 @@ function _tbPintar(){
           <div class="tb-big g">${covM.toFixed(1)}%</div>
           <div class="tb-bar"><span style="width:${covM}%"></span></div>
           <div class="tb-den"><b>${money(k.cubiertoMes)}</b> de <b>${money(k.facturadoMes)}</b> facturados en el mes</div>
-          <div class="tb-caja">Entró en caja durante el mes <b>${money(R.mes.caja)}</b>${
-            (Number(k.pagadoMesOtros)||0)>0.009?` · +${money(k.pagadoMesOtros)} otros ingresos`:''}</div>
+          <div class="tb-caja">Cobrado a propietarios en el mes <b>${money(R.mes.caja)}</b>${
+            (Number(k.pagadoMesOtros)||0)>0.009?` · +${money(k.pagadoMesOtros)} de aportes y otros`:''}</div>
           <div class="tb-ver">${esMes?'▾':'▸'} Ver a qué se aplicó</div>
         </div>
       </button>
@@ -1088,7 +1088,7 @@ function _tbPintar(){
           <div class="tb-big t">${covA.toFixed(1)}%</div>
           <div class="tb-bar t"><span style="width:${covA}%"></span></div>
           <div class="tb-den"><b>${money(k.cobradoAnual)}</b> de <b>${money(k.totalFacturado)}</b> facturados en el año</div>
-          <div class="tb-caja">Entró en caja en el año <b>${money(R.anio.caja)}</b></div>
+          <div class="tb-caja">Cobrado a propietarios en el año <b>${money(R.anio.caja)}</b></div>
           <div class="tb-ver">${esMes?'▸':'▾'} Ver a qué se aplicó</div>
         </div>
       </button>
@@ -1102,7 +1102,7 @@ function _tbDesglose(){
   const R=DASH.recon, esMes=TB_VISTA==='mes';
   const r=esMes?R.mes:R.anio, filas=_tbFilas()[esMes?'mes':'anio'];
   const mes=DASH.mesActual||'', anio=DASH.anio||'', corte=fmtDate(DASH.asOfStr||DASH.asOf);
-  const origen=[[esMes?('Caja recibida en '+String(mes).toLowerCase()):'Caja recibida en el año', r.caja],
+  const origen=[[esMes?('Cobrado a propietarios en '+String(mes).toLowerCase()):'Cobrado a propietarios en el año', r.caja],
                 [esMes?('Crédito a favor que traían al empezar el mes'):('Crédito a favor que venía de '+(anio-1)), r.credIni]];
   const totO=_r2(origen.reduce((s,x)=>s+x[1],0));
   const cuerpo=filas.map(f=>{
@@ -1127,7 +1127,8 @@ function _tbDesglose(){
             <tr class="tot"><td>Total disponible</td><td class="num">${money(totO)}</td></tr>
           </tbody></table>
           <div class="tb-mas">El crédito no es plata nueva: son adelantos que los propietarios ya tenían
-            a su favor. Por eso puede aplicarse más de lo que entró en caja.</div>
+            a su favor. Por eso puede aplicarse más de lo que entró en caja.<br>
+            Aquí sólo entra el dinero de los propietarios; los aportes y reembolsos se ven en <b>Finanzas</b>.</div>
         </div>
         <div><h4>A qué se aplicó</h4>
           <table><tbody>${cuerpo}
