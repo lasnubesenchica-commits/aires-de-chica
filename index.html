@@ -132,8 +132,10 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
   color:var(--ac-muted); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fafdfe; }
 .tb-det .df b { color:var(--ac-ink); }
 
+/* Último bloque del tablero: lleva el aire que antes ponía .kpis-row, para que no
+   quede pegado a la tarjeta de Cuentas que viene debajo. */
 .tb-hoy { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius);
-  box-shadow:var(--ac-shadow); margin-top:14px; overflow:hidden; }
+  box-shadow:var(--ac-shadow); margin-top:14px; margin-bottom:24px; overflow:hidden; }
 .tb-hoy > .hd { padding:9px 18px; background:#375c68; color:#fff; display:flex;
   justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tb-hoy > .hd .t { font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; }
