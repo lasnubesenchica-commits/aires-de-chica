@@ -414,7 +414,8 @@ function getEstadoCuentaByKey(clave, simular) {
 
   var est = calcEstado(prop, pagosC, null);
   est.pagosHistorial = pagosC.map(function (p) {
-    return { fecha: p.fecha, monto: p.monto, origen: p.origen, referencia: p.referencia, notas: p.notas };
+    return { fecha: p.fecha, monto: p.monto, origen: p.origen, referencia: p.referencia, notas: p.notas,
+             comprobanteUrl: p.comprobanteUrl || '' };
   }).sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
   if (sim) { est.simulado = { fecha: simular.fecha, monto: sim.monto }; }
   return est;

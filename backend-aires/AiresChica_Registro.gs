@@ -52,6 +52,7 @@ var REG_ACCIONES = {
   'pago.alta':        'Pago registrado',
   'pago.edita':       'Pago modificado',
   'pago.baja':        'Pago eliminado',
+  'pago.constancia':  'Constancia de pago emitida',
   'prop.condona':     'Mora condonada',
   'prop.reactiva':    'Mora reactivada',
   'prop.edita':       'Propietario modificado',

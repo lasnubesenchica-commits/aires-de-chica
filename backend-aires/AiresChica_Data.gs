@@ -837,6 +837,16 @@ function registrarPago(pago) {
     despues: _fechaCorta(_fechaPagoDesdeISO(pago.fecha) || new Date(pago.fecha || _today())),
     detalle: 'Pago registrado' + (pago.referencia ? ' · ref. ' + pago.referencia : '') });
   var resultado = { id: id, clave: pago.clave };
+  // Constancia en PDF: se emite después de escribir el pago, para que el saldo
+  // impreso sea el real. Si Drive falla, el pago igual queda registrado — se
+  // devuelve el error y la constancia se puede volver a emitir desde el panel.
+  if (pago.generarVoucher) {
+    try {
+      var v = generarVoucherPago(id);
+      resultado.voucherUrl = v.url;
+      resultado.voucherNumero = v.numero;
+    } catch (e) { resultado.voucherError = String(e); }
+  }
   if (pago.enviarCorreo && prop && prop.email) {
     try { resultado.correo = enviarEstadoCuenta(pago.clave); }
     catch (e) { resultado.correoError = String(e); }

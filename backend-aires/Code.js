@@ -107,6 +107,8 @@ function doPost(e) {
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };
     else if (action === 'actualizarPago')   out = { ok: true, data: actualizarPago(data.id, data.datos || {}) };
+    else if (action === 'generarVoucherPago') out = { ok: true, data: generarVoucherPago(data.id, { forzar: !!data.forzar }) };
+    else if (action === 'emitirConstanciasFaltantes') out = { ok: true, data: emitirConstanciasFaltantes(data.origen, data.limite) };
     else if (action === 'seedRegistro18Ago') out = { ok: true, data: seedRegistro18Ago(!!data.force) };
     else if (action === 'rollbackSeedRegistro18Ago') out = { ok: true, data: rollbackSeedRegistro18Ago() };
     else if (action === 'registrarGasto')   out = { ok: true, data: registrarGasto(data.gasto) };

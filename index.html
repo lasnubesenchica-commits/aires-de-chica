@@ -199,6 +199,7 @@ input[type=date], input[type=month] { -webkit-appearance:none; appearance:none; 
 .btn { font:inherit; font-weight:600; border:0; border-radius:9px; padding:9px 16px; cursor:pointer; background:var(--ac-teal); color:#fff; }
 .btn:hover { background:var(--ac-teal-600); } .btn.ghost { background:#fff; color:var(--ac-teal-700); border:1px solid var(--ac-border); }
 .btn.green { background:var(--ac-green-600); } .btn:disabled { opacity:.5; cursor:not-allowed; }
+a.btn { display:inline-block; text-decoration:none; }
 /* Barra de acciones del modal de estado de cuenta: 3 botones consistentes,
    fila alineada a la derecha en escritorio, apilados a lo ancho en móvil. */
 /* Cualquier cifra del estado de cuenta que trae explicación en su tooltip. */
@@ -1658,24 +1659,43 @@ async function revComparar(mov){
 async function revAplicar(btn){
   if(!REVCMP||REVCMP.ya) return;
   const p=REVCMP.p;
-  if(!confirm(`¿Registrar este pago?\n\n${p.nombre} (${p.clave})\n${money(p.monto)} con fecha ${p.fecha}/2026\n\nSe recalcularán los saldos y la mora. No se envía ningún correo.`)) return;
+  if(!confirm(`¿Registrar este pago?\n\n${p.nombre} (${p.clave})\n${money(p.monto)} con fecha ${p.fecha}/2026\n\nSe recalcularán los saldos y la mora, y se emitirá la constancia de pago en PDF. No se envía ningún correo.`)) return;
   btn.disabled=true; const t=btn.textContent; btn.textContent='Registrando…';
+  let res;
   try{
-    await post('registrarPago',{pago:{
+    res=await post('registrarPago',{pago:{
       clave:p.clave, monto:p.monto, fecha:p.iso, origen:'banco',
       referencia:'Estado de cuenta '+REV_BANCO.periodo+' · mov. '+p.mov,
-      notas:p.banco, enviarCorreo:false }});
+      notas:p.banco, enviarCorreo:false, generarVoucher:true }});
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
   REV_APL.add(p.mov); _revAplGuardar();
-  toast('Pago registrado · saldos y mora recalculados');
+  // El pago queda registrado aunque falle la constancia; se avisa para poder reintentar.
+  REVCMP.voucher = (res&&res.voucherUrl) ? {url:res.voucherUrl, numero:res.voucherNumero||''} : null;
+  REVCMP.voucherError = (res&&res.voucherError) ? String(res.voucherError) : '';
+  REVCMP.pagoId = (res&&res.id) || '';
+  toast(REVCMP.voucher
+    ? 'Pago registrado · constancia '+(REVCMP.voucher.numero||'')+' emitida'
+    : 'Pago registrado · saldos y mora recalculados');
   renderRevBanco();
   if(typeof renderDash==='function') renderDash();
   // se vuelve a pedir el estado para que lo que se ve sea ya lo guardado, no la simulación
   try{
     const act=await jsonp('getEstadoCuenta',{clave:p.clave});
-    REVCMP={p, antes:act, despues:act, ya:true};
+    const v=REVCMP.voucher, ve=REVCMP.voucherError, pid=REVCMP.pagoId;
+    REVCMP={p, antes:act, despues:act, ya:true, voucher:v, voucherError:ve, pagoId:pid};
     revCmpVista('antes');
   }catch(e){ closeModal(); }
+}
+// Vuelve a emitir la constancia cuando la primera falló (Drive caído, permisos, etc.).
+async function revVoucherReintentar(btn){
+  if(!REVCMP||!REVCMP.pagoId) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Emitiendo…';
+  let r;
+  try{ r=await post('generarVoucherPago',{id:REVCMP.pagoId}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
+  REVCMP.voucher={url:r.url, numero:r.numero||''}; REVCMP.voucherError='';
+  toast('Constancia emitida');
+  revCmpVista('antes');
 }
 function revCmpVista(v){
   if(!REVCMP) return;
@@ -1703,8 +1723,14 @@ function revCmpVista(v){
       </div>
       <div class="rev-cmp-acc">
         ${REVCMP.ya
-          ? '<span class="rev-cmp-ok">✓ Este pago ya está registrado en el sistema.</span>'
-          : `<span class="muted" style="font-size:.78rem">Si el cotejo contra el PDF está correcto, ya se puede registrar.</span>
+          ? `<span class="rev-cmp-ok">✓ Este pago ya está registrado en el sistema.</span>
+             ${REVCMP.voucher
+               ? `<a class="btn ghost" href="${REVCMP.voucher.url}" target="_blank" title="Constancia de pago en PDF, guardada en Drive y enlazada al pago">📄 Ver constancia${REVCMP.voucher.numero?' · '+_esc(REVCMP.voucher.numero):''}</a>`
+               : (REVCMP.voucherError
+                   ? `<span class="muted" style="font-size:.76rem;color:var(--ac-coral)">El pago quedó registrado, pero no se pudo emitir la constancia.</span>
+                      <button class="btn ghost" onclick="revVoucherReintentar(this)">Reintentar constancia</button>`
+                   : '')}`
+          : `<span class="muted" style="font-size:.78rem">Si el cotejo contra el PDF está correcto, ya se puede registrar. Al aplicarlo se emite la <b>constancia de pago en PDF</b>.</span>
              <button class="btn green" onclick="revAplicar(this)">Aplicar pago · ${money(p.monto)}</button>`}
       </div>
     </div>`;
