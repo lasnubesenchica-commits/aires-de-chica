@@ -79,8 +79,10 @@ nav.tabs .tab-gear { font-size:1.15rem; line-height:1; }
 .tb-ver { font-size:.75rem; font-weight:700; color:var(--ac-teal); margin-top:9px; }
 .tb-sel.on .tb-ver { color:var(--ac-teal-700); }
 
+/* Último bloque: lleva el aire que antes ponía .kpis-row, para no quedar pegado
+   a la tarjeta de Cuentas que viene debajo. */
 .tb-desg { background:#fff; border:1px solid var(--ac-teal); border-radius:var(--ac-radius);
-  box-shadow:var(--ac-shadow); margin-top:14px; overflow:hidden; }
+  box-shadow:var(--ac-shadow); margin-top:14px; margin-bottom:24px; overflow:hidden; }
 .tb-desg > .hd { padding:10px 18px; background:var(--ac-teal); color:#fff; display:flex;
   justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tb-desg > .hd .t { font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
@@ -132,10 +134,10 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
   color:var(--ac-muted); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fafdfe; }
 .tb-det .df b { color:var(--ac-ink); }
 
-/* Último bloque del tablero: lleva el aire que antes ponía .kpis-row, para que no
-   quede pegado a la tarjeta de Cuentas que viene debajo. */
+/* Primer bloque del tablero: la foto de hoy va arriba, y el mes/año con su
+   desglose la explican debajo. */
 .tb-hoy { background:#fff; border:1px solid var(--ac-border); border-radius:var(--ac-radius);
-  box-shadow:var(--ac-shadow); margin-top:14px; margin-bottom:24px; overflow:hidden; }
+  box-shadow:var(--ac-shadow); margin-bottom:14px; overflow:hidden; }
 .tb-hoy > .hd { padding:9px 18px; background:#375c68; color:#fff; display:flex;
   justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tb-hoy > .hd .t { font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; }
@@ -166,6 +168,11 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
 #tbTip .r .v { font-weight:700; font-variant-numeric:tabular-nums; }
 #tbTip .f { margin-top:7px; padding-top:6px; border-top:1px solid rgba(255,255,255,.2);
   font-size:.72rem; opacity:.75; }
+/* Explicación de la casilla, antes de la lista de propietarios. */
+#tbTip .ay { font-size:.74rem; line-height:1.42; opacity:.88; margin:0 0 7px;
+  padding-bottom:7px; border-bottom:1px solid rgba(255,255,255,.18); }
+/* Las cifras con explicación se señalan con el cursor de ayuda. */
+.tb-hoy [title] { cursor:help; }
 @media (max-width:820px){
   .tb-par, .tb-recon, .tb-hoy > .bd { grid-template-columns:1fr; }
   .tb-desg > .bd { padding:14px; }
@@ -1007,6 +1014,28 @@ function _pintarDash(){
 let TB_VISTA='mes', TB_FILA=null, TB_CHIP=null;
 
 const TB_COL={cuota:'#0E8FB0',atras:'#F4A45C',d2025:'#8DC63F',mora:'#E8743B',cred:'#4FB4CE'};
+
+/* Explicación breve de cada cifra de "Situación de las cuentas". Se usa dos veces:
+   como tooltip del navegador en los montos de la izquierda, y como primera línea
+   del tooltip de cada casilla (donde además va la lista de propietarios). */
+const TB_AYUDA={
+  saldo:'Lo que la comunidad tiene por cobrar a la fecha de corte: cuotas sin cubrir '+
+        'más recargos de mora sin pagar. Es una foto del momento, no un acumulado del año. '+
+        'Las dos casillas con deuda suman exactamente este monto.',
+  cuotas:'Parte de las cuotas facturadas que sigue sin cubrirse. Cada pago se aplica en '+
+         'cascada: primero los meses vencidos, luego el mes en curso y de último la mora.',
+  mora:'Recargos generados y todavía sin pagar. Es 10% de la cuota íntegra, una sola vez '+
+       'por mes descubierto, desde abril 2026, y no genera mora sobre sí misma. '+
+       'Los recargos ya cobrados no aparecen aquí.',
+  sin:'No deben nada a la fecha de corte. Ojo: el monto NO es deuda, es crédito a favor '+
+      'por cuotas de meses siguientes ya pagadas. Es el único de los tres que no suma al '+
+      'saldo por cobrar.',
+  mes:'Deben la cuota del mes en curso, que todavía no vence. Están dentro del plazo y '+
+      'aún no generan recargo por mora.',
+  atr:'Tienen al menos una cuota de un mes ya cerrado sin cubrir. Son las únicas que '+
+      'generan mora. El monto es todo lo que deben, incluida la cuota del mes en curso '+
+      'si tampoco la han cubierto.'
+};
 // Cada renglón sabe sacar su monto de una cuenta: con eso se arma el total y la lista.
 function _tbFilas(){
   const a=(DASH.anio||new Date().getFullYear());
@@ -1040,14 +1069,17 @@ function _tbChips(){
   return {
     sin:{t:'Sin deuda', cls:'ok', L:C.filter(c=>(c.saldoConMora||0)<=0.009),
          v:c=>c.creditoAFavor||0, nota:c=>((c.creditoAFavor||0)>0.009?'a favor':''),
-         col:'Crédito a favor', pie:'Ninguno debe nada al corte. Los que muestran monto tienen saldo a favor.'},
+         col:'Crédito a favor', ayuda:TB_AYUDA.sin,
+         pie:'No deben nada al corte. El monto es crédito a favor, no deuda.'},
     mes:{t:'Deben solo el mes en curso', cls:'w',
          L:C.filter(c=>(c.saldoConMora||0)>0.009 && !((c.diasVencido||0)>0)),
          v:c=>c.saldoConMora||0, nota:()=>'',
-         col:'Debe', pie:'La cuota del mes en curso, sin meses vencidos detrás. Todavía no generan mora.'},
+         col:'Debe', ayuda:TB_AYUDA.mes,
+         pie:'La cuota del mes en curso, sin meses vencidos detrás. Todavía no generan mora.'},
     atr:{t:'Con meses atrasados', cls:'r', L:C.filter(c=>(c.diasVencido||0)>0),
          v:c=>c.saldoConMora||0, nota:c=>(c.diasVencido+' días'),
-         col:'Debe', pie:'Tienen al menos una cuota vencida. Son los que generan mora.'}
+         col:'Debe', ayuda:TB_AYUDA.atr,
+         pie:'Tienen al menos una cuota de un mes ya cerrado. Son las que generan mora.'}
   };
 }
 function tbVer(v){ TB_VISTA=v; TB_FILA=null; _tbPintar(); }
@@ -1068,6 +1100,7 @@ function _tbPintar(){
   const esMes=TB_VISTA==='mes';
 
   document.getElementById('kpis').innerHTML=`
+    ${_tbHoy()}
     <div class="tb-par">
       <button type="button" class="tb-sel mes${esMes?' on':''}" onclick="tbVer('mes')">
         <div class="hd"><span class="t">El mes</span><span class="p">${_esc(mes)} ${_esc(anio)}</span></div>
@@ -1094,7 +1127,6 @@ function _tbPintar(){
       </button>
     </div>
     ${_tbDesglose()}
-    ${_tbHoy()}
     <div id="tbTip"></div>`;
 }
 
@@ -1171,14 +1203,20 @@ function _tbHoy(){
       ${suma>0.009?`<div class="cf">${money(suma)}${id==='sin'?' a favor':''}<span
         style="font-weight:400;color:var(--ac-muted)">${pc}</span></div>`:''}</button>`;
   };
+  // "Hoy" sólo es cierto cuando el corte ES hoy; con un corte pasado el rótulo
+  // se contradecía a sí mismo.
+  const _h=new Date();
+  const hoyISO=`${_h.getFullYear()}-${String(_h.getMonth()+1).padStart(2,'0')}-${String(_h.getDate()).padStart(2,'0')}`;
+  const esHoy=String(DASH.asOfStr||'')===hoyISO;
   return `<div class="tb-hoy">
-    <div class="hd"><span class="t">Situación de las cuentas</span><span class="p">Hoy · al ${_esc(corte)}</span></div>
+    <div class="hd"><span class="t">Situación de las cuentas</span>
+      <span class="p">${esHoy?'Hoy · al ':'Corte al '}${_esc(corte)}</span></div>
     <div class="bd">
       <div>
-        <div class="tb-cap">Saldo total por cobrar</div>
-        <div class="tb-big" style="color:var(--ac-danger);font-size:2.05rem">${money(k.saldoTotalConMora)}</div>
-        <div class="tb-den">Cuotas <b>${money(k.carteraVencida)}</b> + mora
-          <b style="color:var(--ac-coral)">${money(k.moraAcumulada)}</b></div>
+        <div class="tb-cap"${_tip(TB_AYUDA.saldo)}>Saldo total por cobrar</div>
+        <div class="tb-big" style="color:var(--ac-danger);font-size:2.05rem"${_tip(TB_AYUDA.saldo)}>${money(k.saldoTotalConMora)}</div>
+        <div class="tb-den"><span${_tip(TB_AYUDA.cuotas)}>Cuotas <b>${money(k.carteraVencida)}</b></span> +
+          <span${_tip(TB_AYUDA.mora)}>mora <b style="color:var(--ac-coral)">${money(k.moraAcumulada)}</b></span></div>
       </div>
       <div class="tb-chips">${chip('sin',C.sin)}${chip('mes',C.mes)}${chip('atr',C.atr)}</div>
     </div>
@@ -1220,8 +1258,13 @@ function _tbTipC(e,id){
   const c=_tbChips()[id]; if(!c) return;
   const L=c.L.map(x=>({lote:x.lote,nombre:x.nombre,monto:_r2(Number(c.v(x))||0),nota:c.nota(x)}))
               .sort((a,b)=>b.monto-a.monto);
-  if(_tbTop(c.t+' · '+L.length+' prop.',L,x=>(x.monto>0.009?money(x.monto):'—')+
-      (x.nota?` <span style="opacity:.6;font-weight:400">${_esc(x.nota)}</span>`:''))) _tbMover(e);
+  const T=_tbTop(c.t+' · '+L.length+' prop.',L,x=>(x.monto>0.009?money(x.monto):'—')+
+      (x.nota?` <span style="opacity:.6;font-weight:400">${_esc(x.nota)}</span>`:''));
+  if(!T) return;
+  // La explicación va primero: es lo que se busca al pasar el mouse la primera vez.
+  const th=T.querySelector('.th');
+  if(th && c.ayuda) th.insertAdjacentHTML('afterend','<div class="ay">'+_esc(c.ayuda)+'</div>');
+  _tbMover(e);
 }
 function _tbMover(e){
   const T=document.getElementById('tbTip'); if(!T||T.style.display==='none') return;
