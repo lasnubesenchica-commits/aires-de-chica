@@ -2465,12 +2465,74 @@ async function descargarConciliacion(){
 function _resumenSheet(k, corte){
   // hoja Resumen con secciones de color y valores en negrilla
   const M=v=>({v:Number(v)||0,money:true}), P=v=>({v:(Number(v)||0),pct:true}), N=v=>({v:Number(v)||0});
+  const anio=DASH.anio||'', mesTxt=DASH.mesActual||'', mesLow=String(mesTxt).toLowerCase();
+  const R=(DASH.recon)||{mes:{},anio:{}};
+  const hayRecon=!!DASH.recon;
+  // Montos de las tres casillas de cartera, con el mismo criterio del tablero.
+  const C=DASH.cuentas||[];
+  const mDeben=_r2(C.filter(c=>(c.saldoConMora||0)>0.009&&!((c.diasVencido||0)>0))
+                    .reduce((s,c)=>s+(c.saldoConMora||0),0));
+  const mAtras=_r2(C.filter(c=>(c.diasVencido||0)>0).reduce((s,c)=>s+(c.saldoConMora||0),0));
+
   const blocks=[
-    {sec:'Cartera', rows:[['Cuentas',N(k.cuentas)],['Al día',N(k.alDia)],['Pendientes (mes en curso)',N(k.pendientes)],['Morosos',N(k.morosos)],['Tasa de morosidad',P(k.tasaMorosidad)]]},
-    {sec:'Recaudación del año', rows:[['Facturado (cuotas 2026)',M(k.totalFacturado),'factAnual'],['Cobrado (cuotas)',M(k.totalPagado),'cobrAnual'],['% Recaudación anual',P(k.tasaRecaudacionAnual),'pctAnual'],['Saldo pendiente (cuotas)',M(k.carteraVencida)],['Cargos por mora del año',M(k.moraCargadaTotal)],['Mora pendiente de pago',M(k.moraAcumulada)],['Saldo total por cobrar',M(k.saldoTotalConMora)],['Crédito a favor de propietarios',M(k.creditoAFavorTotal)]]},
-    {sec:'Mes en curso', rows:[['Facturado del mes',M(k.facturadoMes),'factMes'],['Cobrado del mes (cuotas)',M(k.pagadoMesCuotas),'cobrMes'],
-      ...(Math.abs(Number(k.pagadoMesOtros)||0)>0.009?[['Otros ingresos del mes',M(k.pagadoMesOtros)]]:[]),
-      ['% Recaudación del mes',P(k.tasaRecaudacionMes),'pctMes']]}
+    // Nombres iguales a los del tablero: "Al día" y "Pendientes" significaban casi
+    // lo mismo leídos de corrido y se confundían.
+    {sec:'Cartera · cuentas', rows:[
+      ['Total de cuentas',N(k.cuentas)],
+      ['Sin deuda',N(k.alDia)],
+      ['Deben sólo el mes en curso',N(k.pendientes)],
+      ['Con meses atrasados',N(k.morosos)],
+      ['Tasa de morosidad',P(k.tasaMorosidad)]]},
+
+    {sec:'Cartera · saldo por cobrar', rows:[
+      ['De quienes deben sólo el mes en curso',M(mDeben),'sDeben'],
+      ['De quienes tienen meses atrasados',M(mAtras),'sAtras'],
+      ['Saldo total por cobrar',M(k.saldoTotalConMora),'sTotal'],
+      ['   · cuotas',M(k.carteraVencida),'sCuotas'],
+      ['   · mora pendiente',M(k.moraAcumulada),'sMora'],
+      ['Crédito a favor de propietarios',M(k.creditoAFavorTotal)]]},
+
+    // Cobertura: qué parte de lo FACTURADO se cobró. El "cobrado" de antes era
+    // toda la caja recibida (incluía deuda de 2025, mora y adelantos), así que el
+    // % pasaba de 100 y no cuadraba con el saldo pendiente de la misma hoja.
+    {sec:'Recaudación del año '+anio, rows:[
+      ['Cuotas facturadas',M(k.totalFacturado),'factAnual'],
+      ['Cuotas cobradas',M(k.cobradoAnual!=null?k.cobradoAnual:k.totalPagado),'cobrAnual'],
+      ['% de cobertura',P(k.coberturaAnual!=null?k.coberturaAnual:k.tasaRecaudacionAnual),'pctAnual'],
+      ['Cuotas pendientes de cobro',M(k.carteraVencida),'pendAnual']]},
+
+    ...(hayRecon?[{sec:'A qué se aplicó el dinero del año', rows:[
+      ['Cobrado a propietarios',M(R.anio.caja),'oaCaja'],
+      ['+ crédito que venía de '+((Number(anio)||0)-1),M(R.anio.credIni),'oaCred'],
+      ['= Total disponible',M(_r2((R.anio.caja||0)+(R.anio.credIni||0))),'oaTot'],
+      ['→ Cuotas de '+anio,M(R.anio.cuotas),'daCuotas'],
+      ['→ Saldos de '+((Number(anio)||0)-1),M(R.anio.d2025),'daD25'],
+      ['→ Recargos por mora',M(R.anio.mora),'daMora'],
+      ['→ Crédito a favor que queda',M(R.anio.credFin),'daCred'],
+      ['= Total aplicado',M(_r2((R.anio.cuotas||0)+(R.anio.d2025||0)+(R.anio.mora||0)+(R.anio.credFin||0))),'daTot']]}]:[]),
+
+    {sec:'Mes en curso · '+mesTxt+' '+anio, rows:[
+      ['Cuota facturada del mes',M(k.facturadoMes),'factMes'],
+      ['Cuota cubierta',M(k.cubiertoMes!=null?k.cubiertoMes:k.pagadoMesCuotas),'cobrMes'],
+      ['% de cobertura',P(k.coberturaMes!=null?k.coberturaMes:k.tasaRecaudacionMes),'pctMes'],
+      ['Falta de la cuota del mes',M(_r2((k.facturadoMes||0)-(k.cubiertoMes!=null?k.cubiertoMes:k.pagadoMesCuotas||0))),'faltaMes']]},
+
+    ...(hayRecon?[{sec:'A qué se aplicó el dinero del mes', rows:[
+      ['Cobrado a propietarios en el mes',M(R.mes.caja),'omCaja'],
+      ...(Math.abs(Number(k.pagadoMesOtros)||0)>0.009?[['   · aportes y otros ingresos (no son cuotas)',M(k.pagadoMesOtros)]]:[]),
+      ['+ crédito que traían al empezar el mes',M(R.mes.credIni),'omCred'],
+      ['= Total disponible',M(_r2((R.mes.caja||0)+(R.mes.credIni||0))),'omTot'],
+      ['→ Cuota de '+mesLow,M(R.mes.cuota),'dmCuota'],
+      ['→ Cuotas atrasadas de '+anio,M(R.mes.atras),'dmAtras'],
+      ['→ Saldos de '+((Number(anio)||0)-1),M(R.mes.d2025),'dmD25'],
+      ['→ Recargos por mora',M(R.mes.mora),'dmMora'],
+      ['→ Crédito a favor que queda',M(R.mes.credFin),'dmCred'],
+      ['= Total aplicado',M(_r2((R.mes.cuota||0)+(R.mes.atras||0)+(R.mes.d2025||0)+(R.mes.mora||0)+(R.mes.credFin||0))),'dmTot']]}]:[]),
+
+    {sec:'Mora del año', rows:[
+      ['Cargos por mora generados',M(k.moraCargadaTotal),'moraGen'],
+      ['Cobrada',M(hayRecon?R.anio.mora:_r2((k.moraCargadaTotal||0)-(k.moraAcumulada||0))),'moraCob'],
+      ['Pendiente de pago',M(k.moraAcumulada),'moraPen']]}
   ];
   const aoa=[['Aires de Chicá'],['Estado de cobros · Corte al '+corte],['']];
   const meta=[]; // {r, type}
@@ -2479,7 +2541,9 @@ function _resumenSheet(k, corte){
     bl.rows.forEach(rw=>{ const cell=rw[1]; aoa.push([rw[0], cell.v]); meta.push({r:aoa.length-1,type: cell.money?'money':(cell.pct?'pct':'num')});
       if(rw[2]) rk[rw[2]]=aoa.length-1; });
     aoa.push(['']); });
-  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:30},{wch:18}];
+  // La columna de conceptos crece: hay renglones largos ("+ crédito que traían al
+  // empezar el mes") que antes quedaban cortados al abrir el archivo.
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:42},{wch:18}];
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}}];
   ws['!rows']=[{hpt:24},{hpt:16}];
   _s(ws,0,0,ST.title); _s(ws,1,0,ST.sub);
@@ -2502,6 +2566,28 @@ function _resumenSheet(k, corte){
   };
   _pctF('pctMes','cobrMes','factMes');
   _pctF('pctAnual','cobrAnual','factAnual');
+  // Sumas y restas también como fórmula: así cada bloque se comprueba solo dentro
+  // de Excel y se ve de dónde sale cada total sin tener que confiar en el reporte.
+  const _formula=(destKey,expr)=>{
+    if(rk[destKey]==null) return;
+    const a=XLSX.utils.encode_cell({r:rk[destKey],c:1}); if(!ws[a]) return;
+    const B=key=>rk[key]==null?null:('B'+(rk[key]+1));
+    const partes=expr(B); if(partes==null) return;
+    ws[a].f=partes;
+  };
+  const _sumaF=(destKey,keys)=>_formula(destKey,B=>{
+    const refs=keys.map(B); return refs.some(r=>r===null)?null:refs.join('+'); });
+  const _restaF=(destKey,a,b)=>_formula(destKey,B=>{
+    const x=B(a),y=B(b); return (x&&y)?(x+'-'+y):null; });
+
+  _sumaF('sTotal',['sCuotas','sMora']);          // saldo total = cuotas + mora
+  _restaF('pendAnual','factAnual','cobrAnual');  // pendiente = facturado − cobrado
+  _restaF('faltaMes','factMes','cobrMes');
+  _sumaF('oaTot',['oaCaja','oaCred']);           // origen = caja + crédito
+  _sumaF('daTot',['daCuotas','daD25','daMora','daCred']);   // destino
+  _sumaF('omTot',['omCaja','omCred']);
+  _sumaF('dmTot',['dmCuota','dmAtras','dmD25','dmMora','dmCred']);
+  _sumaF('moraGen',['moraCob','moraPen']);       // generada = cobrada + pendiente
   return ws;
 }
 // Hoja pivote: Cobros (caja real) por mes, propietarios en filas agrupados por residencial.
