@@ -173,6 +173,48 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
   padding-bottom:7px; border-bottom:1px solid rgba(255,255,255,.18); }
 /* Las cifras con explicación se señalan con el cursor de ayuda. */
 .tb-hoy [title] { cursor:help; }
+
+/* ───── Finanzas: mismo lenguaje que el tablero ───── */
+.fin-t { width:100%; border-collapse:collapse; font-size:.88rem; }
+.fin-t td { padding:8px 4px; border-bottom:1px solid #eef5f8; vertical-align:middle; }
+.fin-t td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.fin-t tr.d { cursor:pointer; }
+.fin-t tr.d:hover td { background:#f2fafc; }
+.fin-t tr.d.act td { background:var(--ac-teal-50); }
+.fin-t tr.tot td { border-top:2px solid var(--ac-border); border-bottom:0; font-weight:800;
+  background:var(--ac-teal-50); padding:9px 8px; }
+.solo-angosto { display:none; }   /* el par solo-ancho / solo-angosto explica la tabla según lo que se vea */
+.fin-sob { color:var(--ac-danger); font-size:.72rem; white-space:nowrap; }
+.fin-mini { height:6px; background:#eef5f7; border-radius:4px; overflow:hidden; min-width:56px; }
+.fin-mini span { display:block; height:100%; border-radius:4px; }
+.fin-seg { display:inline-flex; background:rgba(255,255,255,.22); border-radius:9px; padding:3px; gap:2px; }
+.fin-seg-b { border:0; background:none; font:inherit; font-size:.75rem; font-weight:600; color:#fff;
+  opacity:.85; padding:4px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.fin-seg-b.on { background:#fff; color:var(--ac-teal-700); opacity:1; }
+.fin-m2m { width:100%; border-collapse:collapse; font-size:.83rem; }
+.fin-m2m th { background:var(--ac-teal-700); color:#fff; padding:7px 9px; font-size:.68rem;
+  text-transform:uppercase; letter-spacing:.05em; text-align:right; font-weight:700; white-space:nowrap; }
+.fin-m2m th:first-child { text-align:left; }
+.fin-m2m td { padding:6px 9px; border-bottom:1px solid #eef5f8; text-align:right;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+.fin-m2m td:first-child { text-align:left; }
+.fin-m2m tr:hover td { background:#f4fbfd; }
+.fin-m2m tr.fuera td { opacity:.45; }   /* meses fuera del periodo elegido */
+.fin-m2m tr.tot td { border-top:2px solid var(--ac-border); font-weight:800; background:var(--ac-teal-50); }
+@media (max-width:820px){
+  .fin-t td { padding:7px 3px; font-size:.83rem; }
+  /* El panel trae white-space:nowrap heredado; aquí la etiqueta tiene que partirse. */
+  .fin-t td:first-child { overflow-wrap:break-word; white-space:normal; width:100%; }
+  /* "sobregirado" cabe debajo del monto en vez de estirar la columna. */
+  .fin-t td.num { font-size:.81rem; }
+  .fin-t .fin-sob { display:block; }
+  /* Cinco columnas no caben: se ocultan el presupuesto y su barra. La marca de
+     sobregiro va pegada al monto, así que lo accionable se conserva. */
+  .fin-t .fin-pres, .fin-t .fin-bar { display:none; }
+  .solo-ancho { display:none; }
+  .fin-t .tb-np { margin-left:6px; }
+  .fin-seg-b { font-size:.72rem; padding:4px 8px; }
+}
 @media (max-width:820px){
   .tb-par, .tb-recon, .tb-hoy > .bd { grid-template-columns:1fr; }
   .tb-desg > .bd { padding:14px; }
@@ -3130,7 +3172,7 @@ function paintGastos(){
       <div style="font-weight:700;font-size:1.1rem">Gastos</div>
       <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
       <span class="spacer" style="flex:1"></span>
-      <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}</div>
+      <div class="seg" id="gastosSeg">${seg('registro','Registro')}${seg('recurrentes','Recurrentes')}${seg('presupuesto','Presupuesto')}</div>
     </div></div>`;
   let banner='';
   if(d.anio===2026 && !d.gastos.length && !Object.keys(d.presupuesto||{}).length){
@@ -3140,7 +3182,9 @@ function paintGastos(){
       <button class="btn green" onclick="importarGastos2026(this)">Importar presupuesto y gastos 2026</button>
     </div></div>`;
   }
-  const content = GASTOS_VISTA==='recurrentes' ? _gastosRecurrentes(d) : _gastosRegistro(d);
+  const content = GASTOS_VISTA==='presupuesto' ? _gastosPresupuesto(d)
+                : GASTOS_VISTA==='recurrentes'  ? _gastosRecurrentes(d)
+                : _gastosRegistro(d);
   body.innerHTML=header+banner+content;
 }
 async function descargarInformePL(btn){
@@ -3179,182 +3223,255 @@ async function enviarInformeUI(){
     alert(r.prueba?`🧪 Modo prueba: enviado solo a ${r.destino} (1 correo).`:`✓ Informe enviado a ${r.enviados} propietario(s).`+((r.sinCorreo&&r.sinCorreo.length)?`\nSin correo: ${r.sinCorreo.length}.`:''));
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
 }
+/* ═════════ Finanzas · Resultado ═════════
+   Mismo lenguaje que el tablero de Estado de cuentas: el estado arriba (el fondo
+   de la asociación), dos tarjetas que SON las pestañas (Ingresos / Egresos) y el
+   desglose de la que esté elegida, con cada renglón abrible. Todo sale del mismo
+   getGastosData que alimenta al Informe PDF. */
+let FIN_TAB='ing', FIN_ABIERTO=null;
+function finTab(v){ FIN_TAB=v; FIN_ABIERTO=null; paintFinanzas(); }
+function finSub(s){ if(FIN_TAB==='ing') ING_AGRUP=s; else RES_AGRUP=s; FIN_ABIERTO=null; paintFinanzas(); }
+function finAbrir(k){
+  FIN_ABIERTO=(FIN_ABIERTO===k)?null:k; paintFinanzas();
+  if(FIN_ABIERTO) setTimeout(()=>{ const e=document.querySelector('#finDet .tb-det');
+    if(e) e.scrollIntoView({block:'nearest',behavior:'smooth'}); },40);
+}
+function irATabGastos(){ const b=document.querySelector('#tabs [data-tab="gastos"]'); if(b) b.click(); }
+
+// Renglones del desglose, ya recortados al período. Cada uno trae los ítems que
+// lo componen, así el total y la lista salen del mismo dato.
+function _finFilas(d,mi,mf){
+  const enRango=f=>{ const m=new Date(f).getMonth()+1; return m>=mi&&m<=mf; };
+  if(FIN_TAB==='ing'){
+    const det=(d.ingresosDetalle||[]).map(r=>{
+      let t=0, meses=[];
+      (r.porMes||[]).forEach((v,i)=>{ const x=Number(v)||0;
+        if(i+1>=mi&&i+1<=mf && x>0.009){ t=_r2(t+x); meses.push({et:GMESES[i],sub:'',m:x}); } });
+      return {...r, monto:_r2(t), meses};
+    }).filter(r=>r.monto>0.009);
+    if(ING_AGRUP==='propietario'){
+      return det.sort((a,b)=>b.monto-a.monto).map(r=>({
+        k:'p:'+r.clave, nombre:(r.lote?r.lote+' · ':'')+r.nombre,
+        sub:r.tipo==='otro'?'Otro ingreso':(r.residencial||''),
+        total:r.monto, n:r.meses.length, unidad:'mes', items:r.meses }));
+    }
+    const g={};
+    det.forEach(r=>{ const k=r.residencial||'(sin residencial)';
+      (g[k]=g[k]||{k:'r:'+k,nombre:k,sub:'',total:0,n:0,unidad:r.tipo==='otro'?'concepto':'cuenta',items:[]});
+      g[k].total=_r2(g[k].total+r.monto); g[k].n++;
+      g[k].items.push({et:r.lote||'—', sub:r.nombre, m:r.monto, clave:r.clave,
+                       nota:r.pagos+' pago'+(r.pagos===1?'':'s')}); });
+    // El renglón de aportes y reembolsos se detalla con los registros reales
+    // (fecha, concepto y su botón de eliminar), no con el resumen por clave:
+    // es la tabla que antes vivía en su propia tarjeta.
+    const oi=(d.otrosIngresos||[]).filter(o=>o.mes>=mi&&o.mes<=mf);
+    Object.values(g).forEach(x=>{
+      if(x.nombre!=='Otros ingresos') return;
+      x.items=oi.map(o=>({et:_fx(o.fecha), sub:o.concepto, nota:o.notas||'',
+                          m:_r2(o.monto), oid:String(o.id||'')}))
+                .sort((a,b)=>b.m-a.m);
+      x.n=x.items.length; x.unidad='concepto';
+    });
+    return Object.values(g).sort((a,b)=>b.total-a.total)
+      .map(x=>({...x, items:x.items.sort((a,b)=>b.m-a.m)}));
+  }
+  // ── egresos ──
+  const porInforme=RES_AGRUP==='informe';
+  const g={};
+  (d.gastos||[]).forEach(x=>{ if(!enRango(x.fecha)) return;
+    const k=porInforme?(x.grupoInforme||'Otros'):(String(x.categoria||'').trim()||'(sin categoría)');
+    (g[k]=g[k]||{k:'g:'+k,nombre:k,sub:'',total:0,n:0,unidad:'gasto',items:[],
+                 presup:porInforme?null:_r2((d.presupuesto||{})[k]||0)});
+    g[k].total=_r2(g[k].total+(Number(x.monto)||0)); g[k].n++;
+    g[k].items.push({et:_fx(x.fecha), sub:x.proveedor||'—', nota:String(x.detalle||'').slice(0,60),
+                     m:_r2(x.monto)}); });
+  let arr=Object.values(g).map(x=>({...x, items:x.items.sort((a,b)=>b.m-a.m)}));
+  if(porInforme){
+    const ORDEN=['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'];
+    arr.sort((a,b)=>{ const ia=ORDEN.indexOf(a.nombre), ib=ORDEN.indexOf(b.nombre);
+      if(ia>=0||ib>=0) return (ia<0?99:ia)-(ib<0?99:ib); return b.total-a.total; });
+  } else arr.sort((a,b)=>b.total-a.total);
+  return arr;
+}
+
 function _gastosResultado(d){
-  // rango de meses (filtro): FIN_MES_INI..FIN_MES_FIN
   const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
   const rango=!(mi===1&&mf===12);
   const im=d.ingresosPorMes||[], em=d.porMes||[];
   const cm=d.cuotasPorMes||[], om=d.otrosPorMes||[];
   let ing=0, egr=0, ingCuotas=0, ingOtros=0;
-  for(let i=mi-1;i<=mf-1;i++){ ing=Math.round((ing+(im[i]||0))*100)/100; egr=Math.round((egr+(em[i]||0))*100)/100;
-    ingCuotas=Math.round((ingCuotas+(cm[i]||0))*100)/100; ingOtros=Math.round((ingOtros+(om[i]||0))*100)/100; }
-  // otros ingresos (aportes, reembolsos…) del periodo, para mostrarlos explícitos
-  const otrosList=(d.otrosIngresos||[]).filter(o=>o.mes>=mi&&o.mes<=mf);
-  const res=Math.round((ing-egr)*100)/100;
-  const positivo=res>=-0.009;
-  const resCol=positivo?'var(--ac-green-600)':'var(--ac-danger)';
-  const periodoTxt=rango?`${GMESES[mi-1]}–${GMESES[mf-1]} ${d.anio}`:`${d.anio}`;
-  // filtro de periodo
-  const mopts=sel=>GMESES.map((m,i)=>`<option value="${i+1}" ${sel===i+1?'selected':''}>${m}</option>`).join('');
-  const filtro=`<div style="display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--ac-border)">
-    <span style="font-weight:600;font-size:.85rem">Periodo</span>
-    <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Desde <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; paintFinanzas()">${mopts(mi)}</select></label>
-    <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Hasta <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; paintFinanzas()">${mopts(mf)}</select></label>
-    ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;paintFinanzas()">Año completo</button>`:'<span class="muted" style="font-size:.78rem">(año completo)</span>'}
-  </div>`;
-  // ── Fondo disponible: el mismo cálculo del Informe PDF ──
-  // fondo inicial del año + resultado acumulado desde ENERO hasta el mes final
-  // elegido (no sólo el rango): es cuánta plata hay, no cuánto rindió el período.
-  const fondoIni=Math.round((Number(d.fondoInicial)||0)*100)/100;
-  let resYTD=0;
-  for(let i=0;i<=mf-1;i++) resYTD=Math.round((resYTD+(im[i]||0)-(em[i]||0))*100)/100;
-  const fondoDisp=Math.round((fondoIni+resYTD)*100)/100;
-  const hastaTxt=(mf===12)?'':` hasta ${GMESES[mf-1]}`;
-  const fondoBanda=fondoIni>0.009
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
-         border:1px solid var(--ac-border);border-left:4px solid var(--ac-teal);border-radius:10px;
-         background:var(--ac-teal-50);padding:11px 16px;margin-bottom:12px">
-        <div><div class="muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Fondo disponible${hastaTxt?' ('+GMESES[mf-1]+')':' a la fecha'}</div>
-          <div class="muted" style="font-size:.78rem;margin-top:2px">Fondo inicial del año (${money(fondoIni)}) + resultado acumulado (${money(resYTD)})</div></div>
-        <div style="font-size:1.45rem;font-weight:800;color:var(--ac-teal-700);white-space:nowrap">${money(fondoDisp)}</div>
-      </div>`
-    : `<div class="muted" style="font-size:.78rem;border:1px dashed var(--ac-border);border-radius:9px;
-         padding:9px 14px;margin-bottom:12px">Para ver el <b>fondo disponible</b> aquí y en el informe PDF,
-         registra el fondo inicial del año en <b>Opciones</b>.</div>`;
-  // tarjetas resumen
-  const cardKPI=(l,v,c,sub)=>`<div class="kpi ${c}" style="flex:1;min-width:200px"><div class="label">${l}</div><div class="val" style="font-size:1.5rem">${v}</div>${sub?`<div class="hint">${sub}</div>`:''}</div>`;
-  const resumen=`${fondoBanda}<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
-    ${cardKPI('Ingresos',money(ing),'green',ingOtros>0.009?`Cuotas ${money(ingCuotas)} · Otros ${money(ingOtros)}`:'Cuotas de mantenimiento')}
-    ${cardKPI('Egresos (gastos)',money(egr),'coral')}
-    <div class="kpi ${positivo?'green':'red'}" style="flex:1;min-width:200px"><div class="label">${positivo?'Superávit del periodo':'Déficit del periodo'}</div><div class="val" style="font-size:1.5rem;color:${resCol}">${money(res)}</div><div class="hint">Ingresos − Egresos</div></div>
-  </div>`;
-  // egresos agrupados en el rango — por categoría (presupuesto) o por esquema del informe (5 columnas)
-  const agrup=RES_AGRUP==='informe'?'informe':'categoria';
-  const gmap={};
-  (d.gastos||[]).forEach(g=>{ const m=new Date(g.fecha).getMonth()+1; if(m>=mi&&m<=mf){ const k=agrup==='informe'?(g.grupoInforme||'Otros'):(g.categoria||'(sin categoría)'); gmap[k]=Math.round(((gmap[k]||0)+(Number(g.monto)||0))*100)/100; } });
-  let cats;
-  if(agrup==='informe'){
-    const ORDER=['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'];
-    cats=ORDER.filter(k=>gmap[k]>0).map(k=>({categoria:k,ejecutado:gmap[k]}));
-    Object.keys(gmap).forEach(k=>{ if(ORDER.indexOf(k)<0 && gmap[k]>0) cats.push({categoria:k,ejecutado:gmap[k]}); });
-  } else {
-    cats=Object.keys(gmap).map(k=>({categoria:k,ejecutado:gmap[k]})).filter(t=>t.ejecutado>0).sort((a,b)=>b.ejecutado-a.ejecutado);
-  }
-  const catRows=cats.map(t=>`<tr><td data-label="Categoría">${t.categoria}</td><td class="num" data-label="Monto">${money(t.ejecutado)}</td><td class="num" data-label="% de egresos">${egr>0?_ground1(t.ejecutado/egr*100):0}%</td></tr>`).join('');
+  for(let i=mi-1;i<=mf-1;i++){ ing=_r2(ing+(im[i]||0)); egr=_r2(egr+(em[i]||0));
+    ingCuotas=_r2(ingCuotas+(cm[i]||0)); ingOtros=_r2(ingOtros+(om[i]||0)); }
+  const res=_r2(ing-egr), positivo=res>=-0.009;
+  const periodoTxt=rango?`${GMESES[mi-1]} – ${GMESES[mf-1]} ${d.anio}`:`Enero – Diciembre ${d.anio}`;
 
-  // ── desglose de ingresos: de quién viene cada balboa que entró en el período ──
-  // El backend manda el detalle mensual por pagador; aquí se recorta al rango elegido.
-  const ingAgrup=ING_AGRUP==='propietario'?'propietario':'residencial';
-  const detPer=(d.ingresosDetalle||[]).map(r=>{
-    let t=0; (r.porMes||[]).forEach((v,i)=>{ if(i+1>=mi&&i+1<=mf) t=Math.round((t+(Number(v)||0))*100)/100; });
-    return {...r, monto:t};
-  }).filter(r=>r.monto>0.009);
-  // "Cuentas que pagaron" son propietarios. Los aportes y reembolsos entran por
-  // la misma tabla pero no son cuentas: contarlos ahí inflaba el número.
-  const nCuentasPag=detPer.filter(r=>r.tipo!=='otro').length;
-  const nOtros=detPer.length-nCuentasPag;
-  let ingRows=[];
-  if(ingAgrup==='residencial'){
-    const g={};
-    detPer.forEach(r=>{ const k=r.residencial||'(sin residencial)';
-      g[k]=g[k]||{nombre:k,monto:0,cuentas:0,otro:r.tipo==='otro'};
-      g[k].monto=Math.round((g[k].monto+r.monto)*100)/100; g[k].cuentas++; });
-    ingRows=Object.values(g).sort((a,b)=>b.monto-a.monto)
-      .map(r=>({c1:r.nombre,
-                // el renglón de aportes/reembolsos no son "cuentas": son conceptos
-                c2:r.cuentas+(r.otro?(r.cuentas===1?' concepto':' conceptos')
-                                    :(r.cuentas===1?' cuenta':' cuentas')),
-                monto:r.monto}));
-  } else {
-    ingRows=detPer.slice().sort((a,b)=>b.monto-a.monto)
-      .map(r=>({c1:(r.lote?'<b>'+String(r.lote).replace(/</g,'&lt;')+'</b> · ':'')+String(r.nombre).replace(/</g,'&lt;'),
-                c2:r.tipo==='otro'?'<span style="color:var(--ac-teal-600)">Otro ingreso</span>':(r.residencial||''),
-                monto:r.monto}));
-  }
-  const ingRowsHtml=ingRows.map(r=>`<tr><td data-label="${ingAgrup==='residencial'?'Residencial':'Propietario'}">${r.c1}</td>
-    <td class="muted" data-label="Detalle" style="font-size:.82rem">${r.c2}</td>
-    <td class="num" data-label="Monto" style="font-weight:600">${money(r.monto)}</td>
-    <td class="num" data-label="% de ingresos">${ing>0?_ground1(r.monto/ing*100):0}%</td></tr>`).join('');
-  // tabla mensual transpuesta: conceptos en filas, meses en columnas (solo meses del rango)
-  let acc=0;
-  const mcols=[];
-  GMESES.forEach((m,i)=>{
-    if(i+1<mi||i+1>mf) return;
-    const ii=im[i]||0, ee=em[i]||0, rr=Math.round((ii-ee)*100)/100; acc=Math.round((acc+rr)*100)/100;
-    mcols.push({m,ii,ee,rr,acc});
-  });
-  const cCol=v=>v>=0?'var(--ac-green-600)':'var(--ac-danger)';
-  const mesHead=mcols.map(c=>`<th class="num">${c.m}</th>`).join('');
-  const rIng=mcols.map(c=>`<td class="num">${money(c.ii)}</td>`).join('');
-  const rCuo=mcols.map(c=>`<td class="num muted">${money(cm[GMESES.indexOf(c.m)]||0)}</td>`).join('');
-  const rOtr=mcols.map(c=>`<td class="num muted">${money(om[GMESES.indexOf(c.m)]||0)}</td>`).join('');
-  const rEgr=mcols.map(c=>`<td class="num">${money(c.ee)}</td>`).join('');
-  const rRes=mcols.map(c=>`<td class="num" style="color:${cCol(c.rr)}">${money(c.rr)}</td>`).join('');
-  const rAcc=mcols.map(c=>`<td class="num" style="color:${cCol(c.acc)}">${money(c.acc)}</td>`).join('');
-  return `<div class="card" style="margin-top:14px"><div class="hd"><h2>Estado de resultados ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
-      <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
-      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button></div>
-    <div class="bd" style="padding:14px 18px">
-      ${filtro}
-      ${resumen}
-      <div class="muted" style="font-size:.76rem;margin-top:8px">Base caja: ingresos = cobros efectivos (cuotas y otros ingresos); egresos = gastos registrados.</div>
-    </div></div>
-    <div class="card" style="margin-top:14px"><div class="hd"><h2>Desglose de ingresos ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
-      <div class="seg"><button class="seg-btn ${ingAgrup==='residencial'?'active':''}" onclick="ING_AGRUP='residencial';paintFinanzas()">Por residencial</button><button class="seg-btn ${ingAgrup==='propietario'?'active':''}" onclick="ING_AGRUP='propietario';paintFinanzas()">Por propietario</button></div></div>
-    <div class="bd" style="padding:12px 18px">
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-teal);border-radius:9px;padding:9px 13px">
-          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Cuotas de mantenimiento</div>
-          <div style="font-size:1.05rem;font-weight:700">${money(ingCuotas)}</div>
-          <div class="muted" style="font-size:.72rem">${ing>0?_ground1(ingCuotas/ing*100):0}% de los ingresos</div></div>
-        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-green-600);border-radius:9px;padding:9px 13px">
-          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Otros ingresos</div>
-          <div style="font-size:1.05rem;font-weight:700">${money(ingOtros)}</div>
-          <div class="muted" style="font-size:.72rem">${ing>0?_ground1(ingOtros/ing*100):0}% de los ingresos</div></div>
-        <div style="flex:1;min-width:150px;border:1px solid var(--ac-border);border-left:3px solid var(--ac-ink,#123);border-radius:9px;padding:9px 13px">
-          <div class="muted" style="font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Total recibido</div>
-          <div style="font-size:1.05rem;font-weight:700">${money(ing)}</div>
-          <div class="muted" style="font-size:.72rem">${nCuentasPag} ${nCuentasPag===1?'cuenta pagó':'cuentas pagaron'}${
-            nOtros?` · ${nOtros} otro${nOtros===1?'':'s'} ingreso${nOtros===1?'':'s'}`:''}</div></div>
+  // ── Fondo: siempre acumula desde enero, porque es un saldo a una fecha y no
+  //    un flujo del rango. Por eso se rotula con el mes de cierre.
+  const fondoIni=_r2(d.fondoInicial);
+  let ingYTD=0, egrYTD=0;
+  for(let i=0;i<=mf-1;i++){ ingYTD=_r2(ingYTD+(im[i]||0)); egrYTD=_r2(egrYTD+(em[i]||0)); }
+  const resYTD=_r2(ingYTD-egrYTD), fondoDisp=_r2(fondoIni+resYTD);
+  const chip=(cls,lbl,val,ayuda)=>`<div class="tb-chip ${cls}" title="${_esc(ayuda)}" style="cursor:help">
+    <div class="n" style="font-size:1.15rem">${money(val)}</div><div class="l">${_esc(lbl)}</div></div>`;
+  const fondoBloque = fondoIni>0.009 || Math.abs(resYTD)>0.009
+    ? `<div class="tb-hoy" style="margin-bottom:14px">
+      <div class="hd"><span class="t">Fondo de la asociación</span>
+        <span class="p">${mf===12?'Al cierre del año':'Al cierre de '+GMESES[mf-1]} ${d.anio}</span></div>
+      <div class="bd">
+        <div>
+          <div class="tb-cap" title="Plata que la asociación tiene disponible: con lo que arrancó el año, más lo que entró, menos lo que se gastó.">Fondo disponible</div>
+          <div class="tb-big t" style="font-size:2.05rem">${money(fondoDisp)}</div>
+          <div class="tb-den">Resultado acumulado
+            <b style="color:${resYTD>=0?'var(--ac-green-600)':'var(--ac-danger)'}">${money(resYTD)}</b>
+            · ingresos menos egresos</div>
+        </div>
+        <div class="tb-chips">
+          ${chip('ok','Fondo inicial del año',fondoIni,'Con lo que arrancó '+d.anio+'. Se define en Opciones.')}
+          ${chip('','+ Ingresos acumulados',ingYTD,'Todo el dinero recibido de enero a '+GMESES[mf-1]+': cuotas de mantenimiento y otros ingresos.')}
+          ${chip('r','− Egresos acumulados',egrYTD,'Todos los gastos registrados de enero a '+GMESES[mf-1]+'.')}
+        </div>
       </div>
-      ${ingRows.length?`<table class="stack-table"><thead><tr><th>${ingAgrup==='residencial'?'Residencial':'Propietario'}</th><th>${ingAgrup==='residencial'?'Cuentas que pagaron':'Residencial'}</th><th class="num">Monto</th><th class="num">% de ingresos</th></tr></thead><tbody>${ingRowsHtml}
-        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Total">TOTAL INGRESOS</td><td></td><td class="num" data-label="Monto">${money(ing)}</td><td class="num" data-label="%">100%</td></tr></tbody></table>`
-        :`<div class="muted" style="padding:10px 0;font-size:.85rem">Sin ingresos registrados en ${periodoTxt}.</div>`}
-      <div class="muted" style="font-size:.74rem;margin-top:9px">Base caja: es el dinero <b>recibido</b> en el período, no lo facturado. Un propietario que pagó tres cuotas atrasadas de una vez aparece aquí por el total del depósito.</div>
-    </div></div>
-    <div class="card" style="margin-top:14px"><div class="hd"><h2>Otros ingresos ${periodoTxt}</h2><div class="spacer" style="flex:1"></div>
-      <button class="btn" style="padding:8px 13px;white-space:nowrap" onclick="openOtroIngreso()">+ Agregar ingreso</button></div>
-    <div class="bd" style="padding:12px 18px">
-      <div class="muted" style="font-size:.78rem;margin-bottom:8px">Ingresos que no son cuotas de mantenimiento (aportes, reembolsos y similares). Se suman al total de ingresos del Estado de Resultados y no afectan la cartera ni los estados de cuenta.</div>
-      ${otrosList.length?`<table class="stack-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Detalle</th><th class="num">Monto</th><th></th></tr></thead><tbody>
-        ${otrosList.map(o=>`<tr><td data-label="Fecha">${_fx(o.fecha)}</td><td data-label="Concepto"><b>${String(o.concepto).replace(/</g,'&lt;')}</b></td>
-          <td data-label="Detalle" class="muted" style="font-size:.8rem">${String(o.notas||'').replace(/</g,'&lt;')}</td>
-          <td class="num" data-label="Monto" style="font-weight:600">${money(o.monto)}</td>
-          <td style="text-align:right">${String(o.id||'').indexOf('OI-')===0?`<button class="icon-btn danger" title="Eliminar este ingreso" onclick="eliminarOtroIngreso('${o.id}',this)">🗑</button>`:`<span class="muted" style="font-size:.68rem" title="Registrado por la carga inicial; no se elimina desde aquí">—</span>`}</td></tr>`).join('')}
-        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Fecha">TOTAL</td><td></td><td></td><td class="num" data-label="Monto">${money(ingOtros)}</td><td></td></tr>
-      </tbody></table>`
-      :`<div class="muted" style="padding:10px 0;font-size:.85rem">Sin otros ingresos en ${periodoTxt}. Usa <b>+ Agregar ingreso</b> para registrar un aporte o reembolso.</div>`}
-    </div></div>
-    <div class="card" style="margin-top:14px"><div class="hd"><h2>Egresos ${agrup==='informe'?'· esquema del informe':'por categoría'}</h2><div class="spacer" style="flex:1"></div>
-      <div class="seg"><button class="seg-btn ${agrup==='categoria'?'active':''}" onclick="RES_AGRUP='categoria';paintFinanzas()">Categoría</button><button class="seg-btn ${agrup==='informe'?'active':''}" onclick="RES_AGRUP='informe';paintFinanzas()">Esquema informe</button></div></div>
-    <div class="bd" style="padding:12px 18px">
-      ${agrup==='informe'?'<div class="muted" style="font-size:.78rem;margin-bottom:8px">Mismas 5 columnas del informe de la junta (Serv. Prof., Alq. Equipo, Acueducto, Legales/Imp./Munic./CxP, Otros).</div>':''}
-      ${cats.length?`<table class="stack-table"><thead><tr><th>${agrup==='informe'?'Grupo':'Categoría'}</th><th class="num">Monto</th><th class="num">% de egresos</th></tr></thead><tbody>${catRows}
-        <tr style="font-weight:700;border-top:2px solid var(--ac-teal)"><td data-label="Categoría">TOTAL EGRESOS</td><td class="num" data-label="Monto">${money(egr)}</td><td class="num" data-label="% de egresos">100%</td></tr></tbody></table>`
-        :'<div class="muted" style="padding:12px 0">Sin egresos registrados en el periodo.</div>'}
-    </div></div>
-    <div class="card" style="margin-top:14px"><div class="hd"><h2>Mes a mes</h2></div>
-    <div class="bd" style="padding:12px 18px">
-      ${mcols.length?`<div style="overflow-x:auto"><table class="mes-t"><thead><tr><th>Concepto</th>${mesHead}<th class="num" style="border-left:1px solid var(--ac-border)">TOTAL</th></tr></thead><tbody>
-        <tr><td>Ingresos</td>${rIng}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(ing)}</td></tr>
-        ${ingOtros>0.009?`<tr class="muted" style="font-size:.86rem"><td style="padding-left:18px">· Cuotas de mantenimiento</td>${rCuo}<td class="num" style="border-left:1px solid var(--ac-border)">${money(ingCuotas)}</td></tr>
-        <tr class="muted" style="font-size:.86rem"><td style="padding-left:18px">· Otros ingresos</td>${rOtr}<td class="num" style="border-left:1px solid var(--ac-border)">${money(ingOtros)}</td></tr>`:''}
-        <tr><td>Egresos</td>${rEgr}<td class="num" style="font-weight:700;border-left:1px solid var(--ac-border)">${money(egr)}</td></tr>
-        <tr><td>Resultado</td>${rRes}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
-        <tr style="border-top:2px solid var(--ac-teal)"><td style="font-weight:700">Acumulado</td>${rAcc}<td class="num" style="font-weight:700;color:${resCol};border-left:1px solid var(--ac-border)">${money(res)}</td></tr>
-      </tbody></table></div>`
-        :'<div class="muted" style="padding:12px 0">Sin movimientos en el periodo.</div>'}
+      ${rango?`<div class="muted" style="font-size:.76rem;padding:0 18px 12px">El fondo acumula desde enero;
+        las tarjetas de abajo muestran sólo <b>${_esc(periodoTxt)}</b>.</div>`:''}
+    </div>`
+    : `<div class="muted" style="font-size:.78rem;border:1px dashed var(--ac-border);border-radius:9px;
+         padding:9px 14px;margin-bottom:14px">Para ver el <b>fondo disponible</b> aquí y en el informe PDF,
+         registra el fondo inicial del año en <b>Opciones</b>.</div>`;
+
+  // ── Las dos tarjetas-pestaña ──
+  const esIng=FIN_TAB==='ing';
+  const presTot=_r2(Object.values(d.presupuesto||{}).reduce((a,b)=>a+(Number(b)||0),0));
+  const pctPres=presTot>0?_r2(egr/presTot*100):0;
+  const filas=_finFilas(d,mi,mf);
+  const nCuentas=esIng?0:0;
+  const detIng=(d.ingresosDetalle||[]).map(r=>{ let t=0;
+      (r.porMes||[]).forEach((v,i)=>{ if(i+1>=mi&&i+1<=mf) t=_r2(t+(Number(v)||0)); }); return {...r,monto:t}; })
+    .filter(r=>r.monto>0.009);
+  const nProp=detIng.filter(r=>r.tipo!=='otro').length, nOtr=detIng.length-nProp;
+  const sobre=(d.gastos?_finFilas(d,mi,mf):[]);
+  const nSobre=RES_AGRUP==='informe'?0:filas.filter(f=>f.presup>0.009&&f.total>f.presup+0.009).length;
+
+  const tarjetas=`<div class="tb-par">
+    <button type="button" class="tb-sel mes${esIng?' on':''}" onclick="finTab('ing')">
+      <div class="hd"><span class="t">Ingresos</span><span class="p">${_esc(periodoTxt)}</span></div>
+      <div class="bd">
+        <div class="tb-cap">Total recibido en el período</div>
+        <div class="tb-big g">${money(ing)}</div>
+        <div class="tb-bar"><span style="width:${ing>0?Math.min(100,ingCuotas/ing*100):0}%"></span></div>
+        <div class="tb-den">Cuotas <b>${money(ingCuotas)}</b> · otros <b>${money(ingOtros)}</b></div>
+        <div class="tb-caja"><b>${nProp}</b> cuenta${nProp===1?'':'s'} pagaron${nOtr?` · <b>${nOtr}</b> otro${nOtr===1?'':'s'} ingreso${nOtr===1?'':'s'}`:''}</div>
+        <div class="tb-ver">${esIng?'▾':'▸'} Ver de dónde vino</div>
+      </div>
+    </button>
+    <button type="button" class="tb-sel anio${esIng?'':' on'}" onclick="finTab('egr')">
+      <div class="hd"><span class="t">Egresos</span><span class="p">${_esc(periodoTxt)}</span></div>
+      <div class="bd">
+        <div class="tb-cap">Total gastado en el período</div>
+        <div class="tb-big" style="color:var(--ac-coral)">${money(egr)}</div>
+        <div class="tb-bar"><span style="width:${Math.min(100,pctPres)}%;background:var(--ac-coral)"></span></div>
+        <div class="tb-den">${presTot>0?`<b>${pctPres.toFixed(1)}%</b> del presupuesto anual (${money(presTot)})`:'Sin presupuesto cargado'}</div>
+        <div class="tb-caja">${RES_AGRUP==='informe'?filas.length+' grupos':filas.length+' categoría'+(filas.length===1?'':'s')} con gasto${
+          nSobre?` · <b style="color:var(--ac-danger)">${nSobre} sobregirada${nSobre===1?'':'s'}</b>`:''}</div>
+        <div class="tb-ver">${esIng?'▸':'▾'} Ver en qué se fue</div>
+      </div>
+    </button>
+  </div>`;
+
+  // ── Desglose de la tarjeta elegida ──
+  const tot=esIng?ing:egr;
+  const COLS=['#0E8FB0','#8DC63F','#E8743B','#4FB4CE','#F4A45C','#B7791F','#1E8E5A','#C0392B','#086176','#5B7883'];
+  const conPres=!esIng && RES_AGRUP!=='informe' && presTot>0;
+  const cuerpo=filas.map((f,i)=>{
+    const col=COLS[i%COLS.length];
+    const sob=conPres && f.presup>0.009 && f.total>f.presup+0.009;
+    return `<tr class="d${FIN_ABIERTO===f.k?' act':''}" onclick="finAbrir('${_esc(f.k).replace(/'/g,"\\'")}')">
+      <td><span class="tb-sw" style="background:${col}"></span>${_esc(f.nombre)}${
+        f.sub?`<span class="muted" style="font-size:.76rem"> · ${_esc(f.sub)}</span>`:''}
+        <span class="tb-np">${f.n} ${_esc(f.unidad)}${f.n===1?'':'s'}</span></td>
+      ${conPres?`<td class="num muted fin-pres" style="white-space:nowrap">${f.presup>0.009?money(f.presup):'—'}</td>
+      <td class="fin-bar" style="width:104px"><div class="fin-mini"><span style="width:${f.presup>0.009?Math.min(100,f.total/f.presup*100):0}%;background:${sob?'var(--ac-danger)':col}"></span></div></td>`:''}
+      <td class="num" style="font-weight:600"><span style="white-space:nowrap">${money(f.total)}</span>${
+        sob?' <span class="fin-sob">sobregirado</span>':''}</td>
+      <td class="num muted" style="width:58px">${tot>0?_r2(f.total/tot*100).toFixed(1):0}%</td></tr>`;
+  }).join('');
+  const nCols=conPres?5:3;
+  const sub=(k,l)=>`<button type="button" class="fin-seg-b${
+    (esIng?ING_AGRUP:RES_AGRUP)===k?' on':''}" onclick="finSub('${k}')">${l}</button>`;
+  const abierta=filas.find(f=>f.k===FIN_ABIERTO);
+  const desglose=`<div class="tb-desg" style="margin-top:14px">
+    <div class="hd">
+      <span class="t">${esIng?'De dónde vino el dinero':'En qué se fue el dinero'}</span>
+      <span class="p" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="fin-seg">${esIng?sub('residencial','Por residencial')+sub('propietario','Por propietario')
+                                      :sub('categoria','Por categoría')+sub('informe','Esquema informe')}</span>
+        ${esIng?`<button type="button" class="btn ghost" style="padding:5px 11px;font-size:.76rem"
+           onclick="openOtroIngreso()">+ Agregar ingreso</button>`
+          :`<button type="button" class="btn ghost" style="padding:5px 11px;font-size:.76rem"
+           onclick="irATabGastos()">Registrar un gasto →</button>`}
+      </span></div>
+    <div class="bd">
+      ${filas.length?`<table class="fin-t"><tbody>${cuerpo}
+        <tr class="tot"><td>TOTAL</td>
+          ${conPres?`<td class="num fin-pres">${money(presTot)}</td><td class="fin-bar"></td>`:''}
+          <td class="num">${money(tot)}</td><td class="num">100%</td></tr>
+      </tbody></table>`:`<div class="muted" style="padding:10px 0;font-size:.85rem">Sin ${esIng?'ingresos':'gastos'} en ${_esc(periodoTxt)}.</div>`}
+      <div id="finDet">${abierta?_finDetalle(abierta,esIng):''}</div>
+      <div class="tb-nota">${esIng
+        ? 'Base caja: es el dinero <b>recibido</b> en el período, no lo facturado. Quien pagó tres cuotas atrasadas de una vez aparece aquí por el total del depósito.<br><span style="opacity:.85">La cobranza contra lo facturado se mide en <b>Estado de cuentas</b>.</span>'
+        : (conPres?'<span class="solo-ancho">La columna de presupuesto es el <b>anual completo</b>; la barra muestra cuánto se lleva ejecutado.</span>'+
+                    '<span class="solo-angosto">Cada categoría se compara contra su presupuesto anual; en pantalla ancha se ven la columna y la barra. Aquí se marca sólo el <b>sobregiro</b>.</span>'
+                  :'Agrupado por el esquema del informe. El presupuesto se compara por categoría.')
+          +'<br><span style="opacity:.85">Los gastos se registran y editan en el tab <b>Gastos</b>.</span>'}</div>
     </div></div>`;
+
+  // ── Mes a mes: cómo se movió el fondo durante el año ──
+  let acc=0;
+  const mm=GMESES.map((et,i)=>{ const ii=_r2(im[i]||0), ee=_r2(em[i]||0), rr=_r2(ii-ee);
+    acc=_r2(acc+rr); return {et,ii,ee,rr,cu:_r2(cm[i]||0),ot:_r2(om[i]||0),fondo:_r2(fondoIni+acc),
+                             dentro:(i+1>=mi&&i+1<=mf)}; });
+  const cCol=v=>v>=0?'var(--ac-green-600)':'var(--ac-danger)';
+  const mesABloque=`<div class="tb-hoy" style="margin-top:14px;margin-bottom:24px">
+    <div class="hd"><span class="t">Mes a mes</span><span class="p">cómo se movió el fondo durante ${d.anio}</span></div>
+    <div class="bd" style="display:block;padding:14px 18px">
+      <div style="overflow-x:auto"><table class="fin-m2m">
+        <thead><tr><th>Mes</th><th>Ingresos</th><th>· cuotas</th><th>· otros</th><th>Egresos</th><th>Resultado</th><th>Fondo al cierre</th></tr></thead>
+        <tbody>${mm.map(r=>`<tr${r.dentro?'':' class="fuera"'}>
+          <td>${r.et}</td><td>${money(r.ii)}</td><td class="muted">${money(r.cu)}</td>
+          <td class="muted">${money(r.ot)}</td><td>${money(r.ee)}</td>
+          <td style="color:${cCol(r.rr)};font-weight:600">${money(r.rr)}</td>
+          <td style="font-weight:700;color:var(--ac-teal-700)">${money(r.fondo)}</td></tr>`).join('')}
+        <tr class="tot"><td>TOTAL ${d.anio}</td><td>${money(_r2(im.reduce((a,b)=>a+(b||0),0)))}</td>
+          <td>${money(_r2(cm.reduce((a,b)=>a+(b||0),0)))}</td><td>${money(_r2(om.reduce((a,b)=>a+(b||0),0)))}</td>
+          <td>${money(_r2(em.reduce((a,b)=>a+(b||0),0)))}</td>
+          <td>${money(_r2(im.reduce((a,b)=>a+(b||0),0)-em.reduce((a,b)=>a+(b||0),0)))}</td>
+          <td>${money(_r2(fondoIni+im.reduce((a,b)=>a+(b||0),0)-em.reduce((a,b)=>a+(b||0),0)))}</td></tr>
+      </tbody></table></div>
+      ${rango?`<div class="muted" style="font-size:.76rem;margin-top:8px">Los meses fuera de
+        <b>${_esc(periodoTxt)}</b> se ven atenuados, pero el fondo se encadena con el año completo.</div>`:''}
+    </div></div>`;
+
+  return fondoBloque+tarjetas+desglose+mesABloque;
+}
+
+// Lista de lo que compone un renglón del desglose.
+function _finDetalle(f,esIng){
+  const suma=_r2((f.items||[]).reduce((s,x)=>s+(Number(x.m)||0),0));
+  const cuadra=Math.abs(suma-f.total)<0.02;
+  const filas=(f.items||[]).map(x=>`<tr${x.clave?` onclick="openEstado('${_esc(x.clave)}')" style="cursor:pointer"`:''}>
+    <td class="lo">${_esc(x.et)}</td><td>${_esc(x.sub||'')}</td>
+    ${x.nota!=null?`<td class="no">${_esc(x.nota)}</td>`:'<td></td>'}
+    <td class="num">${money(x.m)}</td>
+    ${x.clave?'<td class="num ec">estado de cuenta →</td>'
+      : (x.oid&&x.oid.indexOf('OI-')===0
+          ? `<td class="num"><button class="icon-btn danger" title="Eliminar este ingreso"
+               onclick="event.stopPropagation();eliminarOtroIngreso('${_esc(x.oid)}',this)">🗑</button></td>`
+          : (x.oid!=null?'<td class="num"><span class="muted" style="font-size:.68rem" title="Registrado por la carga inicial; no se elimina desde aquí">—</span></td>':'<td></td>'))}</tr>`).join('');
+  return `<div class="tb-det"><div class="dh">
+      <span class="t">${_esc(f.nombre)} · ${f.n} ${_esc(f.unidad)}${f.n===1?'':'s'}</span>
+      <button class="x" type="button" onclick="finAbrir(null)" title="Cerrar">×</button></div>
+    <div class="dl"><table><tbody>${filas}</tbody></table></div>
+    <div class="df"><span>Suma de la lista <b>${money(suma)}</b></span>
+      <span>${cuadra?'✓ cuadra con el renglón':'⚠ no cuadra con el renglón'}</span></div></div>`;
 }
 // ── Otros ingresos (aportes, reembolsos): no son cuotas, se registran a mano ──
 function openOtroIngreso(){
@@ -3642,11 +3759,12 @@ async function guardarPresupuestoUI(){
   try{
     await post('guardarGastoCategorias',{categorias:cats});
     await post('guardarPresupuesto',{anio:GASTOS_DATA.anio, presupuesto:mapa});
-    GASTOS_DATA=null; await renderFinanzas(); toast('Presupuesto guardado');
+    // El presupuesto vive ahora en el tab de Gastos: hay que repintar ese.
+    GASTOS_DATA=null; await renderGastos(); toast('Presupuesto guardado');
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
-let FIN_VISTA='resultado', FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria', ING_AGRUP='residencial';
+let FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria', ING_AGRUP='residencial';
 async function renderFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   if(!GASTOS_DATA) body.innerHTML='<div class="muted">Cargando…</div>';
@@ -3661,15 +3779,26 @@ function paintFinanzas(){
   const body=document.getElementById('finanzasBody'); if(!body) return;
   const anios=(d.aniosDisponibles&&d.aniosDisponibles.length)?d.aniosDisponibles:[d.anio];
   const yearSel=`<select onchange="GASTOS_ANIO=+this.value;renderFinanzas()">${anios.map(y=>`<option value="${y}" ${y===d.anio?'selected':''}>${y}</option>`).join('')}</select>`;
-  const seg=(v,l)=>`<button class="seg-btn ${FIN_VISTA===v?'active':''}" onclick="FIN_VISTA='${v}';paintFinanzas()">${l}</button>`;
-  const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  // El período manda sobre TODO el tab, así que vive en la barra de arriba y no
+  // dentro de una tarjeta. El presupuesto se edita ahora en el tab de Gastos.
+  const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
+  const rango=!(mi===1&&mf===12);
+  const mopts=sel=>GMESES.map((m,i)=>`<option value="${i+1}" ${sel===i+1?'selected':''}>${m}</option>`).join('');
+  const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap">
       <div style="font-weight:700;font-size:1.1rem">Finanzas</div>
       <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
+      <span style="width:1px;height:20px;background:var(--ac-border)"></span>
+      <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Periodo
+        <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; FIN_ABIERTO=null; paintFinanzas()">${mopts(mi)}</select></label>
+      <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">a
+        <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; FIN_ABIERTO=null; paintFinanzas()">${mopts(mf)}</select></label>
+      ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;FIN_ABIERTO=null;paintFinanzas()">Año completo</button>`
+             :'<span class="muted" style="font-size:.78rem">(año completo)</span>'}
       <span class="spacer" style="flex:1"></span>
-      <div class="seg" id="finSeg">${seg('resultado','Resultado')}${seg('presupuesto','Presupuesto')}</div>
+      <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
+      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button>
     </div></div>`;
-  const content = FIN_VISTA==='resultado' ? _gastosResultado(d) : _gastosPresupuesto(d);
-  body.innerHTML=header+content;
+  body.innerHTML=header+_gastosResultado(d);
 }
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
