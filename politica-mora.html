@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Política de mora · Aires de Chicá</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 10pt; line-height: 1.5; color:#1B2523;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  h1 { font-size: 17pt; margin:0 0 2mm; letter-spacing:-.01em; color:#0E5C50; }
+  .sub { font-size: 9.5pt; color:#5C6B65; margin:0; }
+  .rule { height:3px; background:#0E5C50; margin:3mm 0 5mm; border-radius:2px; }
+  h2 { font-size: 11pt; margin: 4.5mm 0 2mm; color:#0E5C50;
+       border-bottom:1px solid #DCE4E0; padding-bottom:1.2mm; }
+  h2:first-of-type { margin-top:0; }
+  p { margin:0 0 2.5mm; }
+  b, strong { font-weight:700; }
+  table { border-collapse:collapse; width:100%; font-size:9pt; }
+  th { text-align:left; font-size:7.5pt; letter-spacing:.05em; text-transform:uppercase;
+       color:#5C6B65; border-bottom:1.2px solid #B9C7C2; padding:1.6mm 2mm; }
+  td { padding:1.8mm 2mm; border-bottom:.6px solid #E6ECE9; vertical-align:top; }
+  td.n, th.n { text-align:right; white-space:nowrap; }
+  .k { font-weight:700; color:#0E5C50; white-space:nowrap; }
+  .rec { color:#A8431F; font-weight:700; }
+  .ok  { color:#1E7A48; font-weight:700; }
+  .nota { background:#F4F8F6; border-left:2.5px solid #0E5C50; padding:2.5mm 3.5mm;
+          font-size:9pt; margin:3mm 0; }
+  .nota b { color:#0E5C50; }
+  .orden { display:flex; gap:2.5mm; margin:2mm 0 3mm; }
+  .paso { flex:1; border:1px solid #DCE4E0; border-radius:2mm; padding:2.5mm 3mm; }
+  .paso .num { font-size:7.5pt; font-weight:700; color:#0E5C50; letter-spacing:.06em; }
+  .paso .txt { font-size:9pt; font-weight:600; margin-top:.6mm; }
+  .paso .det { font-size:7.8pt; color:#5C6B65; line-height:1.35; margin-top:.8mm; }
+  .paso.last { border-color:#D8A88F; }
+  .paso.last .num, .paso.last .txt { color:#A8431F; }
+  figure { margin:2mm 0 0; }
+  svg { width:82%; max-width:145mm; height:auto; display:block; margin:0 auto; }
+  figcaption { font-size:8pt; color:#5C6B65; margin-top:1.5mm; line-height:1.4; }
+  .firma { margin-top:5mm; border:1px solid #B9C7C2; border-radius:2mm; padding:4mm 5mm; }
+  .firma .t { font-size:8pt; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+              color:#0E5C50; margin-bottom:2mm; }
+  .lineas { display:flex; gap:8mm; margin-top:6mm; }
+  .lineas div { flex:1; border-top:.8px solid #6E7C77; padding-top:1.5mm;
+                font-size:8pt; color:#5C6B65; }
+  .pie { margin-top:5mm; font-size:7.5pt; color:#8B9A94; text-align:center; }
+  .pb { page-break-before: always; }
+
+  /* — comparación de escenarios — */
+  .comp th, .comp td { padding:1.5mm 2mm; }
+  .comp .esc { font-weight:700; color:#0E5C50; white-space:nowrap; }
+  tr.uso td { background:#EDF5F2; }
+  tr.uso .esc { color:#0E5C50; }
+  .tag { display:inline-block; font-size:6.8pt; font-weight:700; letter-spacing:.06em;
+         background:#0E5C50; color:#fff; border-radius:1mm; padding:.4mm 1.4mm;
+         vertical-align:.4mm; margin-left:1.5mm; }
+  .caso { border:1px solid #DCE4E0; border-radius:2mm; padding:3mm 3.5mm; margin:0 0 3.5mm; }
+  .caso h3 { font-size:9.5pt; margin:0 0 .8mm; color:#0E5C50; }
+  .caso .que { font-size:8.3pt; color:#5C6B65; margin:0 0 2mm; line-height:1.4; }
+  .caso table { font-size:8.2pt; }
+  .caso th, .caso td { padding:1.1mm 1.5mm; }
+  .caso th.g { border-left:.6px solid #DCE4E0; }
+  .caso td.g { border-left:.6px solid #DCE4E0; }
+  .caso col.hi, .caso th.hi, .caso td.hi { background:#EDF5F2; }
+  .caso tr.tot td { border-bottom:none; border-top:1.2px solid #B9C7C2;
+                    font-weight:700; padding-top:1.6mm; }
+  .caso .lee { font-size:8.2pt; line-height:1.45; margin:2mm 0 0; }
+  .dim { color:#A9B5B0; }
+</style></head><body>
+
+<h1>Política de mora</h1>
+<p class="sub">Aires de Chicá · Cuotas de mantenimiento 2026 · Documento para revisión y aprobación</p>
+<div class="rule"></div>
+
+<p>Este documento resume las reglas con las que el sistema calcula el recargo por mora en los
+estados de cuenta de los propietarios. Son siete, y de ellas se deriva todo el cálculo.</p>
+
+<h2>Las siete reglas</h2>
+<table>
+  <tr>
+    <td class="k" style="width:36mm">1 · Devengo</td>
+    <td><b>Sin período de gracia.</b> La cuota vence el último día del mes y el recargo se causa
+    al día siguiente. Rige desde la cuota de <b>abril 2026</b>; nada anterior genera recargo.</td>
+  </tr>
+  <tr>
+    <td class="k">2 · Monto del recargo</td>
+    <td><b>10% de la cuota íntegra vencida.</b> Un abono parcial no lo reduce: el recargo es
+    siempre el mismo número, se haya abonado algo o nada.</td>
+  </tr>
+  <tr>
+    <td class="k">3 · Frecuencia</td>
+    <td><b>Un solo recargo por cuota.</b> No se vuelve a cobrar en meses siguientes, aunque la
+    cuota siga impaga.</td>
+  </tr>
+  <tr>
+    <td class="k">4 · Capitalización</td>
+    <td><b>Ninguna: la mora no genera mora.</b> Un recargo impago nunca produce un recargo sobre
+    sí mismo.</td>
+  </tr>
+  <tr>
+    <td class="k">5 · Imputación del pago</td>
+    <td><b>Cuotas vencidas → cuota del mes en curso → recargos por mora.</b> El recargo se cobra
+    de último (ver abajo).</td>
+  </tr>
+  <tr>
+    <td class="k">6 · Saldo a favor</td>
+    <td><b>El crédito que el propietario trae se suma al dinero del mes antes de repartir.</b>
+    Un mes puede quedar cubierto con un pago adelantado, sin que entre dinero nuevo — y en ese
+    caso <b>no genera recargo</b>.</td>
+  </tr>
+  <tr>
+    <td class="k">7 · Condonación</td>
+    <td><b>Sólo la Junta puede perdonar un recargo</b>, caso por caso y dejando constancia en la
+    bitácora del sistema. Mientras no se condone expresamente, el recargo queda en el saldo hasta
+    pagarse.</td>
+  </tr>
+</table>
+
+<h2>Cómo se reparte cada pago</h2>
+<div class="orden">
+  <div class="paso"><div class="num">PRIMERO</div><div class="txt">Cuotas vencidas</div>
+    <div class="det">De la más antigua a la más nueva, incluido el saldo que se arrastre de 2025.</div></div>
+  <div class="paso"><div class="num">SEGUNDO</div><div class="txt">Cuota del mes en curso</div>
+    <div class="det">Para que el pago del mes alcance a cubrir la cuota del mes.</div></div>
+  <div class="paso last"><div class="num">TERCERO</div><div class="txt">Recargos por mora</div>
+    <div class="det">Con lo que sobre. Si no alcanza, quedan en el saldo hasta pagarse o hasta que
+    la Junta los condone.</div></div>
+</div>
+
+<div class="nota">
+  <b>Por qué el recargo va de último.</b> Si se cobrara antes que la cuota del mes, se comería
+  parte del pago y dejaría esa cuota corta — lo que generaría un recargo nuevo. La mora terminaría
+  generando mora por la puerta de atrás, en contra de la regla 4. Cobrándola al final, quien paga
+  lo que debe en cuotas no vuelve a recargarse.
+</div>
+
+<div class="pb"></div>
+
+<h2>El cálculo, mes a mes</h2>
+<figure>
+<svg viewBox="0 0 700 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9 z" fill="#1B2523"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="#1B2523" stroke-width="1.2" marker-end="url(#a)">
+    <line x1="350" y1="52" x2="350" y2="74"/>
+    <line x1="350" y1="140" x2="350" y2="162"/>
+    <line x1="350" y1="232" x2="350" y2="250"/>
+    <polyline points="180,296 120,296 120,354"/>
+    <polyline points="520,296 580,296 580,354"/>
+    <line x1="350" y1="434" x2="350" y2="452"/>
+  </g>
+  <g fill="none" stroke="#1B2523" stroke-width="1.2">
+    <polyline points="120,400 120,434 580,434 580,400"/>
+  </g>
+  <g fill="none" stroke="#7E8C87" stroke-width="1.1">
+    <rect x="130" y="16" width="440" height="36" rx="4"/>
+    <rect x="130" y="86" width="440" height="54" rx="4"/>
+    <rect x="130" y="162" width="440" height="70" rx="4"/>
+    <polygon points="350,250 520,296 350,342 180,296"/>
+    <rect x="20" y="354" width="200" height="46" rx="4"/>
+    <rect x="130" y="452" width="440" height="36" rx="4"/>
+  </g>
+  <rect x="480" y="354" width="200" height="46" rx="4" fill="none" stroke="#A8431F" stroke-width="1.5"/>
+  <g font-family="Helvetica,Arial,sans-serif" text-anchor="middle" fill="#1B2523">
+    <text x="350" y="39" font-size="13" font-weight="600">Se carga la cuota del mes</text>
+    <text x="350" y="109" font-size="13" font-weight="600">Entra el dinero recibido en el mes</text>
+    <text x="350" y="128" font-size="11" fill="#5C6B65">más el saldo a favor que el propietario ya traía</text>
+    <text x="350" y="184" font-size="10" font-weight="700" letter-spacing="1" fill="#5C6B65">SE REPARTE EN ESTE ORDEN</text>
+    <text x="350" y="203" font-size="12">1 · cuotas vencidas, de la más antigua a la más nueva</text>
+    <text x="350" y="219" font-size="12">2 · cuota del mes en curso &#160;&#160;&#160; 3 · recargos por mora</text>
+    <text x="350" y="290" font-size="12" font-weight="600">Al cerrar el mes, ¿quedó descubierta</text>
+    <text x="350" y="307" font-size="12" font-weight="600">esa cuota? (de abril 2026 en adelante)</text>
+    <text x="120" y="288" font-size="10" font-weight="700" fill="#5C6B65">NO</text>
+    <text x="580" y="288" font-size="10" font-weight="700" fill="#5C6B65">SÍ</text>
+    <text x="120" y="383" font-size="12">Sin recargo</text>
+    <text x="580" y="375" font-size="12" font-weight="600" fill="#A8431F">Recargo del mes</text>
+    <text x="580" y="392" font-size="11.5" fill="#A8431F">10% de la cuota íntegra</text>
+    <text x="350" y="468" font-size="12" font-weight="600">Saldo del mes</text>
+    <text x="350" y="483" font-size="11.5">saldo anterior + cuota + recargo − pagos</text>
+  </g>
+</svg>
+<figcaption>El ciclo se repite igual para cada mes. El recargo nace <i>después</i> de repartir el
+dinero del mes, así que sólo puede pagarse con dinero de meses posteriores y nunca genera un
+recargo propio.</figcaption>
+</figure>
+
+<h2>Por qué estas reglas y no otras</h2>
+<p>De las siete, dos admiten más de una lectura razonable y son las que la Junta debe ratificar:
+la <b>regla 2</b> (sobre qué monto se calcula el recargo) y la <b>regla 5</b> (en qué orden se
+reparte el pago). Combinadas dan cuatro escenarios posibles. El sistema los corrió todos sobre
+las <b>cuentas reales de la comunidad</b>, al corte del <b>31 de agosto de 2026</b>:</p>
+
+<table class="comp">
+  <tr>
+    <th style="width:20mm"></th>
+    <th>Regla 2 · el recargo se calcula sobre…</th>
+    <th>Regla 5 · el pago cubre primero…</th>
+    <th class="n">Recargo<br>generado</th>
+    <th class="n">Deuda<br>total</th>
+    <th class="n">Cuentas<br>con deuda</th>
+  </tr>
+  <tr class="uso">
+    <td class="esc">A <span class="tag">EN USO</span></td>
+    <td>la cuota íntegra</td>
+    <td>la cuota del mes, y la mora de último</td>
+    <td class="n">321.75</td><td class="n">3,268.95</td><td class="n">50</td>
+  </tr>
+  <tr>
+    <td class="esc">B</td>
+    <td>la cuota íntegra</td>
+    <td>la mora, y la cuota del mes después</td>
+    <td class="n">404.10</td><td class="n">3,351.30</td><td class="n">52</td>
+  </tr>
+  <tr>
+    <td class="esc">C</td>
+    <td>sólo la parte descubierta</td>
+    <td>la cuota del mes, y la mora de último</td>
+    <td class="n">315.75</td><td class="n">3,262.95</td><td class="n">50</td>
+  </tr>
+  <tr>
+    <td class="esc">D</td>
+    <td>sólo la parte descubierta</td>
+    <td>la mora, y la cuota del mes después</td>
+    <td class="n">327.69</td><td class="n">3,274.89</td><td class="n">52</td>
+  </tr>
+</table>
+
+<p style="margin-top:2.5mm"><b>54 de las 68 cuentas dan exactamente lo mismo en los cuatro
+escenarios.</b> La discusión afecta sólo a 14: la regla 5 mueve 11 cuentas y la regla 2 mueve 3.
+Los cuatro casos reales de la página siguiente son de ese grupo — son los que dejan ver qué hace
+cada regla.</p>
+
+<div class="pb"></div>
+
+<h2>Cuatro casos reales de la comunidad</h2>
+<p style="font-size:9pt">Cifras tomadas del libro al 31 de agosto de 2026. Los importes de cada mes
+son los pagos efectivamente recibidos. Las cuatro últimas columnas son el <b>recargo que se
+generaría ese mes</b> bajo cada escenario; la columna sombreada es la vigente. Se omiten nombres y
+códigos de lote porque este documento se publica junto al sistema; la administración tiene a mano
+el estado de cuenta de cada uno de los cuatro casos.</p>
+
+<div class="caso">
+  <h3>Caso 1 · cuota de B/.45.00 — por qué la cuota del mes se cobra antes que la mora</h3>
+  <p class="que">Deja de pagar junio. En julio deposita B/.90.00, que es exactamente lo que debe
+  en cuotas: la de junio y la de julio.</p>
+  <table>
+    <tr><th colspan="3" style="border-bottom:none"></th>
+        <th colspan="4" class="g" style="text-align:center;border-bottom:none;padding-bottom:0">Recargo del mes según el escenario</th></tr>
+    <tr><th>Mes</th><th class="n">Cuota</th><th class="n">Pagado</th>
+        <th class="n g hi">A</th><th class="n">B</th><th class="n">C</th><th class="n">D</th></tr>
+    <tr><td>Enero</td><td class="n">45.00</td><td class="n">45.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Febrero</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Marzo</td><td class="n">45.00</td><td class="n">45.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Abril</td><td class="n">45.00</td><td class="n">90.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Mayo</td><td class="n">45.00</td><td class="n">45.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Junio</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td></tr>
+    <tr><td>Julio</td><td class="n">45.00</td><td class="n">90.00</td><td class="n g hi ok">—</td><td class="n rec">4.50</td><td class="n ok">—</td><td class="n rec">0.45</td></tr>
+    <tr><td>Agosto</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr class="tot"><td colspan="3">Recargo total generado</td>
+      <td class="n g hi">4.50</td><td class="n">9.00</td><td class="n">4.50</td><td class="n">4.95</td></tr>
+    <tr class="tot"><td colspan="3" style="border-top:none;padding-top:.6mm">Debe hoy (cuotas + recargos)</td>
+      <td class="n g hi" style="border-top:none;padding-top:.6mm">49.50</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">54.00</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">49.50</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">49.95</td></tr>
+  </table>
+  <p class="lee"><b>Qué se ve.</b> En <b>B</b> los 90.00 pagan primero junio (45.00) y luego el
+  recargo de junio (4.50); a la cuota de julio le llegan 40.50 y queda corta, así que <b>julio se
+  recarga otros 4.50</b>. El recargo de junio produjo el recargo de julio — la mora generó mora,
+  que es justo lo que la regla 4 prohíbe. En <b>A</b> julio queda cubierto y no se recarga.</p>
+</div>
+
+<div class="caso">
+  <h3>Caso 2 · cuota de B/.45.00 — el efecto se encadena mes tras mes</h3>
+  <p class="que">Mismo mecanismo que el caso 1, pero con dos meses seguidos de pago fuerte. Muestra
+  que bajo B el daño no es puntual: se arrastra.</p>
+  <table>
+    <tr><th colspan="3" style="border-bottom:none"></th>
+        <th colspan="4" class="g" style="text-align:center;border-bottom:none;padding-bottom:0">Recargo del mes según el escenario</th></tr>
+    <tr><th>Mes</th><th class="n">Cuota</th><th class="n">Pagado</th>
+        <th class="n g hi">A</th><th class="n">B</th><th class="n">C</th><th class="n">D</th></tr>
+    <tr><td>Enero</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Febrero</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Marzo</td><td class="n">45.00</td><td class="n">90.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Abril</td><td class="n">45.00</td><td class="n">90.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Mayo</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td></tr>
+    <tr><td>Junio</td><td class="n">45.00</td><td class="n">90.00</td><td class="n g hi ok">—</td><td class="n rec">4.50</td><td class="n ok">—</td><td class="n rec">0.45</td></tr>
+    <tr><td>Julio</td><td class="n">45.00</td><td class="n">45.00</td><td class="n g hi ok">—</td><td class="n rec">4.50</td><td class="n ok">—</td><td class="n rec">0.50</td></tr>
+    <tr><td>Agosto</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr class="tot"><td colspan="3">Recargo total generado</td>
+      <td class="n g hi">4.50</td><td class="n">13.50</td><td class="n">4.50</td><td class="n">5.45</td></tr>
+    <tr class="tot"><td colspan="3" style="border-top:none;padding-top:.6mm">Debe hoy (cuotas + recargos)</td>
+      <td class="n g hi" style="border-top:none;padding-top:.6mm">49.50</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">58.50</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">49.50</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">50.45</td></tr>
+  </table>
+  <p class="lee"><b>Qué se ve.</b> Un solo mes impago (mayo) se convierte, bajo <b>B</b>, en
+  <b>tres recargos</b>: el triple. Cada mes el recargo anterior se come parte del pago y deja la
+  cuota corta, que se recarga de nuevo. Bajo <b>A</b> el propietario paga el único recargo que
+  se ganó y sale del ciclo.</p>
+</div>
+
+<div class="pb"></div>
+
+<div class="caso">
+  <h3>Caso 3 · cuota de B/.45.00, con B/.135.00 de saldo 2025 — la base del recargo, y el saldo a favor</h3>
+  <p class="que">Aquí el orden de la regla 5 no cambia nada. Lo que cambia es la regla 2: en junio
+  el propietario traía B/.20.00 a favor, así que de la cuota de 45.00 sólo quedó descubierto
+  B/.25.00.</p>
+  <table>
+    <tr><th colspan="3" style="border-bottom:none"></th>
+        <th colspan="4" class="g" style="text-align:center;border-bottom:none;padding-bottom:0">Recargo del mes según el escenario</th></tr>
+    <tr><th>Mes</th><th class="n">Cuota</th><th class="n">Pagado</th>
+        <th class="n g hi">A</th><th class="n">B</th><th class="n">C</th><th class="n">D</th></tr>
+    <tr><td>Saldo 2025</td><td class="n">135.00</td><td class="n">—</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Enero</td><td class="n">45.00</td><td class="n">135.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Febrero</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Marzo</td><td class="n">45.00</td><td class="n">135.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Abril</td><td class="n">45.00</td><td class="n">110.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Mayo</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi ok">—</td><td class="n ok">—</td><td class="n ok">—</td><td class="n ok">—</td></tr>
+    <tr><td>Junio</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi rec">4.50</td><td class="n rec">4.50</td><td class="n rec">2.50</td><td class="n rec">2.50</td></tr>
+    <tr><td>Julio</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td><td class="n rec">4.50</td></tr>
+    <tr><td>Agosto</td><td class="n">45.00</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr class="tot"><td colspan="3">Recargo total generado</td>
+      <td class="n g hi">9.00</td><td class="n">9.00</td><td class="n">7.00</td><td class="n">7.00</td></tr>
+    <tr class="tot"><td colspan="3" style="border-top:none;padding-top:.6mm">Debe hoy (cuotas + recargos)</td>
+      <td class="n g hi" style="border-top:none;padding-top:.6mm">124.00</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">124.00</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">122.00</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">122.00</td></tr>
+  </table>
+  <p class="lee"><b>Qué se ve — regla 6.</b> En abril pagó B/.110.00 y quedó con B/.65.00 a favor.
+  <b>Mayo se cubrió con ese crédito sin que entrara un solo balboa nuevo, y no generó recargo.</b>
+  <br><b>Qué se ve — regla 2.</b> En junio le quedaban 20.00 a favor, así que descubrió sólo 25.00
+  de la cuota. Bajo <b>A</b> el recargo es 4.50 (10% de la cuota); bajo <b>C</b> es 2.50 (10% de
+  lo descubierto). <b>C</b> es más benigno, pero hace que dos vecinos con la misma cuota impaga
+  paguen recargos distintos, y que nadie pueda anticipar cuánto le van a cobrar. Bajo <b>A</b> el
+  recargo es siempre el mismo número, conocido de antemano.</p>
+</div>
+
+<div class="caso">
+  <h3>Caso 4 · cuota de B/.58.50 — las dos reglas actuando juntas</h3>
+  <p class="que">Dos meses de atraso y luego un pago doble. Es el caso donde las cuatro
+  combinaciones dan cuatro resultados distintos.</p>
+  <table>
+    <tr><th colspan="3" style="border-bottom:none"></th>
+        <th colspan="4" class="g" style="text-align:center;border-bottom:none;padding-bottom:0">Recargo del mes según el escenario</th></tr>
+    <tr><th>Mes</th><th class="n">Cuota</th><th class="n">Pagado</th>
+        <th class="n g hi">A</th><th class="n">B</th><th class="n">C</th><th class="n">D</th></tr>
+    <tr><td>Enero</td><td class="n">58.50</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Febrero</td><td class="n">58.50</td><td class="n">45.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Marzo</td><td class="n">58.50</td><td class="n">72.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr><td>Abril</td><td class="n">58.50</td><td class="n">58.50</td><td class="n g hi rec">5.85</td><td class="n rec">5.85</td><td class="n rec">5.85</td><td class="n rec">5.85</td></tr>
+    <tr><td>Mayo</td><td class="n">58.50</td><td class="n">58.50</td><td class="n g hi rec">5.85</td><td class="n rec">5.85</td><td class="n rec">5.85</td><td class="n rec">5.85</td></tr>
+    <tr><td>Junio</td><td class="n">58.50</td><td class="n">117.00</td><td class="n g hi ok">—</td><td class="n rec">5.85</td><td class="n ok">—</td><td class="n rec">1.17</td></tr>
+    <tr><td>Julio</td><td class="n">58.50</td><td class="n">58.50</td><td class="n g hi ok">—</td><td class="n rec">5.85</td><td class="n ok">—</td><td class="n rec">1.29</td></tr>
+    <tr><td>Agosto</td><td class="n">58.50</td><td class="n">0.00</td><td class="n g hi dim">—</td><td class="n dim">—</td><td class="n dim">—</td><td class="n dim">—</td></tr>
+    <tr class="tot"><td colspan="3">Recargo total generado</td>
+      <td class="n g hi">11.70</td><td class="n">23.40</td><td class="n">11.70</td><td class="n">14.16</td></tr>
+    <tr class="tot"><td colspan="3" style="border-top:none;padding-top:.6mm">Debe hoy (cuotas + recargos)</td>
+      <td class="n g hi" style="border-top:none;padding-top:.6mm">70.20</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">81.90</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">70.20</td>
+      <td class="n" style="border-top:none;padding-top:.6mm">72.66</td></tr>
+  </table>
+  <p class="lee"><b>Qué se ve.</b> <b>B</b> duplica el recargo (23.40 contra 11.70) sin que el
+  propietario haya pagado un centavo menos. <b>D</b> produce recargos de 1.17 y 1.29 — cifras
+  imposibles de explicar en un aviso de cobro y que nadie puede calcular de cabeza. <b>A</b> deja
+  los dos recargos que efectivamente se ganaron, en cifras redondas.</p>
+</div>
+
+<div class="pb"></div>
+
+<h2>Conclusión y aprobación</h2>
+
+<div class="nota" style="margin-top:3mm">
+  <b>Conclusión.</b> El escenario <b>A</b> es el que está en uso y el que se propone ratificar. No
+  es el que más recauda ni el más benigno: es el único que cumple las otras cinco reglas sin
+  contradecirlas. <b>B</b> viola la regla 4 en la práctica — hace que la mora genere mora — y bajo
+  ese criterio dos propietarios que pagaron todo lo que debían en cuotas aparecerían como
+  morosos. <b>C</b> y <b>D</b> hacen el recargo impredecible: deja de ser «10% de la cuota» y pasa
+  a depender de cuánto se abonó, con centavos que no se pueden comunicar. <b>A</b> es el único que
+  se puede escribir en una sola línea y que cualquier propietario puede verificar solo.
+</div>
+
+<div class="firma">
+  <div class="t">Aprobación</div>
+  <p style="margin:0;font-size:9pt">Revisadas y aprobadas las siete reglas descritas en este
+  documento — y ratificado el escenario <b>A</b> para las reglas 2 y 5, es decir: <b>el recargo es
+  el 10% de la cuota íntegra, y cada pago cubre primero las cuotas vencidas, después la cuota del
+  mes en curso y de último los recargos</b> — para su aplicación en los estados de cuenta de los
+  propietarios de Aires de Chicá.</p>
+  <div class="lineas">
+    <div>Nombre y firma</div>
+    <div>Cargo</div>
+    <div>Fecha</div>
+  </div>
+</div>
+
+<p class="pie">Aires de Chicá · Política de mora · Versión del 25 de agosto de 2026</p>
+
+</body></html>
