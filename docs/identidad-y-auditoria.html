@@ -78,11 +78,57 @@
   <p>Este documento explica <b>cómo el sistema sabe quién hace cada cambio</b>, qué impide que
   alguien firme con el nombre de otro, y —sobre todo— <b>qué rastros quedan</b> si alguien lo
   intenta, hasta el último y más difícil de borrar: el historial de versiones de Google.</p>
-  <p>Está escrito para que cualquier miembro de la Junta pueda seguir el rastro sin ayuda
-  técnica, y para que quede constancia de los límites reales del sistema.</p>
+  <p>Empieza por <b>la intención con la que se diseñó</b>, para que quede constancia de que las
+  decisiones que siguen fueron deliberadas y no una limitación heredada. Está escrito para que
+  cualquier miembro de la Junta pueda seguir el rastro sin ayuda técnica, y para que queden
+  documentados los límites reales del sistema.</p>
 </div>
 
-<h2><span class="nu">1</span>Cómo el sistema sabe quién eres</h2>
+<h2><span class="nu">1</span>El criterio: preferir la evidencia al muro</h2>
+
+<p>Antes de describir cómo funciona, conviene dejar escrito <b>por qué está hecho así</b>. No es una
+limitación técnica: es una decisión deliberada de la Junta, tomada en agosto de 2026.</p>
+
+<p>Ante un riesgo de mal uso hay dos caminos. Uno es <b>prevenir</b>: levantar un muro que impida
+la acción. El otro es <b>evidenciar</b>: permitirla, pero dejar constancia de quién la hizo. En la
+disciplina de auditoría se llaman <i>controles preventivos</i> y <i>controles detectivos</i>, y este
+sistema se inclina, a propósito, por los segundos.</p>
+
+<div class="caja">
+  <div class="t">El razonamiento</div>
+  <p>Un muro se paga todos los días: pone fricción a las tres personas que trabajan bien, para
+  detener a una que quizá nunca aparezca. Y tiene un defecto más serio: <b>no dice nada sobre la
+  gente</b>. Si alguien empuja una puerta cerrada y no entra, nadie se entera de que empujó.</p>
+  <p style="margin-bottom:0">La Junta prefiere lo contrario: <b>saber quién no está alineado con la
+  visión de la comunidad antes que mantenerlo en el anonimato.</b> Un intento que queda
+  registrado es información útil para gobernar; un intento bloqueado en silencio no es nada.</p>
+</div>
+
+<h3>Las dos condiciones que hacen válido este criterio</h3>
+
+<p><b>Primera: el daño tiene que ser reversible.</b> En este sistema casi todo lo es — un pago mal
+registrado se corrige, una mora condonada se reactiva, una configuración se restaura. Por eso se
+puede permitir primero y revisar después. Donde <b>no</b> aplica es en lo irreversible: <b>un correo
+enviado a los 68 propietarios no se puede recoger</b>. Esa es la razón de que el interruptor de
+envíos y los envíos masivos sí estén detrás de la contraseña — ahí el rastro llegaría tarde.</p>
+
+<p><b>Segunda: alguien tiene que mirar.</b> Un rastro que nadie lee vale cero. Por eso los avisos
+que importan —el correo y la alerta del panel— <b>van a buscar a su destinatario</b> en vez de
+esperar a ser consultados. Pero la bitácora es de las que hay que ir a abrir.</p>
+
+<div class="alerta">
+  <div class="t">Lo que hace falta para que esto funcione</div>
+  <p>Revisar la bitácora <b>al cierre de cada mes</b>, aunque no haya sospecha de nada. Diez
+  minutos en el tab Registro. Es el hábito que convierte un registro en un control: sin él, el
+  sistema anota fielmente cosas que nadie va a leer.</p>
+</div>
+
+<p>Hay, por último, un efecto que no se busca pero se produce: <b>un sistema que asume buena fe y
+lo anota todo tiende a generar buena fe</b>. No porque vigile, sino porque todos saben que está.
+La gente actúa distinto cuando sabe que su nombre queda escrito — y ese efecto se consigue sin
+tratar a nadie como sospechoso, que en una junta de vecinos vale más que cualquier candado.</p>
+
+<h2><span class="nu">2</span>Cómo el sistema sabe quién eres</h2>
 
 <p>Cada persona que administra el panel queda descrita por tres datos que se guardan juntos en
 un <b>padrón de usuarios</b> en el servidor:</p>
@@ -112,7 +158,7 @@ con él que no venga del equipo que lo tiene apartado.</p>
   </ul>
 </div>
 
-<h2><span class="nu">2</span>Las tres barreras</h2>
+<h2><span class="nu">3</span>Las tres barreras</h2>
 
 <table>
   <tr><th style="width:38mm">Barrera</th><th>Qué impide</th><th>Qué hace falta para pasarla</th></tr>
@@ -138,7 +184,7 @@ con él que no venga del equipo que lo tiene apartado.</p>
 <p>Mover el nombre de otra persona a tu equipo, o liberarlo, <b>exige la contraseña del panel</b>
 —y dispara el aviso. Son las dos únicas vías por la interfaz.</p>
 
-<h2><span class="nu">3</span>Qué protege y qué no</h2>
+<h2><span class="nu">4</span>Qué protege y qué no</h2>
 
 <p>Conviene ser explícito, porque de esto depende cómo se lee un rastro más adelante. Hoy el
 sistema tiene <b>una sola contraseña compartida</b> por los administradores.</p>
@@ -166,7 +212,7 @@ sistema tiene <b>una sola contraseña compartida</b> por los administradores.</p
   que convierte la identidad en algo que se demuestra y no algo que se declara.</p>
 </div>
 
-<h2><span class="nu">4</span>Los rastros que deja el sistema</h2>
+<h2><span class="nu">5</span>Los rastros que deja el sistema</h2>
 
 <p>Son cinco, y se diferencian sobre todo en <b>quién los puede borrar</b>. Esa columna es la que
 importa cuando hay una disputa.</p>
@@ -241,7 +287,7 @@ autor, fecha y el detalle exacto de lo que cambió— y al subirse se despliega 
 ejemplo para que dejara de anotar algo en la bitácora— ese cambio también tendría su propio
 registro, independiente de todos los anteriores.</p>
 
-<h2><span class="nu">5</span>Cómo detectar un intento de suplantación</h2>
+<h2><span class="nu">6</span>Cómo detectar un intento de suplantación</h2>
 
 <p>En orden, del más rápido al último recurso. Los tres primeros los puede hacer cualquiera desde
 el panel; los dos últimos requieren acceso a Google Drive.</p>
@@ -280,7 +326,7 @@ el panel; los dos últimos requieren acceso a Google Drive.</p>
     <span class="don">Requiere acceso al libro de cálculo en Google Drive.</span></li>
 </ol>
 
-<h2><span class="nu">6</span>El último filtro: historial de versiones</h2>
+<h2><span class="nu">7</span>El último filtro: historial de versiones</h2>
 
 <p>El libro de cálculo de Google guarda <b>todas</b> las ediciones, con la cuenta que las hizo.
 No se puede desactivar, ni purgar, ni siquiera por el dueño del archivo. Es el registro que
@@ -322,7 +368,7 @@ sobrevive cuando todo lo demás se manipuló.</p>
   corta y conocida. Quien sólo necesite consultar debería tener permiso de lectura.</li>
 </ul>
 
-<h2><span class="nu">7</span>Resumen para la Junta</h2>
+<h2><span class="nu">8</span>Resumen para la Junta</h2>
 
 <div class="caja">
   <ol>
@@ -337,6 +383,8 @@ sobrevive cuando todo lo demás se manipuló.</p>
     de Google, donde el borrado queda a nombre de una cuenta real.</li>
     <li><b>El único caso sin rastro es el equipo compartido.</b> Se cierra bloqueando la pantalla,
     y definitivamente el día que cada persona tenga su propia contraseña.</li>
+    <li><b>Nada de esto sirve si nadie mira.</b> Revisar la bitácora al cierre de cada mes es la
+    parte del control que no la hace el sistema.</li>
   </ol>
 </div>
 
