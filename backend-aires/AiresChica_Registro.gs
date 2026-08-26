@@ -30,7 +30,9 @@ var REG_SIN_AUTOR = {
   ensureSheets: 1, seedInicial: 1, seedGastos2026: 1, seedRecurrentes: 1,
   actualizarJulio2026: 1, rollbackJulio2026: 1,
   descargarInformePL: 1, enviarInformePL: 1,
-  capturarComprobantes: 1
+  capturarComprobantes: 1,
+  // las consume el bot de WhatsApp, que no es una persona en el panel
+  marcarEnvio: 1, previsualizarComunicado: 1
 };
 
 /**
@@ -69,7 +71,13 @@ var REG_ACCIONES = {
   'usuario.alta':     'Usuario identificado',
   'usuario.mueve':    'Usuario movido de dispositivo',
   'usuario.libera':   'Nombre de usuario liberado',
-  'usuario.alerta':   'Alerta de identidad enviada'
+  'usuario.alerta':   'Alerta de identidad enviada',
+  'comunicado.crea':    'Comunicado creado',
+  'comunicado.edita':   'Comunicado modificado',
+  'comunicado.baja':    'Comunicado eliminado',
+  'comunicado.envia':   'Comunicado enviado',
+  'comunicado.reenvia': 'Comunicado reenviado',
+  'comunicado.recuerda':'Recordatorio de comunicado enviado'
 };
 
 function _regSheet() {

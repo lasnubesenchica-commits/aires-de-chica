@@ -19,6 +19,11 @@ var CONFIG = {
   ADMIN_EMAIL:    'admin@airesdechica.org',
   REPLY_TO:       'admin@airesdechica.org',
   COMPROBANTES_EMAIL: 'comprobantes@airesdechica.org', // alias/reenvío a admin@
+  // URL pública del web app. La usan los enlaces personales de los comunicados
+  // (ver en el navegador, archivo del propietario, acuse de recibo). Se deja fija
+  // porque ScriptApp.getService().getUrl() devuelve la del despliegue en curso, que
+  // no siempre es el de producción.
+  WEBAPP_URL:     'https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec',
   // Logo servido desde GitHub Pages (dominio propio de Aires de Chicá).
   LOGO_URL:       'https://admin.airesdechica.org/logo-airesdechica.jpeg',
   LOGO_PNG_URL:   'https://admin.airesdechica.org/logo-airesdechica.jpeg',
@@ -50,6 +55,14 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   var action = p.action || 'ping';
   var out;
+
+  // Páginas públicas de comunicados: devuelven HTML, no JSON, y no llevan token de
+  // panel — el enlace ya trae el token personal del propietario (ver
+  // AiresChica_Comunicados.gs). Van antes del try/JSON porque no comparten formato.
+  if (action === 'verComunicado')   return verComunicadoWeb(p.id, p.t);
+  if (action === 'misComunicados')  return misComunicadosWeb(p.t);
+  if (action === 'acuseComunicado') return acuseComunicadoWeb(p.id, p.t);
+
   try {
     if (action === 'ping')           out = { ok: true, negocio: CONFIG.NEGOCIO, ts: new Date().toISOString() };
     else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
@@ -72,6 +85,10 @@ function doGet(e) {
     else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
         desde: p.desde, hasta: p.hasta, autor: p.autor, accion: p.accionFiltro, q: p.q, limite: p.limite }) }; }
     else if (action === 'getAutores')      { requireAuth(p.token); out = { ok: true, data: getAutores(p.dispositivo) }; }
+    else if (action === 'getComunicados')  { requireAuth(p.token); out = { ok: true, data: getComunicados(p.limite) }; }
+    else if (action === 'getComunicadoDetalle') { requireAuth(p.token); out = { ok: true, data: getComunicadoDetalle(p.id) }; }
+    // cola de salida por canal — la consumirá el bot de WhatsApp
+    else if (action === 'getEnviosPendientes')   { requireAuth(p.token); out = { ok: true, data: getEnviosPendientes(p.canal, p.limite) }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
@@ -153,6 +170,13 @@ function doPost(e) {
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'enviarPruebaAlertaUsuario') out = { ok: true, data: enviarPruebaAlertaUsuario(data.email) };
+    else if (action === 'guardarComunicado')  out = { ok: true, data: guardarComunicado(data.comunicado || {}) };
+    else if (action === 'eliminarComunicado') out = { ok: true, data: eliminarComunicado(data.id) };
+    else if (action === 'enviarComunicado')   out = { ok: true, data: enviarComunicado(data.id, {}) };
+    else if (action === 'reenviarComunicado') out = { ok: true, data: reenviarComunicado(data.id, data.claves || []) };
+    else if (action === 'enviarPruebaComunicado') out = { ok: true, data: enviarPruebaComunicado(data.id, data.email) };
+    else if (action === 'previsualizarComunicado') out = { ok: true, data: previsualizarComunicado(data.comunicado || {}) };
+    else if (action === 'marcarEnvio')        out = { ok: true, data: marcarEnvio(data.envioId, data.estado, data.error) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };

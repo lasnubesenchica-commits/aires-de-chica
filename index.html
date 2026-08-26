@@ -590,6 +590,45 @@ a.btn { display:inline-block; text-decoration:none; }
 .login .btn { width:100%; }
 .login .err { color:var(--ac-danger); font-size:.82rem; min-height:18px; margin-top:6px; }
 #app { display:none; }
+/* Comunicados */
+.cm-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:820px){ .cm-grid { grid-template-columns:1fr; } }
+.cm-campo { display:block; margin-bottom:12px; }
+.cm-campo > span { display:block; font-size:.76rem; color:var(--ac-muted); font-weight:600; margin-bottom:4px; }
+.cm-campo > input, .cm-campo > select, .cm-campo > textarea { width:100%; font:inherit; padding:9px 11px;
+  border:1px solid var(--ac-border); border-radius:9px; background:#fff; }
+.cm-campo textarea { line-height:1.55; resize:vertical; }
+.cm-ayuda { font-size:.74rem; color:var(--ac-muted); margin-top:3px; }
+.cm-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.cm-seg { border:1px solid var(--ac-border); border-radius:10px; padding:11px 13px; }
+.cm-seg label { display:flex; gap:9px; align-items:flex-start; font-size:.86rem; padding:5px 0;
+  cursor:pointer; text-align:left; }
+.cm-seg label > input { flex:none; width:auto; margin:3px 0 0; }
+.cm-seg label > div { flex:1; min-width:0; }
+.cm-seg + .cm-seg { margin-top:8px; }
+.cm-chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.cm-chip { border:1px solid var(--ac-border); border-radius:20px; padding:5px 11px; font-size:.79rem;
+  cursor:pointer; background:#fff; user-select:none; }
+.cm-chip.on { background:var(--ac-teal-50); border-color:var(--ac-teal); color:var(--ac-teal-700); font-weight:600; }
+.cm-cuenta { font-size:.82rem; font-weight:700; color:var(--ac-teal-700); background:var(--ac-teal-50);
+  border-radius:9px; padding:9px 12px; margin-top:8px; }
+.cm-tipos { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:9px; }
+.cm-tipo { text-align:left; border:1px solid var(--ac-border); border-radius:11px; padding:11px 13px;
+  background:#fff; cursor:pointer; font:inherit; }
+.cm-tipo:hover { border-color:var(--ac-teal); background:var(--ac-teal-50); }
+.cm-tipo b { display:block; font-size:.88rem; color:var(--ac-ink); }
+.cm-tipo span { font-size:.74rem; color:var(--ac-muted); }
+.cm-grupo { font-size:.76rem; font-weight:700; color:var(--ac-muted); text-transform:uppercase;
+  letter-spacing:.06em; margin:16px 0 7px; }
+.cm-prev { border:1px solid var(--ac-border); border-radius:11px; background:#fff; width:100%;
+  min-height:420px; }
+.cm-lista .cm-item { display:flex; gap:12px; align-items:center; padding:12px 16px;
+  border-bottom:1px solid var(--ac-border); cursor:pointer; }
+.cm-lista .cm-item:hover { background:var(--ac-teal-50); }
+.cm-lista .cm-item:last-child { border-bottom:0; }
+.cm-item .cm-tit { font-weight:600; }
+.cm-item .cm-sub { font-size:.77rem; color:var(--ac-muted); margin-top:2px; }
+.cm-nums { margin-left:auto; text-align:right; font-size:.78rem; color:var(--ac-muted); white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -626,6 +665,7 @@ a.btn { display:inline-block; text-decoration:none; }
     <button data-tab="gastos">Gastos</button>
     <button data-tab="finanzas">Finanzas</button>
     <button data-tab="prop">Propietarios</button>
+    <button data-tab="comunic">Comunicados</button>
     <span class="tab-div" aria-hidden="true"></span>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación bancaria</button>
@@ -784,6 +824,12 @@ a.btn { display:inline-block; text-decoration:none; }
         <th class="num">Lotes</th><th class="num">Cabañas</th><th class="num" title="Deuda arrastrada o crédito a favor de 2025">Saldo 2025</th><th title="Mes en que el propietario empieza a pagar cuota (si compró este año)">Ingreso</th><th class="num">Cuota/mes</th><th></th>
       </tr></thead><tbody></tbody></table>
       <div id="propCards" class="cards prop-cards"></div></div></div>
+  </section>
+
+  <!-- Comunicados a la comunidad. La lista, el redactor y el detalle de un envío
+       viven en el mismo contenedor: se repinta según COM_VISTA. -->
+  <section id="tab-comunic" style="display:none">
+    <div id="comunicBody" class="muted">Cargando…</div>
   </section>
 
   <!-- OPCIONES / ADMIN -->
@@ -1118,7 +1164,8 @@ const ADMIN_ACCIONES = new Set(['guardarConfig','liberarAutor',
   'actualizarJulio2026','rollbackJulio2026','seedInicial','seedGastos2026','seedRecurrentes',
   'seedRegistro18Ago','rollbackSeedRegistro18Ago',
   'enviarPruebaEstado','enviarPruebaAlertaUsuario','emitirConstanciasFaltantes',
-  'enviarRecordatorios','enviarInformePL']);
+  'enviarRecordatorios','enviarInformePL',
+  'enviarComunicado','reenviarComunicado','enviarPruebaComunicado']);
 const ADMIN_MINUTOS = 10;
 let ADMIN_PWD = '', ADMIN_HASTA = 0;
 function adminAbierto(){ return !!ADMIN_PWD && Date.now() < ADMIN_HASTA; }
@@ -3642,6 +3689,481 @@ function finAbrir(k){
 }
 function irATabGastos(){ const b=document.querySelector('#tabs [data-tab="gastos"]'); if(b) b.click(); }
 
+/* ═════════ Comunicados ═════════
+   Un solo contenedor con cuatro vistas: la lista (historial), el catálogo de tipos,
+   el redactor y el detalle de un envío. El redactor guarda un borrador antes de
+   cualquier envío, así que todo lo que sale de aquí tiene su renglón en la hoja
+   Comunicados y su rastro por destinatario en la hoja Envios.
+   Ver backend-aires/AiresChica_Comunicados.gs. */
+let COM_DATA=null, COM_VISTA='lista', COM_EDIT=null, COM_DET=null;
+// Lo guardado deja la lista desactualizada, pero COM_DATA no se puede tirar mientras
+// el redactor sigue en pantalla: de ahí salen el padrón y el conteo de destinatarios.
+// Se marca sucia y se recarga al volver a la lista.
+let COM_STALE=false;
+const COM_EST={borrador:['warn','Borrador'],programado:['warn','Programado'],enviado:['ok','Enviado']};
+
+async function renderComunic(force){
+  const body=document.getElementById('comunicBody');
+  if(!COM_DATA||force){
+    body.innerHTML='<div class="card"><div class="bd" style="padding:18px"><span class="ac-spin"></span> Cargando comunicados…</div></div>';
+    try{ COM_DATA=await jsonp('getComunicados'); }
+    catch(e){ body.innerHTML=`<div class="card"><div class="bd" style="padding:18px">No se pudieron cargar los comunicados: ${_esc(e)}</div></div>`; return; }
+  }
+  paintComunic();
+}
+function paintComunic(){
+  const body=document.getElementById('comunicBody');
+  if(COM_VISTA==='tipos')   { body.innerHTML=comTiposHTML(); return; }
+  if(COM_VISTA==='editor')  { body.innerHTML=comEditorHTML(); comEditorSync(); return; }
+  if(COM_VISTA==='detalle') { body.innerHTML=comDetalleHTML(); return; }
+  body.innerHTML=comListaHTML();
+}
+function comVista(v){ COM_VISTA=v; paintComunic(); window.scrollTo({top:0,behavior:'smooth'}); }
+async function comVolver(){
+  COM_VISTA='lista';
+  if(COM_STALE){ COM_STALE=false; await renderComunic(true); } else paintComunic();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ───────── aviso del interruptor maestro ───────── */
+function comAvisoEnvios(){
+  const e=(COM_DATA&&COM_DATA.envios)||{};
+  if(!e.activos) return `<div class="notice" style="margin-bottom:14px">
+    <b>Los envíos del sistema están pausados.</b> Puedes redactar, guardar y previsualizar,
+    pero no saldrá ningún correo hasta que actives el interruptor maestro en <b>⚙ Opciones</b>.</div>`;
+  if(e.modoPrueba) return `<div class="notice" style="margin-bottom:14px">
+    <b>Modo prueba activo.</b> Al enviar, sale <b>una sola copia</b> a ${_esc(e.correoPrueba||'la dirección de prueba')}
+    y el comunicado queda pendiente de enviar de verdad.</div>`;
+  return '';
+}
+
+/* ───────── vista 1: historial ───────── */
+function comListaHTML(){
+  const cs=COM_DATA.comunicados||[];
+  const filas=cs.length? cs.map(c=>{
+    const [cls,txt]=COM_EST[c.estado]||['warn',c.estado];
+    const cuando=c.estado==='enviado'?('Enviado el '+comFecha(c.enviadoEn)+' por '+_esc(c.enviadoPor||'—'))
+      :(c.estado==='programado'?('Programado para '+comFecha(c.programadoPara))
+      :('Creado el '+comFecha(c.creado)+' por '+_esc(c.autor||'—')));
+    return `<div class="cm-item" onclick="comAbrir('${_esc(c.id)}')">
+      <div><div class="cm-tit">${_esc(c.titulo)}</div>
+        <div class="cm-sub">${_esc(c.tipoNombre)} · ${cuando}</div></div>
+      <div class="cm-nums">
+        <span class="pill ${cls}">${txt}</span><br>
+        ${c.estado==='enviado'
+          ? `${c.enviados} de ${c.destinatarios} por correo${c.acuses?` · ${c.acuses} acuse(s)`:''}${c.waPendientes?` · ${c.waPendientes} en cola WA`:''}`
+          : `${c.destinatarios} destinatario(s)`}
+      </div></div>`;
+  }).join('') : `<div class="bd" style="padding:22px"><p class="muted" style="margin:0">
+      Todavía no hay comunicados. Empieza por <b>Nuevo comunicado</b>: eliges el tipo, el sistema
+      te da una plantilla y tú la completas.</p></div>`;
+
+  return comAvisoEnvios()+`
+  <div class="card"><div class="hd"><h2>Comunicados a la comunidad</h2>
+    <span class="muted" style="font-size:.82rem">${cs.length} en total</span>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn ghost" onclick="renderComunic(true)">Actualizar</button>
+    <button class="btn" onclick="comNuevo()">+ Nuevo comunicado</button></div>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      Desde aquí la administración escribe a los propietarios: mantenimientos, averías, seguridad, obras,
+      asambleas, normas, actividades y consultas. Cada comunicado queda guardado con <b>quién lo envió</b>,
+      <b>a quiénes</b> y <b>quién confirmó de recibido</b>. Los propietarios pueden verlos en su
+      <b>archivo personal</b> desde el enlace del correo.
+    </div>
+    <div class="cm-lista">${filas}</div></div>`;
+}
+function comFecha(s){
+  s=String(s||''); if(!s) return '—';
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  return m? `${m[3]}/${m[2]}/${m[1]}${m[4]?` a las ${m[4]}:${m[5]}`:''}` : s;
+}
+
+/* ───────── vista 2: catálogo de tipos ───────── */
+function comNuevo(){ comVista('tipos'); }
+function comTiposHTML(){
+  const gs=COM_DATA.grupos||[], ts=COM_DATA.tipos||[];
+  const bloques=gs.map(g=>{
+    const dentro=ts.filter(t=>t.grupo===g.id);
+    if(!dentro.length) return '';
+    return `<div class="cm-grupo">${_esc(g.icono)} ${_esc(g.nombre)}</div>
+      <div class="cm-tipos">${dentro.map(t=>`
+        <button class="cm-tipo" onclick="comElegirTipo('${_esc(t.id)}')">
+          <b>${_esc(t.nombre)}</b>
+          <span>${t.individual?'A un solo propietario':'A la comunidad'}${t.acuse?' · pide acuse':''}</span>
+        </button>`).join('')}</div>`;
+  }).join('');
+  return `<div class="card"><div class="hd"><h2>¿Qué vas a comunicar?</h2>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn ghost" onclick="comVolver()">← Volver</button></div>
+    <div class="bd" style="padding:18px">
+      <p class="muted" style="margin-top:0">Elige el tipo: cada uno trae una <b>plantilla</b> con los puntos
+      que ese comunicado suele necesitar. Puedes cambiar todo el texto después.</p>
+      ${bloques}</div></div>`;
+}
+function comElegirTipo(id){
+  const t=(COM_DATA.tipos||[]).find(x=>x.id===id);
+  if(!t) return;
+  COM_EDIT={ id:'', tipo:t.id, prioridad:t.prioridad, titulo:t.titulo, cuerpo:t.cuerpo, accion:t.accion,
+    eventoFecha:'', eventoHora:'', lugar:'', limite:'', adjuntos:'',
+    segmento:t.individual?'individual':'todos', alcance:[], canales:['email'],
+    acuse:!!t.acuse, recordatorio:false, programadoPara:'', estado:'borrador' };
+  comVista('editor');
+}
+
+/* ───────── vista 3: el redactor ───────── */
+function comTipoActual(){ return (COM_DATA.tipos||[]).find(t=>t.id===COM_EDIT.tipo)||{campos:[]}; }
+function comEditorHTML(){
+  const e=COM_EDIT, t=comTipoActual();
+  const campos=t.campos||[];
+  const sel=(v,val)=>v===val?'selected':'';
+  const opTipos=(COM_DATA.grupos||[]).map(g=>{
+    const dentro=(COM_DATA.tipos||[]).filter(x=>x.grupo===g.id);
+    return `<optgroup label="${_esc(g.icono)} ${_esc(g.nombre)}">${dentro.map(x=>
+      `<option value="${_esc(x.id)}" ${sel(e.tipo,x.id)}>${_esc(x.nombre)}</option>`).join('')}</optgroup>`;
+  }).join('');
+  const editable=e.estado!=='enviado';
+
+  return comAvisoEnvios()+`
+  <div class="card"><div class="hd">
+    <h2>${e.id?'Editar comunicado':'Nuevo comunicado'}</h2>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn ghost" onclick="comVolver()">← Volver</button></div>
+    <div class="bd" style="padding:18px">
+      <div class="cm-grid">
+        <div>
+          <label class="cm-campo"><span>Tipo de comunicado</span>
+            <select id="cmTipo" onchange="comCambiarTipo(this.value)">${opTipos}</select></label>
+          <label class="cm-campo"><span>Prioridad</span>
+            <select id="cmPri">
+              <option value="informativo" ${sel(e.prioridad,'informativo')}>Informativo</option>
+              <option value="importante" ${sel(e.prioridad,'importante')}>Importante</option>
+              <option value="urgente" ${sel(e.prioridad,'urgente')}>Urgente</option></select>
+            <div class="cm-ayuda">Cambia la etiqueta del asunto y del encabezado. No cambia el canal.</div></label>
+          <label class="cm-campo"><span>Título</span>
+            <input id="cmTitulo" value="${_esc(e.titulo)}" placeholder="Lo que verá en el asunto"></label>
+          <label class="cm-campo"><span>Mensaje</span>
+            <textarea id="cmCuerpo" rows="16" placeholder="Escribe el comunicado…">${_esc(e.cuerpo)}</textarea>
+            <div class="cm-ayuda">Deja una línea en blanco entre párrafos. Usa <b>**negrita**</b>,
+              líneas que empiecen con <b>-</b> para viñetas y con <b>1.</b> para listas numeradas.</div></label>
+          <label class="cm-campo"><span>Lo que le pedimos (opcional)</span>
+            <input id="cmAccion" value="${_esc(e.accion)}" placeholder="Confirme su asistencia antes del…">
+            <div class="cm-ayuda">Sale destacado al final. Es lo que la gente realmente lee.</div></label>
+        </div>
+        <div>
+          ${campos.includes('evento')?`<div class="cm-row">
+            <label class="cm-campo" style="flex:1"><span>Fecha del evento o trabajo</span>
+              <input type="date" id="cmFecha" value="${_esc(e.eventoFecha)}"></label>
+            <label class="cm-campo" style="width:130px"><span>Hora</span>
+              <input type="time" id="cmHora" value="${_esc(e.eventoHora)}"></label></div>`:''}
+          ${campos.includes('lugar')?`<label class="cm-campo"><span>Lugar</span>
+            <input id="cmLugar" value="${_esc(e.lugar)}" placeholder="Área social, calle principal, El Quirá…"></label>`:''}
+          ${campos.includes('limite')?`<label class="cm-campo"><span>Fecha límite</span>
+            <input type="date" id="cmLimite" value="${_esc(e.limite)}"></label>`:''}
+          ${campos.includes('monto')?`<div class="cm-ayuda" style="margin:-4px 0 12px">
+            Escribe los montos dentro del mensaje; así queda el contexto junto a la cifra.</div>`:''}
+
+          <label class="cm-campo"><span>Documentos adjuntos (opcional)</span>
+            <textarea id="cmAdj" rows="3" placeholder="Acta de asamblea | https://drive.google.com/…">${_esc(e.adjuntos)}</textarea>
+            <div class="cm-ayuda">Uno por línea, con el formato <b>Nombre | enlace</b>. Comparte el archivo en Drive
+              como «cualquiera con el enlace puede ver» antes de pegarlo.</div></label>
+
+          <div class="cm-campo"><span>¿A quién va?</span>
+            <div id="cmDest">${comDestHTML()}</div></div>
+
+          <div class="cm-campo"><span>Canales</span>
+            <div class="cm-seg">
+              <label><input type="checkbox" id="cmCanEmail" ${e.canales.includes('email')?'checked':''}>
+                <div><b>Correo electrónico</b><div class="cm-ayuda">Sale ahora mismo, con el formato de la marca.</div></div></label>
+              <label><input type="checkbox" id="cmCanWA" ${e.canales.includes('whatsapp')?'checked':''}>
+                <div><b>WhatsApp</b><div class="cm-ayuda">Queda <b>en cola</b>. Hoy la puedes despachar a mano desde
+                  el detalle del comunicado; cuando el bot esté conectado la vacía solo.</div></div></label>
+            </div></div>
+
+          <div class="cm-campo"><span>Opciones</span>
+            <div class="cm-seg">
+              <label><input type="checkbox" id="cmAcuse" ${e.acuse?'checked':''}>
+                <div><b>Pedir acuse de recibo</b><div class="cm-ayuda">Agrega un botón de un clic. Queda la constancia
+                  de la fecha en que cada propietario lo confirmó.</div></div></label>
+              <label><input type="checkbox" id="cmRec" ${e.recordatorio?'checked':''}>
+                <div><b>Recordar 48 horas antes</b><div class="cm-ayuda">Sólo si el comunicado tiene fecha de evento.</div></div></label>
+            </div></div>
+
+          <label class="cm-campo"><span>Programar el envío (opcional)</span>
+            <input type="datetime-local" id="cmProg" value="${_esc(String(e.programadoPara||'').replace(' ','T'))}">
+            <div class="cm-ayuda">Déjalo vacío para enviarlo tú mismo. Si lo programas, el sistema lo manda solo.</div></label>
+        </div>
+      </div>
+
+      <div class="cm-row" style="justify-content:flex-end;margin-top:6px;border-top:1px solid var(--ac-border);padding-top:14px">
+        <span id="cmMsg" class="muted" style="font-size:.82rem;margin-right:auto"></span>
+        <button class="btn ghost" onclick="comPrevisualizar(this)">👁 Vista previa</button>
+        <button class="btn ghost" onclick="comProbar(this)">✉ Prueba a mi correo</button>
+        <button class="btn ghost" onclick="comGuardar(this,true)">Guardar borrador</button>
+        <button class="btn green" id="cmEnviar" onclick="comEnviar(this)" ${editable?'':'disabled'}>Enviar</button>
+      </div>
+    </div></div>`;
+}
+// El botón de enviar dice lo que va a hacer: enviar ahora o programar.
+function comEditorSync(){
+  const prog=document.getElementById('cmProg'), b=document.getElementById('cmEnviar');
+  if(!prog||!b) return;
+  const set=()=>{ b.textContent=prog.value?'Programar envío':'Enviar ahora'; };
+  prog.addEventListener('change',set); set();
+}
+function comCambiarTipo(id){
+  const t=(COM_DATA.tipos||[]).find(x=>x.id===id); if(!t) return;
+  comLeerEditor();
+  const vacio=!COM_EDIT.cuerpo.trim() || (COM_DATA.tipos||[]).some(x=>x.cuerpo===COM_EDIT.cuerpo);
+  if(!vacio && !confirm('¿Reemplazar el texto por la plantilla de «'+t.nombre+'»?\n\nLo que escribiste se pierde.')){
+    COM_EDIT.tipo=id; paintComunic(); return;
+  }
+  COM_EDIT.tipo=t.id; COM_EDIT.prioridad=t.prioridad; COM_EDIT.titulo=t.titulo;
+  COM_EDIT.cuerpo=t.cuerpo; COM_EDIT.accion=t.accion; COM_EDIT.acuse=!!t.acuse;
+  if(t.individual) COM_EDIT.segmento='individual';
+  paintComunic();
+}
+/* destinatarios: se repinta solo este bloque para no perder lo escrito */
+function comDestHTML(){
+  const e=COM_EDIT, t=comTipoActual();
+  const res=COM_DATA.residenciales||[], props=COM_DATA.propietarios||[];
+  const r=(v,txt,sub)=>`<label><input type="radio" name="cmSeg" value="${v}" ${e.segmento===v?'checked':''}
+      onchange="comSeg('${v}')"><div><b>${txt}</b>${sub?`<div class="cm-ayuda">${sub}</div>`:''}</div></label>`;
+  let extra='';
+  if(e.segmento==='residencial'){
+    extra=`<div class="cm-chips">${res.map(x=>
+      `<button type="button" class="cm-chip ${e.alcance.includes(x.nombre)?'on':''}"
+        onclick="comChip('${_esc(x.nombre)}')">${_esc(x.nombre)} · ${x.cuentas}</button>`).join('')}</div>`;
+  } else if(e.segmento==='manual'||e.segmento==='individual'){
+    const uno=e.segmento==='individual';
+    extra=`<div style="margin-top:8px">
+      <input type="search" id="cmBuscaProp" placeholder="Buscar propietario o lote…"
+        oninput="comFiltraProps(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--ac-border);border-radius:9px;font:inherit">
+      <div id="cmProps" style="max-height:210px;overflow:auto;border:1px solid var(--ac-border);border-radius:9px;margin-top:7px">
+        ${comPropsHTML(props,uno)}</div></div>`;
+  }
+  const n=comDestinos().length;
+  return '<div class="cm-seg">'+r('todos','Todos los propietarios activos','Los '+props.length+' del padrón.')+
+    r('residencial','Por residencial','Un corte de agua rara vez afecta a los tres.')+
+    r('cabanas','Sólo quienes tienen cabañas','Los que reciben huéspedes y deben avisarles.')+
+    r('manual','Selección manual','Escoge lote por lote.')+
+    (t.individual?r('individual','Un solo propietario','Este tipo de aviso es personal, no masivo.'):'')+
+    extra+'</div>'+
+    `<div class="cm-cuenta">${n===0?'Sin destinatarios todavía':(n===1?'1 destinatario':n+' destinatarios')}</div>`;
+}
+function comPropsHTML(props,uno){
+  const q=(COM_EDIT._q||'').toLowerCase();
+  const vis=props.filter(p=>!q||(p.nombre+' '+p.lote+' '+p.clave+' '+p.residencial).toLowerCase().includes(q));
+  if(!vis.length) return '<div class="muted" style="padding:10px 12px;font-size:.82rem">Sin coincidencias.</div>';
+  return vis.map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--ac-border);font-size:.85rem;cursor:pointer">
+    <input type="${uno?'radio':'checkbox'}" name="cmProp" ${COM_EDIT.alcance.includes(p.clave)?'checked':''}
+      onchange="comProp('${_esc(p.clave)}',this.checked,${uno})">
+    <span>${_esc(p.nombre)} <span class="muted">· ${_esc(p.residencial)} lote ${_esc(p.lote)}${p.email?'':' · sin correo'}</span></span></label>`).join('');
+}
+function comRepintarDest(){ const d=document.getElementById('cmDest'); if(d) d.innerHTML=comDestHTML(); }
+function comSeg(v){ COM_EDIT.segmento=v; COM_EDIT.alcance=[]; comRepintarDest(); }
+function comChip(nombre){
+  const i=COM_EDIT.alcance.indexOf(nombre);
+  if(i>=0) COM_EDIT.alcance.splice(i,1); else COM_EDIT.alcance.push(nombre);
+  comRepintarDest();
+}
+function comProp(clave,on,uno){
+  if(uno){ COM_EDIT.alcance=on?[clave]:[]; }
+  else { const i=COM_EDIT.alcance.indexOf(clave); if(on&&i<0)COM_EDIT.alcance.push(clave); if(!on&&i>=0)COM_EDIT.alcance.splice(i,1); }
+  const c=document.querySelector('.cm-cuenta'); if(c){ const n=comDestinos().length;
+    c.textContent=n===0?'Sin destinatarios todavía':(n===1?'1 destinatario':n+' destinatarios'); }
+}
+function comFiltraProps(q){
+  COM_EDIT._q=q;
+  const box=document.getElementById('cmProps');
+  if(box) box.innerHTML=comPropsHTML(COM_DATA.propietarios||[], COM_EDIT.segmento==='individual');
+}
+// Mismo criterio que _comDestinatarios() en el servidor; aquí sólo para mostrar el conteo.
+function comDestinos(){
+  const P=COM_DATA.propietarios||[], e=COM_EDIT;
+  if(e.segmento==='residencial') return P.filter(p=>e.alcance.includes(p.residencial));
+  if(e.segmento==='cabanas')     return P.filter(p=>(p.cabanas||0)>0||p.airbnb);
+  if(e.segmento==='manual'||e.segmento==='individual') return P.filter(p=>e.alcance.includes(p.clave));
+  return P;
+}
+function comLeerEditor(){
+  const v=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+  const c=id=>{ const e=document.getElementById(id); return e?e.checked:false; };
+  const e=COM_EDIT;
+  e.tipo=v('cmTipo')||e.tipo; e.prioridad=v('cmPri')||e.prioridad;
+  e.titulo=v('cmTitulo'); e.cuerpo=v('cmCuerpo'); e.accion=v('cmAccion');
+  e.eventoFecha=v('cmFecha'); e.eventoHora=v('cmHora'); e.lugar=v('cmLugar'); e.limite=v('cmLimite');
+  e.adjuntos=v('cmAdj'); e.programadoPara=v('cmProg').replace('T',' ');
+  e.acuse=c('cmAcuse'); e.recordatorio=c('cmRec');
+  e.canales=[]; if(c('cmCanEmail'))e.canales.push('email'); if(c('cmCanWA'))e.canales.push('whatsapp');
+  return e;
+}
+function comPayload(){
+  const e=comLeerEditor();
+  return { id:e.id, tipo:e.tipo, prioridad:e.prioridad, titulo:e.titulo, cuerpo:e.cuerpo, accion:e.accion,
+    eventoFecha:e.eventoFecha, eventoHora:e.eventoHora, lugar:e.lugar, limite:e.limite, adjuntos:e.adjuntos,
+    segmento:e.segmento, alcance:e.alcance, canales:e.canales, acuse:e.acuse,
+    recordatorio:e.recordatorio, programadoPara:e.programadoPara };
+}
+function comMsg(txt,err){
+  const m=document.getElementById('cmMsg'); if(!m) return;
+  m.textContent=txt||''; m.style.color=err?'var(--ac-danger)':'var(--ac-muted)';
+}
+async function comGuardar(btn,avisar){
+  const p=comPayload();
+  if(!p.titulo.trim()) { comMsg('Falta el título.',true); return null; }
+  if(!p.cuerpo.trim()) { comMsg('Falta el mensaje.',true); return null; }
+  if(!p.canales.length){ comMsg('Elige al menos un canal.',true); return null; }
+  if(btn){ btn.disabled=true; var t=btn.textContent; btn.textContent='Guardando…'; }
+  try{
+    const r=await post('guardarComunicado',{comunicado:p});
+    COM_EDIT.id=r.id; COM_EDIT.estado=r.estado; COM_STALE=true;
+    if(avisar) toast(r.estado==='programado'?'✓ Programado':'✓ Borrador guardado');
+    comMsg(r.aviso||'');
+    return r;
+  }catch(e){ if(!onAuthError(e)) comMsg('No se pudo guardar: '+e,true); return null; }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=t; } }
+}
+async function comPrevisualizar(btn){
+  const p=comPayload();
+  if(!p.titulo.trim()||!p.cuerpo.trim()){ comMsg('Escribe al menos el título y el mensaje.',true); return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='…';
+  try{
+    const r=await post('previsualizarComunicado',{comunicado:p});
+    document.getElementById('modalHd').innerHTML=`<div><div style="font-weight:700;font-size:1.05rem">Vista previa</div>
+      <div class="muted" style="font-size:.8rem">Como lo verá ${_esc(r.muestra||'un propietario')} · ${r.destinatarios} destinatario(s)</div></div>`;
+    document.getElementById('modalBd').innerHTML=`
+      <div class="muted" style="font-size:.8rem;margin-bottom:8px"><b>Asunto:</b> ${_esc(r.asunto)}</div>
+      <iframe class="cm-prev" srcdoc="${_esc(r.html)}"></iframe>
+      <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--ac-teal-600);font-weight:600;font-size:.85rem">Ver el texto para WhatsApp</summary>
+        <pre style="white-space:pre-wrap;font:inherit;font-size:.82rem;background:#f7fbfc;border:1px solid var(--ac-border);border-radius:9px;padding:11px;margin-top:8px">${_esc(r.texto)}</pre></details>
+      <div style="text-align:right;margin-top:12px"><button class="btn ghost" onclick="closeModal()">Cerrar</button></div>`;
+    document.getElementById('modal').classList.add('show');
+  }catch(e){ if(!onAuthError(e)) comMsg('No se pudo previsualizar: '+e,true); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+async function comProbar(btn){
+  const guardado=await comGuardar(null,false); if(!guardado) return;
+  const prev=localStorage.getItem('ac_correo_prueba')||'';
+  const email=prompt('¿A qué correo mando la prueba?\n\nEs un envío explícito a esa dirección: no avisa a ningún propietario y no depende del interruptor maestro.',prev);
+  if(email===null) return;
+  localStorage.setItem('ac_correo_prueba',email.trim());
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
+  try{
+    const r=await post('enviarPruebaComunicado',{id:COM_EDIT.id,email:email.trim()});
+    toast('✓ Prueba enviada a '+r.email);
+  }catch(e){ if(!onAuthError(e)) comMsg('No se pudo enviar la prueba: '+e,true); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+async function comEnviar(btn){
+  const p=comPayload();
+  const n=comDestinos().length;
+  if(!n){ comMsg('El comunicado no tiene destinatarios.',true); return; }
+  if(p.programadoPara){
+    const g=await comGuardar(btn,false); if(!g) return;
+    toast('✓ Programado para '+comFecha(p.programadoPara));
+    COM_VISTA='lista'; COM_STALE=false; await renderComunic(true); return;
+  }
+  const e=(COM_DATA&&COM_DATA.envios)||{};
+  if(!e.activos){ alert('Los envíos del sistema están pausados.\n\nActiva el interruptor maestro en ⚙ Opciones para poder enviar.'); return; }
+  const sinCorreo=comDestinos().filter(x=>!x.email).length;
+  if(!confirm(`Vas a enviar «${p.titulo}» a ${n} propietario(s).`+
+    (sinCorreo?`\n\n${sinCorreo} no tiene correo registrado y quedará marcado como no entregado.`:'')+
+    `\n\n¿Enviar ahora?`)) return;
+  const g=await comGuardar(btn,false); if(!g) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
+  try{
+    const r=await post('enviarComunicado',{id:COM_EDIT.id});
+    if(r.pausado){ alert(r.motivo); return; }
+    if(r.prueba){ alert('🧪 '+r.motivo); return; }
+    alert(`✓ Comunicado enviado.\n\n${r.enviados} por correo`+
+      (r.whatsapp?`\n${r.whatsapp} en cola de WhatsApp`:'')+
+      (r.sinDestino?`\n${r.sinDestino} sin correo registrado`:'')+
+      (r.errores?`\n${r.errores} con error`:''));
+    COM_VISTA='lista'; COM_STALE=false; await renderComunic(true); comAbrir(COM_EDIT.id);
+  }catch(e2){ if(!onAuthError(e2)) comMsg('No se pudo enviar: '+e2,true); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+
+/* ───────── vista 4: detalle de un comunicado ───────── */
+async function comAbrir(id){
+  const c=(COM_DATA.comunicados||[]).find(x=>x.id===id);
+  if(c && c.estado!=='enviado'){
+    COM_EDIT={...c, alcance:String(c.alcance||'').split(',').filter(Boolean),
+      canales:String(c.canales||'email').split(',').filter(Boolean)};
+    comVista('editor'); return;
+  }
+  const body=document.getElementById('comunicBody');
+  body.innerHTML='<div class="card"><div class="bd" style="padding:18px"><span class="ac-spin"></span> Cargando…</div></div>';
+  try{ COM_DET=await jsonp('getComunicadoDetalle',{id}); COM_DET._c=c; }
+  catch(e){ body.innerHTML=`<div class="card"><div class="bd" style="padding:18px">No se pudo abrir: ${_esc(e)}</div></div>`; return; }
+  comVista('detalle');
+}
+function comDetalleHTML(){
+  const d=COM_DET, c=d._c||{};
+  const es=d.envios||[];
+  const mail=es.filter(e=>e.canal==='email'), wa=es.filter(e=>e.canal==='whatsapp');
+  const fallidos=mail.filter(e=>e.estado==='error'||e.estado==='sin-destino');
+  const acuses=es.filter(e=>e.acuse).length;
+  const pill=e=>{
+    if(e.acuse) return '<span class="pill ok">recibido ✓</span>';
+    if(e.estado==='enviado') return '<span class="pill ok">enviado</span>';
+    if(e.estado==='pendiente') return '<span class="pill warn">en cola</span>';
+    if(e.estado==='sin-destino') return '<span class="pill warn">sin destino</span>';
+    if(e.estado==='omitido') return '<span class="pill warn">omitido</span>';
+    return '<span class="pill red">error</span>';
+  };
+  const fila=e=>`<tr>
+    <td>${_esc(e.nombre)} <span class="muted">· ${_esc(e.clave)}</span></td>
+    <td class="muted" style="font-size:.8rem">${_esc(e.destino||'—')}</td>
+    <td>${pill(e)}</td>
+    <td class="muted" style="font-size:.8rem">${_esc(e.acuse||e.error||e.ts)}</td>
+    <td style="text-align:right">${e.waUrl?`<a class="link-btn" href="${e.waUrl}" target="_blank" rel="noopener">Enviar por WhatsApp</a>`:''}</td></tr>`;
+
+  return `<div class="card"><div class="hd">
+    <h2>${_esc(d.titulo)}</h2>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn ghost" onclick="comVolver()">← Volver</button></div>
+    <div class="bd" style="padding:18px">
+      <div class="muted" style="font-size:.84rem;margin-bottom:12px">
+        ${_esc(c.tipoNombre||'')} · Enviado el <b>${comFecha(c.enviadoEn)}</b> por <b>${_esc(c.enviadoPor||'—')}</b>
+        · ${mail.filter(e=>e.estado==='enviado').length} correo(s)${wa.length?` · ${wa.length} en WhatsApp`:''}
+        ${c.acuse?` · <b>${acuses}</b> de ${c.destinatarios} confirmaron de recibido`:''}
+      </div>
+      ${fallidos.length?`<div class="notice" style="margin-bottom:12px">
+        <b>${fallidos.length} no lo recibió por correo.</b>
+        <button class="link-btn" onclick="comReenviar(this)">Reenviar a esos ${fallidos.length}</button></div>`:''}
+      <div class="cm-grid">
+        <div>
+          <div class="cm-grupo" style="margin-top:0">Cómo lo recibieron</div>
+          <iframe class="cm-prev" srcdoc="${_esc(d.html)}"></iframe>
+          <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--ac-teal-600);font-weight:600;font-size:.85rem">Texto para WhatsApp</summary>
+            <pre style="white-space:pre-wrap;font:inherit;font-size:.82rem;background:#f7fbfc;border:1px solid var(--ac-border);border-radius:9px;padding:11px;margin-top:8px">${_esc(d.texto)}</pre></details>
+        </div>
+        <div>
+          <div class="cm-grupo" style="margin-top:0">Destinatarios y acuses</div>
+          <div style="max-height:520px;overflow:auto;border:1px solid var(--ac-border);border-radius:11px">
+            <table style="width:100%"><tbody>${es.map(fila).join('')}</tbody></table></div>
+          <div class="cm-ayuda" style="margin-top:8px">Los pendientes de WhatsApp se pueden despachar a mano
+            desde aquí mientras el bot no esté conectado. Cuando lo esté, los toma de la misma cola.</div>
+        </div>
+      </div>
+    </div></div>`;
+}
+async function comReenviar(btn){
+  const fallidos=(COM_DET.envios||[]).filter(e=>e.canal==='email'&&(e.estado==='error'||e.estado==='sin-destino'));
+  if(!fallidos.length) return;
+  if(!confirm(`Reenviar «${COM_DET.titulo}» a ${fallidos.length} propietario(s).\n\n`+
+    `Los que no tenían correo lo recibirán sólo si ya se lo registraste en Propietarios.`)) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Reenviando…';
+  try{
+    const r=await post('reenviarComunicado',{id:COM_DET.id, claves:fallidos.map(e=>e.clave)});
+    if(r.pausado){ alert(r.motivo); return; }
+    alert(`✓ Reenviado a ${r.enviados}.`+(r.sinDestino?`\n${r.sinDestino} sigue sin correo.`:''));
+    COM_STALE=false; await renderComunic(true); comAbrir(COM_DET.id);
+  }catch(e){ if(!onAuthError(e)) alert('No se pudo reenviar: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+
 // Renglones del desglose, ya recortados al período. Cada uno trae los ítems que
 // lo componen, así el total y la lista salen del mismo dato.
 function _finFilas(d,mi,mf){
@@ -4209,8 +4731,9 @@ document.getElementById('tabs').addEventListener('click',e=>{
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','registro','comprob','prop','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','registro','comprob','prop','comunic','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
+  if(t==='comunic')renderComunic();
   if(t==='comprob')renderComprob();
   if(t==='gastos')renderGastos();
   if(t==='finanzas')renderFinanzas();

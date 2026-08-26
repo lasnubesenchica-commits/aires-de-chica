@@ -96,7 +96,8 @@ var ADMIN_ACCIONES = {
   enviarPruebaEstado: 1, enviarPruebaAlertaUsuario: 1,
   emitirConstanciasFaltantes: 1,
   // escriben a TODOS los propietarios de una vez
-  enviarRecordatorios: 1, enviarInformePL: 1
+  enviarRecordatorios: 1, enviarInformePL: 1,
+  enviarComunicado: 1, reenviarComunicado: 1, enviarPruebaComunicado: 1
 };
 
 function requireAdmin(accion, password) {
