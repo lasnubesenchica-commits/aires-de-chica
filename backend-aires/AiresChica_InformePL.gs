@@ -269,21 +269,23 @@ function descargarInformePL(anio, mesIni, mesFin, nota) {
   return { base64: Utilities.base64Encode(blob.getBytes()), filename: blob.getName() };
 }
 
-// Envío trimestral automático: corre por trigger mensual pero solo actúa en
-// los meses de cierre de trimestre (ene, abr, jul, oct) y envía el informe del
-// trimestre recién cerrado. Respeta el interruptor maestro y el modo prueba.
-function informeTrimestral() {
+/**
+ * Informe Financiero MENSUAL a los propietarios: el del mes ya cerrado, dentro de los
+ * primeros días del mes siguiente. Sustituye al envío trimestral.
+ *
+ * El informe ANUAL no se automatiza a propósito: la Junta lo revisa antes de que salga.
+ * Se manda a mano desde Finanzas → «Enviar a propietarios», con el periodo en año completo.
+ *
+ * Respeta el interruptor maestro y el modo prueba.
+ */
+function informeMensual() {
   var cfg = _cfg();
-  if (!cfg.notifInformeTrim || !cfg.enviosActivos) return { enviados: 0, motivo: 'trimestral desactivado o envíos pausados' };
+  if (!cfg.notifInformeMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'informe mensual desactivado o envíos pausados' };
   var now = new Date();
   var m = now.getMonth() + 1, anio = now.getFullYear();
-  var mesIni, mesFin;
-  if (m === 1) { anio -= 1; mesIni = 10; mesFin = 12; }   // Q4 del año anterior
-  else if (m === 4) { mesIni = 1; mesFin = 3; }           // Q1
-  else if (m === 7) { mesIni = 4; mesFin = 6; }           // Q2
-  else if (m === 10) { mesIni = 7; mesFin = 9; }          // Q3
-  else return { enviados: 0, motivo: 'no es mes de cierre de trimestre' };
-  return enviarInformePL(anio, mesIni, mesFin, '');
+  var mes = (m === 1) ? 12 : m - 1;      // el mes recién cerrado
+  if (m === 1) anio -= 1;
+  return enviarInformePL(anio, mes, mes, '');
 }
 
 function enviarInformePL(anio, mesIni, mesFin, nota) {

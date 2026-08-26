@@ -845,33 +845,22 @@ a.btn { display:inline-block; text-decoration:none; }
     <div id="optsBody" class="muted">Cargando…</div>
     <!-- Bajo la misma llave que el resto de Opciones: se oculta hasta desbloquear. -->
     <div id="optsExtra">
-    <div class="card" style="margin-top:16px"><div class="hd"><h2>Envío de recordatorios y estados de cuenta</h2></div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>Probar y enviar a mano</h2></div>
       <div class="bd" style="padding:18px">
-        <p class="muted">Envía a cada propietario su estado de cuenta en PDF por correo. Antes de enviar a todos, puedes <b>enviarte una prueba a tu correo</b> para verificar el formato.</p>
-        <div style="display:flex;gap:18px;flex-wrap:wrap">
-          <div style="flex:1;min-width:290px;border:1px solid var(--ac-border);border-radius:10px;padding:14px">
-            <button class="btn" style="width:100%" onclick="enviar('mensual')">Recordatorio a todos los que deben</button>
-            <div style="margin-top:10px;display:grid;gap:6px">
-              <select id="pruebaPropMensual" style="padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"></select>
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <input type="email" id="pruebaMensual" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:160px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-                <button class="link-btn" onclick="enviarPrueba('mensual','pruebaMensual','pruebaPropMensual',this)">Enviar prueba a mi correo</button>
-              </div>
-            </div>
-            <div class="muted" style="font-size:.72rem;margin-top:5px">Elige el propietario de muestra y tu correo. No avisa a nadie.</div>
-          </div>
-          <div style="flex:1;min-width:290px;border:1px solid var(--ac-border);border-radius:10px;padding:14px">
-            <button class="btn" style="width:100%;background:var(--ac-coral)" onclick="enviar('mora')">Aviso de mora (según umbral de meses en Opciones)</button>
-            <div style="margin-top:10px;display:grid;gap:6px">
-              <select id="pruebaPropMora" style="padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"></select>
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <input type="email" id="pruebaMora" placeholder="tu-correo@ejemplo.com" style="flex:1;min-width:160px;padding:7px 8px;border:1px solid var(--ac-border);border-radius:7px;font:inherit">
-                <button class="link-btn" onclick="enviarPrueba('mora','pruebaMora','pruebaPropMora',this)">Enviar prueba a mi correo</button>
-              </div>
-            </div>
-            <div class="muted" style="font-size:.72rem;margin-top:5px">Elige el propietario de muestra y tu correo. No avisa a nadie.</div>
-          </div>
+        <p class="muted" style="margin-top:0">Antes de encender cualquier aviso automático, <b>pruébalo aquí</b>: el correo de prueba
+        se manda sólo a tu dirección, no depende del interruptor maestro y <b>no le llega a ningún propietario</b>.
+        Los botones de «Enviar ahora» sí escriben a la comunidad y respetan el interruptor y el modo prueba.</p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:14px 0 6px;padding:12px 14px;border:1px solid var(--ac-border);border-radius:10px;background:#f7fbfc">
+          <label class="muted" style="flex:1;min-width:200px;font-size:.78rem">Mi correo para las pruebas
+            <input type="email" id="pruebaEmail" placeholder="tu-correo@ejemplo.com" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--ac-border);border-radius:8px;font:inherit"></label>
+          <label class="muted" style="flex:1;min-width:220px;font-size:.78rem">Propietario de muestra
+            <select id="pruebaProp" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--ac-border);border-radius:8px;font:inherit"></select></label>
         </div>
+
+        <table style="width:100%;margin-top:4px">
+          <tbody id="tblAvisos"></tbody>
+        </table>
         <div id="recorResult" style="margin-top:14px"></div>
       </div></div>
     </div><!-- /optsExtra -->
@@ -2034,28 +2023,67 @@ async function mailEstado(clave,btn){
   }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
   finally{ if(btn){ btn.disabled=false; btn.textContent=t; } }
 }
-async function enviar(tipo){ document.getElementById('recorResult').textContent='Enviando…';
-  try{ const r=await post('enviarRecordatorios',{tipo}); document.getElementById('recorResult').innerHTML=`<div class="notice">Enviados: ${r.enviados}. Sin correo: ${(r.sinCorreo||[]).length}.</div>`; }
-  catch(e){ if(!onAuthError(e)) document.getElementById('recorResult').innerHTML='<div class="notice">Error: '+e+'</div>'; }
-}
+/* ───────── Avisos: probar y enviar a mano ─────────
+ * Un solo sitio describe los cinco avisos: la tabla de Opciones, la prueba y el envío
+ * manual salen todos de aquí, así que agregar uno nuevo no obliga a tocar tres lugares.
+ * Los `tipo` coinciden con los que entiende enviarRecordatorios() en el servidor. */
+const AVISOS=[
+  {tipo:'pago',     nombre:'Confirmación de pago recibido',
+   quien:'Al propietario cuyo pago se acaba de registrar.', manual:false},
+  {tipo:'estado',   nombre:'Estado de cuenta mensual',
+   quien:'A todos los propietarios, estén al día o no.', manual:'Enviar a todos ahora'},
+  {tipo:'preaviso', nombre:'Aviso antes de que venza la cuota',
+   quien:'Sólo a quien aún no cubre la cuota del mes en curso.', manual:'Enviar ahora'},
+  {tipo:'mora',     nombre:'Aviso de mora',
+   quien:'A quien acumula el umbral de meses configurado.', manual:'Enviar ahora'},
+  {tipo:'mensual',  nombre:'Recordatorio a todos los que deben',
+   quien:'A cualquiera con saldo pendiente. No es automático: sólo a mano.', manual:'Enviar ahora'}
+];
+function _recorMsg(html){ const e=document.getElementById('recorResult'); if(e) e.innerHTML=html; }
 let RECOR_PROPS=null;
 async function renderRecor(){
+  const tb=document.getElementById('tblAvisos');
+  if(tb) tb.innerHTML=AVISOS.map(a=>`<tr>
+    <td style="padding:9px 6px 9px 0">
+      <b style="font-size:.9rem">${a.nombre}</b>
+      <div class="muted" style="font-size:.78rem;margin-top:2px">${a.quien}</div></td>
+    <td style="padding:9px 0;text-align:right;white-space:nowrap">
+      <button class="link-btn" onclick="probarAviso('${a.tipo}',this)">Probar a mi correo</button>
+      ${a.manual?`<button class="btn ghost" style="padding:7px 12px;margin-left:8px" onclick="enviarAviso('${a.tipo}',this)">${a.manual}</button>`:''}
+    </td></tr>`).join('');
   let props;
   try{ props = RECOR_PROPS || await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
   RECOR_PROPS=props;
   const sorted=props.slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
-  const opts=sorted.map(p=>`<option value="${p.clave}">${p.nombre} · ${p.residencial} L${p.lote}</option>`).join('');
-  const def=sorted.find(p=>/doraida\s+castillo/i.test(p.nombre))||sorted.find(p=>/doraida/i.test(p.nombre));
-  ['pruebaPropMensual','pruebaPropMora'].forEach(id=>{ const s=document.getElementById(id); if(s){ s.innerHTML=opts; if(def) s.value=def.clave; } });
+  const sel=document.getElementById('pruebaProp');
+  if(sel){
+    sel.innerHTML='<option value="">— la que mejor ilustre el aviso —</option>'+
+      sorted.map(p=>`<option value="${p.clave}">${p.nombre} · ${p.residencial} L${p.lote}</option>`).join('');
+  }
+  const mail=document.getElementById('pruebaEmail');
+  if(mail && !mail.value) mail.value=localStorage.getItem('ac_correo_prueba')||'';
 }
-async function enviarPrueba(tipo,inputId,propId,btn){
-  const email=(document.getElementById(inputId).value||'').trim();
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return alert('Ingresa un correo válido.');
-  const clave=(document.getElementById(propId)||{}).value||'';
+async function probarAviso(tipo,btn){
+  const email=(document.getElementById('pruebaEmail').value||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return alert('Escribe tu correo arriba para recibir la prueba.');
+  localStorage.setItem('ac_correo_prueba',email);
+  const clave=(document.getElementById('pruebaProp')||{}).value||'';
   btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
   try{ const r=await post('enviarPruebaEstado',{email,tipo,clave});
-    document.getElementById('recorResult').innerHTML=`<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ Prueba enviada a <b>${r.email}</b> (muestra: ${r.muestra} · L${r.lote}). Revisa tu bandeja (y spam).</div>`;
+    _recorMsg(`<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ Prueba enviada a <b>${_esc(r.email)}</b> (muestra: ${_esc(r.muestra)} · L${_esc(r.lote)}). Revisa tu bandeja y la carpeta de spam.</div>`);
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+async function enviarAviso(tipo,btn){
+  const a=AVISOS.find(x=>x.tipo===tipo)||{nombre:tipo,quien:''};
+  if(!confirm(`Vas a enviar «${a.nombre}» a los propietarios.\n\n${a.quien}\n\nRespeta el interruptor maestro y el modo prueba de arriba. ¿Continuar?`)) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…';
+  _recorMsg('<div class="notice">Enviando…</div>');
+  try{
+    const r=await post('enviarRecordatorios',{tipo});
+    if(r.pausado){ _recorMsg('<div class="notice">'+_esc(r.motivo||'Envíos pausados.')+'</div>'); return; }
+    _recorMsg(`<div class="notice" style="background:#e4f5ec;border-color:#bfe6cf">✓ <b>${_esc(a.nombre)}</b>: enviados <b>${r.enviados}</b> de ${r.objetivo!=null?r.objetivo:r.enviados}. Sin correo: ${(r.sinCorreo||[]).length}.</div>`);
+  }catch(e){ if(!onAuthError(e)) _recorMsg('<div class="notice">Error: '+_esc(e)+'</div>'); }
   finally{ btn.disabled=false; btn.textContent=t; }
 }
 
@@ -2287,7 +2315,7 @@ function renderConc(d){
     </div>
     ${d.duplicados?`<div class="notice" style="margin-bottom:12px;background:#fff5f2;border-color:#f4d9c8">⚠ Hay <b>${d.duplicados}</b> pago(s) que ya parecen estar registrados (mismo propietario, monto y fecha ±3 días). Quedan <b>desmarcados</b>; márcalos solo si de verdad son pagos distintos.</div>`:''}
     <div class="card"><div class="hd"><h2>Revisar pagos entrantes</h2><div class="spacer" style="flex:1"></div>
-      <label class="muted" style="font-size:.85rem"><input type="checkbox" id="sendMails"> Enviar estado de cuenta al consolidar</label>
+      <label class="muted" style="font-size:.85rem" title="Si la confirmación automática está encendida en Opciones, el correo sale igual: esta casilla sólo sirve para forzarlo cuando está apagada."><input type="checkbox" id="sendMails"> Forzar envío del estado de cuenta al consolidar</label>
       <button class="btn green" onclick="consolidar()">Consolidar seleccionados</button></div>
       <div class="bd"><table class="stack-table"><thead><tr><th></th><th>Fecha</th><th class="num">Monto</th><th>Cuenta</th><th>Confianza</th><th>Descripción del banco</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table></div></div>
@@ -2482,7 +2510,7 @@ async function revAplicar(btn){
     res=await post('registrarPago',{pago:{
       clave:p.clave, monto:p.monto, fecha:p.iso, origen:'banco',
       referencia:'Estado de cuenta '+REV_BANCO.periodo+' · mov. '+p.mov,
-      notas:p.banco, enviarCorreo:false, generarVoucher:true }});
+      notas:p.banco, generarVoucher:true }});
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
   REV_APL.add(_revMov(p.mov)); _revAplGuardar();
   // El pago queda registrado aunque falle la constancia; se avisa para poder reintentar.
@@ -2631,22 +2659,28 @@ async function renderOpts(){
             <div class="in"><input type="email" id="o_correoprueba" placeholder="tu-correo@ejemplo.com" value="${c.correoPrueba||''}" style="width:100%"></div></div>
         </div>
         <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
-          <div class="t-body"><b>Al registrar un pago</b>
-            <div class="t-sub">Envía el estado de cuenta actualizado al propietario cuando se consolida su pago.</div></div></div>
-        <div class="toggle"><input type="checkbox" id="o_recor" ${c.notifRecordatorio?'checked':''}>
-          <div class="t-body"><b>Recordatorio mensual</b>
-            <div class="t-sub">A todos los que tienen saldo · el día <input type="number" id="o_recordia" min="1" max="28" value="${c.recordatorioDia}"> de cada mes.</div></div></div>
+          <div class="t-body"><b>1 · Confirmación de pago recibido</b>
+            <div class="t-sub">En cuanto el pago se registra —a mano, desde la conciliación o desde un comprobante llegado por correo— el propietario recibe la confirmación con su estado de cuenta actualizado. <b>Compromiso del contrato.</b></div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_estmes" ${c.notifEstadoMensual?'checked':''}>
+          <div class="t-body"><b>2 · Estado de cuenta mensual</b>
+            <div class="t-sub">A <b>todos</b> los propietarios, esté al día o no · el día <input type="number" id="o_estmesdia" min="1" max="10" value="${c.estadoMensualDia||5}"> del mes siguiente.</div>
+            <div class="t-sub" style="margin-top:3px">El contrato exige que salga <b>dentro de los primeros 10 días</b>, por eso el día no puede pasar de 10.</div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_preaviso" ${c.notifPreaviso?'checked':''}>
+          <div class="t-body"><b>3 · Aviso antes de que venza la cuota</b>
+            <div class="t-sub"><input type="number" id="o_preavisodias" min="1" max="15" value="${c.preavisoDias||5}" style="width:52px"> días antes de terminar el mes, sólo a quien <b>aún no ha cubierto la cuota del mes en curso</b>.</div>
+            <div class="t-sub" style="margin-top:3px">Es preventivo: todavía está a tiempo de pagar <b>sin recargo</b>. Se calcula contra el último día real de cada mes.</div></div></div>
         <div class="toggle"><input type="checkbox" id="o_avmora" ${c.notifMora?'checked':''}>
-          <div class="t-body"><b>Aviso de mora</b>
+          <div class="t-body"><b>4 · Aviso de mora</b>
             <div class="t-sub">Solo a quien tenga <input type="number" id="o_moraavisomeses" min="1" max="12" value="${c.moraAvisoMeses||2}" style="width:52px"> o más <b>meses de mora</b> · el día <input type="number" id="o_moradia" min="1" max="28" value="${c.moraDia}"> de cada mes.</div>
             <div class="t-sub" style="margin-top:3px">Se envía cada mes hasta que el propietario pague y baje a <b>${(c.moraAvisoMeses||2)-1} mes(es)</b> de mora; ahí deja de recibirlo.</div></div></div>
-        <div class="toggle"><input type="checkbox" id="o_inftrim" ${c.notifInformeTrim?'checked':''}>
-          <div class="t-body"><b>Informe financiero trimestral</b>
-            <div class="t-sub">Envía el <b>Informe Financiero</b> del trimestre cerrado a todos los propietarios · el día <input type="number" id="o_inftrimdia" min="1" max="28" value="${c.informeTrimDia||5}"> de <b>enero, abril, julio y octubre</b>.</div></div></div>
+        <div class="toggle"><input type="checkbox" id="o_infmes" ${c.notifInformeMensual?'checked':''}>
+          <div class="t-body"><b>5 · Informe financiero mensual</b>
+            <div class="t-sub">Envía el <b>Informe Financiero</b> del mes cerrado a todos los propietarios · el día <input type="number" id="o_infmesdia" min="1" max="10" value="${c.informeMensualDia||10}"> del mes siguiente.</div>
+            <div class="t-sub" style="margin-top:3px">El <b>informe anual</b> no se automatiza: se envía a mano desde <b>Finanzas → Enviar a propietarios</b>, con el periodo en año completo, para que la Junta lo revise antes.</div></div></div>
         <div class="toggle" style="border-top:1px dashed var(--ac-border);margin-top:8px;padding-top:12px"><input type="checkbox" id="o_captura" ${c.capturaComprobantes?'checked':''}>
           <div class="t-body"><b>Captura de comprobantes por email</b>
             <div class="t-sub">Lee <b>comprobantes@airesdechica.org</b> una vez al día y deja los pagos <b>pendientes de revisión</b> en la pestaña Comprobantes. Solo <b>lee</b> correo entrante — no envía nada (independiente del interruptor de envíos).</div></div></div>
-        <div class="help" style="margin-top:10px">Tareas programadas: <b>${(d.triggers||[]).length? d.triggers.map(t=>({recordatorioMensual:'Recordatorio',avisoDeMora:'Aviso de mora',capturarComprobantes:'Captura de comprobantes',informeTrimestral:'Informe trimestral'}[t.funcion]||t.funcion)).join(', ') : 'ninguna'}</b>.</div>
+        <div class="help" style="margin-top:10px">Tareas programadas: <b>${(d.triggers||[]).length? d.triggers.map(t=>({estadoCuentaMensual:'Estado de cuenta mensual',preavisoCuota:'Aviso antes de vencer',avisoDeMora:'Aviso de mora',informeMensual:'Informe mensual',capturarComprobantes:'Captura de comprobantes'}[t.funcion]||t.funcion)).join(', ') : 'ninguna'}</b>.</div>
       </div></div>
     </div>
 
@@ -2860,13 +2894,15 @@ async function guardarOpts(){
     modoPrueba:document.getElementById('o_prueba').checked,
     correoPrueba:document.getElementById('o_correoprueba').value.trim(),
     notifOnPago:document.getElementById('o_onpago').checked,
-    notifRecordatorio:document.getElementById('o_recor').checked,
-    recordatorioDia:+document.getElementById('o_recordia').value,
+    notifEstadoMensual:document.getElementById('o_estmes').checked,
+    estadoMensualDia:+document.getElementById('o_estmesdia').value,
+    notifPreaviso:document.getElementById('o_preaviso').checked,
+    preavisoDias:+document.getElementById('o_preavisodias').value,
     notifMora:document.getElementById('o_avmora').checked,
     moraDia:+document.getElementById('o_moradia').value,
     moraAvisoMeses:+document.getElementById('o_moraavisomeses').value,
-    notifInformeTrim:document.getElementById('o_inftrim').checked,
-    informeTrimDia:+document.getElementById('o_inftrimdia').value,
+    notifInformeMensual:document.getElementById('o_infmes').checked,
+    informeMensualDia:+document.getElementById('o_infmesdia').value,
     capturaComprobantes:document.getElementById('o_captura').checked,
     banco:document.getElementById('o_banco').value.trim(),
     cuentaTipo:document.getElementById('o_ctipo').value.trim(),

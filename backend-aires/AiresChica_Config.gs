@@ -5,10 +5,14 @@
  * por defecto de CONFIG. El motor de estado de cuenta y los correos leen de
  * aquí, así que cambiar la cuota o la mora afecta los cálculos de inmediato.
  *
- * Notificaciones:
- *   - notifOnPago: enviar estado de cuenta al consolidar un pago (inmediato).
- *   - notifRecordatorio + recordatorioDia: recordatorio mensual (trigger).
- *   - notifMora + moraDia: aviso de mora mensual (trigger).
+ * Notificaciones (cinco, cada una con su interruptor y su día):
+ *   - notifOnPago                              confirmación inmediata al registrar un pago
+ *   - notifEstadoMensual  + estadoMensualDia   estado de cuenta a TODOS (día 1–10 del mes siguiente)
+ *   - notifPreaviso       + preavisoDias       aviso N días antes de que venza la cuota del mes
+ *   - notifMora           + moraDia            aviso a quien arrastra cuotas vencidas
+ *   - notifInformeMensual + informeMensualDia  Informe Financiero del mes cerrado
+ *
+ * El informe ANUAL no se automatiza: se envía a mano desde Finanzas.
  */
 
 var CFG_PROP = 'AC_CONFIG';
@@ -40,14 +44,19 @@ function _cfgDefaults() {
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
     correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
-    notifOnPago:       true,
-    notifRecordatorio: false,
-    recordatorioDia:   1,
-    notifMora:         false,
+    // ── Notificaciones automáticas ──────────────────────────────────────────
+    // Cada una tiene su interruptor y su día. Todas pasan además por el interruptor
+    // maestro (enviosActivos) y por el modo prueba.
+    notifOnPago:       true,     // confirmación inmediata al consolidar un pago
+    notifEstadoMensual: false,   // estado de cuenta a TODOS los propietarios
+    estadoMensualDia:  5,        // día del mes siguiente (el contrato exige dentro de los 10 primeros)
+    notifPreaviso:     false,    // aviso preventivo antes de que la cuota del mes venza
+    preavisoDias:      5,        // cuántos días ANTES de terminar el mes se avisa
+    notifMora:         false,    // aviso a quien ya arrastra cuotas vencidas
     moraDia:           5,
     moraAvisoMeses:    2,        // avisar solo a quien tenga >= N meses de mora (para al bajar a N-1)
-    notifInformeTrim:  false,    // envío trimestral del Informe Financiero a los propietarios
-    informeTrimDia:    5,        // día del mes (ene/abr/jul/oct) en que se envía el informe trimestral
+    notifInformeMensual: false,  // envío mensual del Informe Financiero a los propietarios
+    informeMensualDia: 10,       // día del mes siguiente en que sale el informe del mes cerrado
     fondoInicial:      0,        // saldo/fondo disponible al inicio del año (para el Informe Financiero)
     capturaComprobantes: false,  // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
     // Cuenta de cobro (editable). Se usa en correos, instructivo de pago y verificación de comprobantes.
@@ -117,18 +126,22 @@ function guardarConfig(nueva) {
   // Guardar desde Opciones es un cambio deliberado de la Junta: se sella con la política
   // vigente para que la migración no lo revierta en la siguiente lectura.
   clean.moraPolitica = MORA_POLITICA_V;
-  clean.recordatorioDia = Math.min(28, Math.max(1, Number(clean.recordatorioDia) || 1));
+  // El contrato exige que el estado de cuenta y el informe salgan dentro de los
+  // primeros 10 días del mes siguiente: el tope se impone aquí, no en el panel.
+  clean.estadoMensualDia = Math.min(10, Math.max(1, Number(clean.estadoMensualDia) || 5));
+  clean.informeMensualDia = Math.min(10, Math.max(1, Number(clean.informeMensualDia) || 10));
+  clean.preavisoDias = Math.min(15, Math.max(1, Math.floor(Number(clean.preavisoDias) || 5)));
   clean.moraDia = Math.min(28, Math.max(1, Number(clean.moraDia) || 1));
   clean.moraAvisoMeses = Math.min(12, Math.max(1, Math.floor(Number(clean.moraAvisoMeses) || 2)));
-  clean.notifInformeTrim = !!clean.notifInformeTrim;
-  clean.informeTrimDia = Math.min(28, Math.max(1, Number(clean.informeTrimDia) || 5));
+  clean.notifEstadoMensual = !!clean.notifEstadoMensual;
+  clean.notifPreaviso = !!clean.notifPreaviso;
+  clean.notifInformeMensual = !!clean.notifInformeMensual;
   clean.fondoInicial = _round2(Math.max(0, Number(clean.fondoInicial) || 0));
   clean.enviosActivos = !!clean.enviosActivos;
   clean.modoPrueba = !!clean.modoPrueba;
   clean.correoPrueba = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(clean.correoPrueba || '').trim())
     ? String(clean.correoPrueba).trim() : '';
   clean.notifOnPago = !!clean.notifOnPago;
-  clean.notifRecordatorio = !!clean.notifRecordatorio;
   clean.notifMora = !!clean.notifMora;
   clean.capturaComprobantes = !!clean.capturaComprobantes;
   clean.banco = String(clean.banco || '').trim() || d.banco;
@@ -162,24 +175,35 @@ function guardarConfig(nueva) {
 
 /* ─────────────── triggers ─────────────── */
 
+// Handlers que este módulo administra. Los dos últimos son de esquemas anteriores
+// (recordatorio a los que deben, informe trimestral): se listan para BORRAR sus
+// disparadores si quedaron instalados, aunque las funciones ya no existan.
+var NOTIF_HANDLERS = ['estadoCuentaMensual', 'preavisoCuota', 'avisoDeMora',
+                      'informeMensual', 'capturarComprobantes'];
+var NOTIF_HANDLERS_VIEJOS = ['recordatorioMensual', 'informeTrimestral'];
+
 function reconcileTriggers(cfg) {
   cfg = cfg || _cfg();
+  var todos = NOTIF_HANDLERS.concat(NOTIF_HANDLERS_VIEJOS);
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    var h = t.getHandlerFunction();
-    if (h === 'recordatorioMensual' || h === 'avisoDeMora' || h === 'capturarComprobantes' || h === 'informeTrimestral') ScriptApp.deleteTrigger(t);
+    if (todos.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
-  if (cfg.notifRecordatorio) {
-    ScriptApp.newTrigger('recordatorioMensual').timeBased().onMonthDay(cfg.recordatorioDia).atHour(8).create();
+  if (cfg.notifEstadoMensual) {
+    ScriptApp.newTrigger('estadoCuentaMensual').timeBased().onMonthDay(cfg.estadoMensualDia).atHour(8).create();
+  }
+  if (cfg.notifPreaviso) {
+    // «N días antes de terminar el mes» no es un día fijo (febrero, meses de 30 y de 31),
+    // así que el disparador corre A DIARIO y el handler decide si hoy toca.
+    ScriptApp.newTrigger('preavisoCuota').timeBased().everyDays(1).atHour(8).create();
   }
   if (cfg.notifMora) {
     ScriptApp.newTrigger('avisoDeMora').timeBased().onMonthDay(cfg.moraDia).atHour(8).create();
   }
+  if (cfg.notifInformeMensual) {
+    ScriptApp.newTrigger('informeMensual').timeBased().onMonthDay(cfg.informeMensualDia).atHour(9).create();
+  }
   if (cfg.capturaComprobantes) {
     ScriptApp.newTrigger('capturarComprobantes').timeBased().everyDays(1).atHour(7).create();
-  }
-  if (cfg.notifInformeTrim) {
-    // corre cada mes; el handler solo actúa en ene/abr/jul/oct (cierre de trimestre)
-    ScriptApp.newTrigger('informeTrimestral').timeBased().onMonthDay(cfg.informeTrimDia).atHour(9).create();
   }
 }
 
@@ -189,12 +213,43 @@ function activarNotificaciones() {
   return _listNotifTriggers();
 }
 
-function recordatorioMensual() { return enviarRecordatorios('mensual'); }
-function avisoDeMora()         { return enviarRecordatorios('mora'); }
+/* ─────────────── handlers programados ───────────────
+ * Cada uno vuelve a comprobar su propio interruptor: un disparador puede sobrevivir a
+ * un cambio de configuración (o haber quedado de una versión anterior), y no queremos
+ * que eso baste para que salgan correos.
+ */
+
+// Estado de cuenta mensual a TODOS los propietarios (compromiso del contrato:
+// dentro de los primeros 10 días del mes siguiente).
+function estadoCuentaMensual() {
+  var cfg = _cfg();
+  if (!cfg.notifEstadoMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'estado mensual desactivado o envíos pausados' };
+  return enviarRecordatorios('estado');
+}
+
+// Aviso preventivo: faltan N días para que termine el mes y la cuota del mes en curso
+// sigue sin cubrirse. El objetivo es que el propietario pague a tiempo y NO genere mora.
+function preavisoCuota() {
+  var cfg = _cfg();
+  if (!cfg.notifPreaviso || !cfg.enviosActivos) return { enviados: 0, motivo: 'preaviso desactivado o envíos pausados' };
+  var hoy = new Date();
+  var ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  var faltan = ultimoDia - hoy.getDate();
+  if (faltan !== Math.floor(Number(cfg.preavisoDias) || 5)) {
+    return { enviados: 0, omitido: true, faltan: faltan, motivo: 'hoy no toca el preaviso' };
+  }
+  return enviarRecordatorios('preaviso');
+}
+
+function avisoDeMora() {
+  var cfg = _cfg();
+  if (!cfg.notifMora || !cfg.enviosActivos) return { enviados: 0, motivo: 'aviso de mora desactivado o envíos pausados' };
+  return enviarRecordatorios('mora');
+}
 
 function _listNotifTriggers() {
   return ScriptApp.getProjectTriggers()
-    .filter(function (t) { return ['recordatorioMensual', 'avisoDeMora', 'capturarComprobantes', 'informeTrimestral'].indexOf(t.getHandlerFunction()) >= 0; })
+    .filter(function (t) { return NOTIF_HANDLERS.indexOf(t.getHandlerFunction()) >= 0; })
     .map(function (t) {
       return { funcion: t.getHandlerFunction() };
     });

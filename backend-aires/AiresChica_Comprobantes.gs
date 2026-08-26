@@ -289,6 +289,14 @@ function _adjuntosValidos(msg) {
  */
 function capturarComprobantes(maxThreads) {
   ensureSheets();
+  // El disparador horario invoca la función pasándole su OBJETO DE EVENTO como primer
+  // argumento. Ese objeto caía tal cual en el límite de GmailApp.search() y Gmail
+  // respondía «No se puede convertir "[object Object]" en int», así que la captura
+  // automática murió en cada corrida desde el día que se instaló el trigger (desde el
+  // panel sí funcionaba, porque ahí se llama sin argumentos). Por eso el límite se sanea
+  // aquí y no se confía en que llegue un número.
+  var _n = Math.floor(Number(maxThreads));
+  var lim = (isFinite(_n) && _n > 0) ? Math.min(_n, 200) : 40;
   var buzon = (CONFIG.COMPROBANTES_EMAIL || 'comprobantes@airesdechica.org').toLowerCase();
   var sh = _ss().getSheetByName(SH.COMPROB);
 
@@ -307,7 +315,7 @@ function capturarComprobantes(maxThreads) {
 
   var folder = _carpetaComprobantes();
   var label = GmailApp.getUserLabelByName(GMAIL_LABEL_COMPROB) || GmailApp.createLabel(GMAIL_LABEL_COMPROB);
-  var threads = GmailApp.search('to:' + buzon + ' newer_than:120d', 0, maxThreads || 40);
+  var threads = GmailApp.search('to:' + buzon + ' newer_than:120d', 0, lim);
   var nuevos = 0, descartados = 0, filas = [];
 
   threads.forEach(function (th) {
@@ -496,7 +504,16 @@ function resolverComprobante(data) {
     _reg('comprob.aplica', { clave: clave, propietario: prop.nombre, monto: monto, origen: 'comprobante',
       despues: _fechaCorta(new Date(vals[r][iFe])),
       detalle: 'Comprobante ' + data.id + ' · ' + String(vals[r][iAs] || '').slice(0, 90) });
-    return { ok: true, estado: 'aplicado', clave: clave, monto: monto, cuota: prop.cuota };
+    // Confirmación al propietario: es el compromiso de «notificar que su pago fue
+    // recibido y procesado». Esta es la vía automática (comprobante llegado por correo),
+    // así que la decide la configuración, no un botón. Si el correo falla, el pago ya
+    // quedó registrado: se reporta y se sigue.
+    var _conf = null;
+    if (_cfg().notifOnPago) {
+      try { _conf = enviarEstadoCuenta(clave, 'pago'); }
+      catch (e) { _conf = { enviado: false, error: String(e && e.message || e) }; }
+    }
+    return { ok: true, estado: 'aplicado', clave: clave, monto: monto, cuota: prop.cuota, correo: _conf };
   }
   throw new Error('Comprobante no encontrado: ' + data.id);
 }

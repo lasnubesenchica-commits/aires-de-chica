@@ -201,21 +201,82 @@ function autorizarCorreo() {
 
 /* ─────────────── correos ─────────────── */
 
-// Cuerpo HTML del correo de estado de cuenta (mismo formato para el envío real y la prueba).
-function _cuerpoEstado(est) {
+/**
+ * Cuerpo HTML del correo de estado de cuenta.
+ *
+ * El adjunto y el instructivo de pago son siempre los mismos; lo que cambia es la
+ * ENTRADA, según por qué se está escribiendo. Un aviso preventivo, una confirmación de
+ * pago y un aviso de mora no pueden empezar con el mismo párrafo: el propietario los
+ * lee distinto y en el preventivo lo importante es la fecha límite, no el saldo.
+ *
+ * contexto: 'pago' | 'estado' | 'preaviso' | 'mora' | '' (genérico)
+ */
+function _cuerpoEstado(est, contexto) {
+  var B = AC_BRAND, cfg = _cfg();
   var saldoTxt = est.saldoConMora > 0.009
-    ? 'Su saldo pendiente es <b style="color:' + AC_BRAND.coral + '">' + _money(est.saldoConMora) + '</b>' +
+    ? 'Su saldo pendiente es <b style="color:' + B.coral + '">' + _money(est.saldoConMora) + '</b>' +
       (est.mora > 0.009 ? ' (incluye ' + _money(est.mora) + ' de mora)' : '') + '.'
-    : 'Su cuenta está <b style="color:' + AC_BRAND.ok + '">al día</b>. ¡Gracias!';
+    : 'Su cuenta está <b style="color:' + B.ok + '">al día</b>. ¡Gracias!';
+
+  var hoy = new Date();
+  var mesNombre = AC_MESES_LARGO[hoy.getMonth()];
+  var ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  var mesCerrado = AC_MESES_LARGO[(hoy.getMonth() + 11) % 12];
+  var pendMes = Number(est.pendienteMes) || 0;
+
+  var entrada;
+  if (contexto === 'pago') {
+    entrada =
+      '<p style="padding:12px 14px;background:#EAF7EF;border-left:4px solid ' + B.ok + ';border-radius:6px">' +
+        '<b style="color:' + B.ok + '">Recibimos su pago.</b> Ya quedó registrado y aplicado a su cuenta.</p>' +
+      '<p>Adjuntamos su estado de cuenta actualizado (Lote ' + est.lote + ', ' + est.residencial + ') para que verifique cómo se aplicó.</p>' +
+      '<p>' + saldoTxt + '</p>';
+  } else if (contexto === 'preaviso') {
+    entrada =
+      '<p>Le escribimos para <b>ayudarle a evitar el recargo por mora</b>.</p>' +
+      '<p style="padding:12px 14px;background:#FFF7F4;border-left:4px solid ' + B.coral + ';border-radius:6px">' +
+        'La cuota de <b>' + mesNombre + '</b> vence el <b>' + ultimoDia + ' de ' + mesNombre + '</b>' +
+        (pendMes > 0.009 ? ' y aún tiene <b>' + _money(pendMes) + '</b> por cubrir' : '') + '. ' +
+        'Si no se cubre dentro del mes, a partir del día 1 se aplica un <b>recargo del ' + cfg.moraPct + '%</b> sobre la cuota.</p>' +
+      '<p>Si ya realizó su pago en estos días, por favor ignore este mensaje: puede que aún no se haya reflejado.</p>';
+  } else if (contexto === 'mora') {
+    entrada =
+      '<p>Estimado(a) <b>' + est.nombre + '</b>, su cuenta registra <b>cuotas vencidas</b> (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
+      '<p>' + saldoTxt + '</p>' +
+      '<p>Le agradecemos regularizar su situación. Si necesita coordinar un arreglo de pago, escríbanos: con gusto lo conversamos.</p>';
+  } else if (contexto === 'estado') {
+    entrada =
+      '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
+      '<p>Adjuntamos su <b>estado de cuenta de mantenimiento</b> al cierre de <b>' + mesCerrado + '</b> ' +
+        '(Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
+      '<p>' + saldoTxt + '</p>';
+  } else {
+    entrada =
+      '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
+      '<p>Adjuntamos su estado de cuenta de mantenimiento actualizado (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
+      '<p>' + saldoTxt + '</p>';
+  }
+
+  var mostrarCuenta = (contexto !== 'pago') && (est.saldoConMora > 0.009 || contexto === 'preaviso');
   return _emailShell(
-    '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
-    '<p>Adjuntamos su estado de cuenta de mantenimiento actualizado (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
-    '<p>' + saldoTxt + '</p>' +
-    (est.saldoConMora > 0.009 ?
-      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + _cfg().banco + ' · ' + _cfg().cuentaTipo +
-      ' Nº ' + _cfg().cuentaNum + '<br>' + _cfg().cuentaNombre + '</p>' : '') +
+    entrada +
+    (mostrarCuenta ?
+      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + cfg.banco + ' · ' + cfg.cuentaTipo +
+      ' Nº ' + cfg.cuentaNum + '<br>' + cfg.cuentaNombre + '</p>' : '') +
     _instructivoPago(est.lote)
   );
+}
+
+// Asunto según por qué se escribe. Se mantiene el lote al final: es como los
+// propietarios encuentran su correo cuando buscan.
+function _asuntoEstado(est, contexto) {
+  var hoy = new Date();
+  var mesCerrado = AC_MESES_LARGO[(hoy.getMonth() + 11) % 12];
+  if (contexto === 'pago')     return 'Confirmación de pago recibido — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  if (contexto === 'preaviso') return 'Su cuota de ' + AC_MESES_LARGO[hoy.getMonth()] + ' vence este mes — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  if (contexto === 'mora')     return 'Cuotas pendientes de pago — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  if (contexto === 'estado')   return 'Estado de cuenta al cierre de ' + mesCerrado + ' — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  return 'Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
 }
 
 /**
@@ -231,24 +292,26 @@ function enviarPruebaEstado(email, tipo, clave) {
   clave = String(clave || '').trim();
   if (clave) { try { est = getEstadoCuentaByKey(clave); } catch (e) {} } // propietario elegido en el dropdown
   if (!est) {
-    // sin selección válida: cae a una cuenta de muestra (con mora si aplica)
+    // Sin selección válida, se busca una cuenta que ILUSTRE ese aviso: no sirve probar
+    // el preaviso con alguien que ya pagó, ni el de mora con alguien al día.
     var dash = buildDashboard(null);
     var muestra = null;
-    if (tipo === 'mora') dash.cuentas.forEach(function (c) { if (!muestra && c.mora > 0.009) muestra = c; });
+    if (tipo === 'mora') dash.cuentas.forEach(function (c) { if (!muestra && (c.mesesMora || 0) > 0) muestra = c; });
+    if (tipo === 'preaviso') dash.cuentas.forEach(function (c) { if (!muestra && (Number(c.pendienteMes) || 0) > 0.009) muestra = c; });
     if (!muestra) dash.cuentas.forEach(function (c) { if (!muestra && c.saldoConMora > 0.009) muestra = c; });
     if (!muestra) muestra = dash.cuentas[0];
     if (!muestra) throw new Error('No hay propietarios para generar la muestra.');
     est = getEstadoCuentaByKey(muestra.clave);
   }
   var pdf = estadoCuentaPDF(est);
-  var asunto = '[PRUEBA] Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
+  var asunto = '[PRUEBA] ' + _asuntoEstado(est, tipo);
   GmailApp.sendEmail(email, asunto,
-    'Correo de prueba del estado de cuenta (verificación de formato).',
-    { name: CONFIG.NEGOCIO, replyTo: CONFIG.REPLY_TO, htmlBody: _cuerpoEstado(est), attachments: [pdf] });
-  return { enviado: true, email: email, muestra: est.nombre, lote: est.lote };
+    'Correo de prueba (verificación de formato).',
+    { name: CONFIG.NEGOCIO, replyTo: CONFIG.REPLY_TO, htmlBody: _cuerpoEstado(est, tipo), attachments: [pdf] });
+  return { enviado: true, email: email, muestra: est.nombre, lote: est.lote, tipo: tipo };
 }
 
-function enviarEstadoCuenta(clave) {
+function enviarEstadoCuenta(clave, contexto) {
   var cfg = _cfg();
   if (!cfg.enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
   var est = getEstadoCuentaByKey(clave);
@@ -257,9 +320,8 @@ function enviarEstadoCuenta(clave) {
   var destino = prueba ? cfg.correoPrueba : est.email;
   if (!destino) return { enviado: false, motivo: 'Propietario sin correo', clave: clave, lote: est.lote };
   var pdf = estadoCuentaPDF(est);
-  var asunto = (prueba ? '[PRUEBA→' + est.email + '] ' : '') +
-    'Estado de cuenta — ' + CONFIG.NEGOCIO + ' — Lote ' + est.lote;
-  var cuerpo = _cuerpoEstado(est);
+  var asunto = (prueba ? '[PRUEBA→' + est.email + '] ' : '') + _asuntoEstado(est, contexto);
+  var cuerpo = _cuerpoEstado(est, contexto);
   // GmailApp (no MailApp): sale por el camino normal de Gmail, que las cuentas
   // nuevas de Workspace sí entregan (MailApp era rechazado por Gmail).
   GmailApp.sendEmail(destino, asunto, 'Adjuntamos su estado de cuenta de mantenimiento. Ver la versión con formato en su cliente de correo.', {
@@ -271,13 +333,29 @@ function enviarEstadoCuenta(clave) {
   return { enviado: true, clave: clave, lote: est.lote, email: destino, prueba: prueba, destinatarioReal: est.email, saldo: est.saldoConMora };
 }
 
+/**
+ * Envío por lotes del estado de cuenta. El `tipo` decide DOS cosas: a quién se le
+ * escribe y con qué entrada se le escribe.
+ *
+ *   'estado'   → a TODOS los propietarios activos. Es el compromiso del contrato:
+ *                el estado de cuenta del mes cerrado, también a quien está al día.
+ *   'preaviso' → sólo a quien aún no cubre la cuota del MES EN CURSO. Preventivo:
+ *                todavía está a tiempo de pagar sin recargo.
+ *   'mora'     → sólo a quien acumula >= N cuotas vencidas (moraAvisoMeses).
+ *   'mensual'  → a todo el que tenga saldo. Es el botón manual del panel.
+ *
+ * `lotes` (opcional) fuerza la lista de cuentas y se salta el filtro.
+ */
 function enviarRecordatorios(tipo, lotes) {
   if (!_cfg().enviosActivos) return { enviados: 0, pausado: true, sinCorreo: [], motivo: 'Envíos pausados (interruptor maestro apagado).' };
-  tipo = tipo || 'mensual'; // 'mensual' | 'mora'
+  tipo = tipo || 'mensual';
   var dash = buildDashboard(null);
   var minMeses = Math.max(1, Number(_cfg().moraAvisoMeses) || 2);
   var objetivo = dash.cuentas.filter(function (c) {
     if (lotes && lotes.length) return lotes.indexOf(c.clave) !== -1;
+    if (tipo === 'estado') return true;
+    // preaviso: la cuota de este mes existe y no está cubierta del todo
+    if (tipo === 'preaviso') return (Number(c.cuotaMes) || 0) > 0.009 && (Number(c.pendienteMes) || 0) > 0.009;
     // aviso de mora: solo a quien tenga >= N meses de mora (deja de recibir al bajar a N-1)
     if (tipo === 'mora') return (c.mesesMora || 0) >= minMeses;
     return c.saldoConMora > 0.009; // recordatorio a todos con saldo
@@ -286,12 +364,19 @@ function enviarRecordatorios(tipo, lotes) {
   objetivo.forEach(function (c) {
     if (!c.email) { sinCorreo.push(c.lote); return; }
     try {
-      var res = enviarEstadoCuenta(c.clave);
+      var res = enviarEstadoCuenta(c.clave, tipo);
       enviados.push(res);
       Utilities.sleep(400); // respeta cuota de envío
     } catch (e) { sinCorreo.push(c.clave + ' (' + e + ')'); }
   });
-  return { tipo: tipo, enviados: enviados.length, sinCorreo: sinCorreo, detalle: enviados };
+  var res = { tipo: tipo, objetivo: objetivo.length, enviados: enviados.length, sinCorreo: sinCorreo, detalle: enviados };
+  // Los envíos masivos automáticos dejan constancia: si un mes no salieron, se ve aquí.
+  if (!lotes) {
+    _reg('correo.envia', { entidad: 'correo', campo: tipo,
+      detalle: 'Envío automático «' + tipo + '»: ' + enviados.length + ' de ' + objetivo.length +
+        (sinCorreo.length ? ' · ' + sinCorreo.length + ' sin correo' : '') });
+  }
+  return res;
 }
 
 function _emailShell(inner) {

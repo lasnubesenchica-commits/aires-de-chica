@@ -847,8 +847,11 @@ function registrarPago(pago) {
       resultado.voucherNumero = v.numero;
     } catch (e) { resultado.voucherError = String(e); }
   }
-  if (pago.enviarCorreo && prop && prop.email) {
-    try { resultado.correo = enviarEstadoCuenta(pago.clave); }
+  // Confirmación al propietario. La decide la configuración (notifOnPago), que es el
+  // compromiso de «notificar que su pago fue recibido y procesado»; la casilla del
+  // formulario sólo sirve para forzarla cuando ese interruptor está apagado.
+  if ((_cfg().notifOnPago || pago.enviarCorreo) && prop && prop.email) {
+    try { resultado.correo = enviarEstadoCuenta(pago.clave, 'pago'); }
     catch (e) { resultado.correoError = String(e); }
   }
   return resultado;
