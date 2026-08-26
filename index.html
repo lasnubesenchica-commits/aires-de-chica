@@ -1999,71 +1999,84 @@ async function consolidar(){
  * o se pone REV_BANCO = null para ocultar la tarjeta.
  */
 const REV_BANCO = {
-  periodo:'01 – 18 de agosto de 2026',
+  periodo:'01 – 25 de agosto de 2026',
   cuenta:'Banco General · ahorros 04-02-98-706290-3',
-  revisado:'19/08/2026',
-  control:{ saldoIni:6987.88, abonos:1914.95, movs:24, saldoFin:8902.83,
-            yaEnSistema:934.95, yaMovs:9, pendiente:980.00,
-            listos:711.00, listosN:10, consultar:269.00, consultarN:3 },
-  // Cada movimiento del banco cuadra con la cadena de saldos del PDF, y las 9
-  // partidas ya registradas calzan todas: no hay pagos huérfanos en el sistema.
+  revisado:'26/08/2026',
+  control:{ movs:19, archivo:1245.00, pendiente:1225.00,
+            listos:1225.00, listosN:19, consultar:0, consultarN:0 },
+  // Ninguno de los movimientos del archivo choca con los 9 pagos de agosto que ya
+  // estaban registrados: son de otras cuentas, así que no hay riesgo de doble conteo.
   listos:[
-    {mov:1, fecha:'01/08', iso:'2026-08-01', clave:'Q-20', nombre:'Roberto De Leon L', ubic:'El Quira lote 20', monto:49.50, aldia:true,
+    {mov:1, fecha:'01/08', iso:'2026-08-01', clave:'Q-20', nombre:'Roberto De Leon L', ubic:'El Quirá lote 20', monto:49.50, aldia:true,
      banco:'BANCA MÓVIL DE ROBERTO ERNESTO DE LEON PLICET (THE BUFFALO HOUSE)',
-     nota:'Queda al día. Los 4.50 de más pasan como crédito a favor de septiembre.'},
-    {mov:4, fecha:'03/08', iso:'2026-08-03', clave:'Q-23', nombre:'Marianela Mcvay', ubic:'El Quira lote 23', monto:45.00, aldia:true,
-     banco:'BANCA MÓVIL DE IAN JAMES MC VAY (O) MARIANELA DEL CARMEN QUINTERO de MC VAY',
-     nota:'La cuenta es de Ian y Marianela Mc Vay; Marianela es la propietaria de Q-23 y debía exactamente 45.00. Ojo: existe también Q-22 (Gustavo Mcvay), pero su saldo es 49.50 y su correo es otro.'},
-    {mov:5, fecha:'04/08', iso:'2026-08-04', clave:'H-15', nombre:'Diana Lorenzo; Javier Della Cella', ubic:'El Higuerón lote 15/16/17', monto:72.00, aldia:false,
+     nota:'Cubre agosto. Los 4.50 de más pasan como crédito a favor de septiembre.'},
+    {mov:2, fecha:'03/08', iso:'2026-08-03', clave:'Q-23', nombre:'Marianela Mcvay', ubic:'El Quirá lote 23', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE IAN JAMES MC VAY (O) MARIANELA DEL CARMEN QUINTERO DE MC VAY',
+     nota:'Cubre agosto exacto. La cuenta es de Ian y Marianela Mc Vay; Marianela es la propietaria de Q-23. Ojo: existe también Q-22 (Gustavo Mcvay), que es otra cuenta.'},
+    {mov:3, fecha:'04/08', iso:'2026-08-04', clave:'H-15', nombre:'Diana Lorenzo; Javier Della Cella', ubic:'El Higuerón lote 15/16/17', monto:72.00, aldia:false,
      banco:'BANCA MÓVIL DE DIANA ESTELA LORENZO LORENZO (O) JAVIER ENRIQUE DELLA CELLA',
-     nota:'Quedan 0.20 de mayo, residuo de un abono parcial anterior. La cuota que aplica el motor es 72.00, no los 162.00 que dice la columna “cuota” de Propietarios — ver observación 3.'},
-    {mov:6, fecha:'05/08', iso:'2026-08-05', clave:'L-17', nombre:'Rosalina Pinzón', ubic:'Los Laureles lote 17', monto:45.00, aldia:true,
-     banco:'BANCA EN LÍNEA DE ROSALINA ABIGAIL PINZON CUCA · “Pago a mantenimiento de areas”',
-     nota:'Queda al día.'},
-    {mov:10, fecha:'11/08', iso:'2026-08-11', clave:'Q-11', nombre:'Antonio Pinedo', ubic:'El Quira lote 11', monto:270.00, aldia:true,
-     banco:'BANCA MÓVIL DE SIGWALDO ANTONIO PINEDO HOYVIK · “pago cuota semestral”',
-     nota:'Era el mayor deudor de la cartera (328.50 al 31/07). Queda al día con 175.50 de crédito a favor.'},
-    {mov:12, fecha:'14/08', iso:'2026-08-14', clave:'L-2', nombre:'Luis Ying Ho', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
-     banco:'BANCA MÓVIL DE LUIS YING HO · “Pago de Mantenimiento Agosto 2026 Luis Ying”',
-     nota:'Queda al día.'},
-    {mov:19, fecha:'16/08', iso:'2026-08-16', clave:'Q-5', nombre:'Yara Chung', ubic:'El Quira lote 5', monto:45.00, aldia:true,
-     banco:'BANCA MÓVIL DE YARA YVETH CHUNG PINILLO · “Mantenimiento agosto”',
-     nota:'Queda al día.'},
-    {mov:20, fecha:'17/08', iso:'2026-08-17', clave:'Q-7', nombre:'Annette Ayala', ubic:'El Quira lote 7', monto:45.00, aldia:true,
-     banco:'BANCA EN LÍNEA DE ANNETTE YARELYS AYALA MARIN · “Annette mantenimiento mes corr”',
-     nota:'Ya estaba al día; los 45.00 entran completos como crédito a favor de septiembre.'},
-    {mov:22, fecha:'17/08', iso:'2026-08-17', clave:'Q-14AYB', nombre:'Alejandrina Escamilla', ubic:'El Quira lote 14A y B', monto:45.00, aldia:true,
-     banco:'BANCA MÓVIL DE ALEJANDRINA JUDITH ESCAMILLA TRUJILLO · “mp y control de aires d…”',
-     nota:'Propietaria nueva: su cobro inicia en agosto, es su primer mes. Del banco entraron 65.00; aquí se cargan 45.00 como cuota y los 20.00 restantes quedan por consultar.'},
-    {mov:23, fecha:'17/08', iso:'2026-08-17', clave:'L-16', nombre:'Ana Tejada', ubic:'Los Laureles lote 16', monto:49.50, aldia:false,
+     nota:'Cubre la cuota de agosto, 72.00. Quedan 0.20 del recargo de mayo: se generó 7.20 y se abonaron 7.00. La cuota que aplica el motor es 72.00, no los 162.00 de la columna “cuota” de Propietarios — ver observación 2.'},
+    {mov:4, fecha:'05/08', iso:'2026-08-05', clave:'L-17', nombre:'Rosalina Pinzón', ubic:'Los Laureles lote 17', monto:45.00, aldia:true,
+     banco:'BANCA EN LÍNEA DE ROSALINA ABIGAIL PINZON CUCA · "Pago a mantenimiento de areas"',
+     nota:'Cubre agosto exacto. Queda al día.'},
+    {mov:5, fecha:'11/08', iso:'2026-08-11', clave:'Q-11', nombre:'Antonio Pinedo', ubic:'El Quirá lote 11', monto:270.00, aldia:true,
+     banco:'BANCA MÓVIL DE SIGWALDO ANTONIO PINEDO HOYVIK · "pago cuota semestral"',
+     nota:'Pago semestral. Salda julio (45.00), su recargo (4.50) y agosto (45.00); quedan 175.50 de crédito a favor para los meses siguientes.'},
+    {mov:6, fecha:'14/08', iso:'2026-08-14', clave:'L-2', nombre:'Luis Ying Ho', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE LUIS YING HO · "Pago de Mantenimiento Agosto 2026"',
+     nota:'Cubre agosto exacto. Queda al día.'},
+    {mov:7, fecha:'15/08', iso:'2026-08-15', clave:'L-2-2', nombre:'Cesar Vasquez', ubic:'Los Laureles lote 2', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE CESAR AUGUSTO VASQUEZ GUTIERREZ · "Cuota mantenimiento lote 2 Lo…"',
+     nota:'Propietario dado de alta el 26/08 (L-2-2, Los Laureles lote 2, sub-bloque E). Su cobro inicia en agosto: este es su primer mes y lo cubre exacto. No se cruza con L-2 (Luis Ying Ho), que pagó su agosto el día anterior.'},
+    {mov:8, fecha:'16/08', iso:'2026-08-16', clave:'Q-5', nombre:'Yara Chung', ubic:'El Quirá lote 5', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE YARA YVETH CHUNG PINILLO · "Mantenimiento agosto"',
+     nota:'Cubre agosto exacto. Queda al día.'},
+    {mov:9, fecha:'17/08', iso:'2026-08-17', clave:'Q-7', nombre:'Annette Ayala', ubic:'El Quirá lote 7', monto:45.00, aldia:true,
+     banco:'BANCA EN LÍNEA DE ANNETTE YARELYS AYALA MARIN · "mantenimiento mes corr"',
+     nota:'Ya estaba al día: los 45.00 entran completos como crédito a favor de septiembre.'},
+    {mov:10, fecha:'17/08', iso:'2026-08-17', clave:'Q-14AYB', nombre:'Alejandrina Escamilla', ubic:'El Quirá lote 14A Y B', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE ALEJANDRINA JUDITH ESCAMILLA TRUJILLO',
+     nota:'Cubre agosto exacto. Los lotes 14A y 14B facturan una sola cuota.'},
+    {mov:11, fecha:'17/08', iso:'2026-08-17', clave:'L-16', nombre:'Ana Tejada', ubic:'Los Laureles lote 16', monto:49.50, aldia:false,
      banco:'BANCA MÓVIL DE ANA ROSA TEJADA TEJADA',
-     nota:'ATENCIÓN: pagó 49.50 pero debía 103.50. Le quedan 40.50 de agosto sin cubrir, más recargos de abril, junio y julio. Si no completa antes del cierre se le generará OTRO recargo de 4.50 — conviene avisarle.'}
-  ],
-  consultar:[
-    {mov:15, fecha:'15/08', monto:45.00,
-     banco:'BANCA MÓVIL DE CESAR AUGUSTO VASQUEZ GUTIERREZ · “Cuota mantenimiento lote 2 Lo…”',
-     porque:'Ningún propietario se llama César Vásquez. El único “lote 2” del sistema es L-2 (Luis Ying Ho), que ya pagó su agosto el día anterior desde una transferencia a su propio nombre. Hay 27 propietarios con saldo de exactamente 45.00, así que asignarlo por monto sería adivinar.',
-     ask:'¿A qué lote corresponde este pago? ¿César Vásquez es inquilino, familiar de algún propietario, o un propietario nuevo que paga por otro lote? Si es el lote 2 de Los Laureles, ¿por qué se pagó dos veces en agosto?'},
-    {mov:24, fecha:'18/08', monto:204.00,
+     nota:'ATENCIÓN: pagó 49.50 pero debía 103.50. Salda julio (45.00) y abona 4.50 a agosto; le quedan 40.50 de agosto sin cubrir más 13.50 de recargos. Si no completa antes del cierre se le generará otro recargo — conviene avisarle.'},
+    {mov:12, fecha:'18/08', iso:'2026-08-18', clave:'L-12', nombre:'Carlos Castillo', ubic:'Los Laureles lote 12', monto:54.00, aldia:false,
      banco:'DEPÓSITO CUENTA DE AHORROS SIN LIBRETA',
-     porque:'Depósito en efectivo, sin identificación del depositante. 204.00 no es múltiplo de ninguna cuota vigente (45.00 / 58.50 / 72.00 / 90.00 / 103.50), y se probaron todas las combinaciones de hasta 3 saldos pendientes: ninguna suma 204.00.',
-     ask:'¿Quién hizo el depósito del 18/08 y por qué concepto? ¿Es cuota de mantenimiento, aporte o reembolso? Si corresponde a varios propietarios, ¿cómo se reparte entre ellos?'},
-    {mov:22, fecha:'17/08', monto:20.00,
-     banco:'EXCEDENTE de ALEJANDRINA JUDITH ESCAMILLA TRUJILLO (Q-14AYB) · “mp y control de aires d…”',
-     porque:'Transfirió 65.00 y su cuota de agosto es 45.00. Los 20.00 de más no son cuota. La glosa menciona “control”, que en el residencial suele referirse al control remoto del portón.',
-     ask:'¿Los 20.00 adicionales son por un control remoto del portón, o por otro concepto? Si es una venta, se registran como OTRO INGRESO y no como crédito a favor en su cuenta.'}
+     nota:'Abono parcial. Salda lo que quedaba de julio (40.50) y abona 13.50 a agosto; quedan 31.50 de agosto y 13.50 de recargos.'},
+    {mov:13, fecha:'19/08', iso:'2026-08-19', clave:'H-22', nombre:'Adaluz Sanjur', ubic:'El Higuerón lote 22', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE ADALUZ DEL CARMEN SANJUR · "Mantenimiento lote H22 agosto2026"',
+     nota:'Cubre agosto exacto. Queda al día.'},
+    {mov:14, fecha:'19/08', iso:'2026-08-19', clave:'Q-16A', nombre:'Daphney Visueti', ubic:'El Quirá lote 16A', monto:100.00, aldia:true,
+     banco:'BANCA MÓVIL DE DAPHNEY LYN VISUETE TORRES (CLINICA DENTAL HADASSAH)',
+     nota:'Salda julio (45.00), su recargo (4.50) y agosto (45.00); quedan 5.50 de crédito a favor. El banco escribe “Visuete” y el sistema “Visueti”: es la misma persona.'},
+    {mov:15, fecha:'21/08', iso:'2026-08-21', clave:'H-20', nombre:'Walter Aguilar', ubic:'El Higuerón lote 20', monto:90.00, aldia:false,
+     banco:'BANCA MÓVIL DE WALTER ANTONIO AGUILAR · "Manteniento julio Agosto"',
+     nota:'Glosa del banco: “Manteniento julio Agosto”. Cubre las dos cuotas (90.00), pero queda pendiente el recargo de julio, 4.50: la mora se cobra de último, después de las cuotas.'},
+    {mov:16, fecha:'21/08', iso:'2026-08-21', clave:'H-28', nombre:'Omar T. Y Yessenia C.', ubic:'El Higuerón lote 28', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE YESSENI MABEL CAMPOS PINZON · "mantenimiento lote chica Omar y Y…"',
+     nota:'Paga Yessenia Campos Pinzón; la cuenta está a nombre de “Omar T. y Yessenia C.”. Cubre agosto exacto.'},
+    {mov:'18a', fecha:'25/08', iso:'2026-08-25', clave:'Q-6A', nombre:'Kristina Lam', ubic:'El Quirá lote 6A', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE ESMERALDA TUY DE LAM · "mensualidad de agosto lotes 6A y 6B"',
+     nota:'Parte 1 de un depósito de 90.00 por las cuotas de agosto de los DOS lotes. Se registran 45.00 aquí y 45.00 en Q-6B (mov. 18b). Cubre agosto exacto.'},
+    {mov:'18b', fecha:'25/08', iso:'2026-08-25', clave:'Q-6B', nombre:'Esmeralda Tuy De Lam', ubic:'El Quirá lote 6B', monto:45.00, aldia:true,
+     banco:'BANCA MÓVIL DE ESMERALDA TUY DE LAM · "mensualidad de agosto lotes 6A y 6B"',
+     nota:'Parte 2 del depósito de 90.00 de Esmeralda Tuy de Lam, que paga por 6A y 6B. Se registran 45.00 aquí y 45.00 en Q-6A (mov. 18a). Cubre agosto exacto.'},
+    {mov:19, fecha:'25/08', iso:'2026-08-25', clave:'Q-8', nombre:'Hiromi De Josephs', ubic:'El Quirá lote 8', monto:45.00, aldia:true,
+     banco:'DEPÓSITO CUENTA DE AHORROS SIN LIBRETA',
+     nota:'Depósito sin libreta; la glosa del banco no dice el lote. La identificación viene de la nota del cliente. Cubre agosto exacto.'}
   ],
+  consultar:[],
   obs:[
-    {t:'Dos abonos quedaron consolidados en el sistema',
-     d:'Judith Araúz (L-14) hizo TRES transferencias ACH: 45.00 el 10/08, 45.00 el 13/08 y 4.50 el 17/08 (movimientos 8, 11 y 21). En el sistema figuran como una sola partida de 94.50 con fecha 10/08. Karlina Barrera (L-7) igual: 49.50 el 01/08 + 4.50 el 03/08 (movimientos 2 y 3) registrados como 54.00 el 01/08. No afecta ni el saldo ni la mora — mismo monto, mismo mes; sólo dificulta conciliar contra el banco más adelante.'},
-    {t:'Una fecha difiere en un día',
-     d:'Cristian Howell (Q-25, movimiento 14) figura en el sistema con fecha 14/08 y el banco lo acredita el 15/08. Mismo mes, así que no cambia la mora. Se corrige desde el histórico de pagos del estado de cuenta.'},
+    {t:'Los 20.00 del 23/08 no se cargan',
+     d:'El movimiento 17 (Rafael Antonio Rodríguez Rodríguez, B/.20.00) quedó identificado por el cliente como ingreso que NO corresponde a cuotas de mantenimiento. No se registra en la cartera. Queda anotado aquí para que el estado de cuenta bancario cuadre: del total del archivo (B/.1,245.00) se cargan B/.1,225.00 y estos B/.20.00 se dejan fuera a propósito.'},
     {t:'H-15 tiene la cuota desalineada en la hoja Propietarios',
-     d:'La columna “cuota” dice 162.00, pero el motor aplica 72.00 porque el número de LOTES no multiplica la cuota: 3 lotes y 2 cabañas = 45.00 × (1 + 2 × 30%) = 72.00. El propietario pagó exactamente 72.00, o sea que paga según el motor. Esa columna es un valor obsoleto que el sistema recalcula, pero conviene barrerla para que nadie la lea como cifra oficial.'},
-    {t:'Aviso a dar: Ana Tejada (L-16)',
-     d:'Pagó 49.50 el 17/08 pero debía 103.50. Le quedan 40.50 de agosto sin cubrir. Si no los completa antes del cierre del mes, el sistema le generará otro recargo de 4.50 sobre la cuota de agosto.'},
-    {t:'En el período no hubo un solo egreso',
-     d:'Los 24 movimientos del estado de cuenta son abonos: entre el 01 y el 18 de agosto no salió ni un pago de esta cuenta. Vale confirmar con Doraida si los gastos de agosto (honorarios, contratos de mantenimiento, préstamo, servicios del portón) están pendientes o se pagaron por otra vía.'}
+     d:'La columna “cuota” dice 162.00, pero el motor aplica 72.00: el número de LOTES no multiplica la cuota — 3 lotes y 2 cabañas = 45.00 × (1 + 2 × 30%) = 72.00. El propietario pagó exactamente 72.00, o sea que paga según el motor. Esa columna es un valor obsoleto que el sistema recalcula, pero conviene barrerla para que nadie la lea como cifra oficial.'},
+    {t:'El depósito del 25/08 se carga como dos pagos',
+     d:'Esmeralda Tuy de Lam transfirió 90.00 por las cuotas de agosto de los lotes 6A y 6B, según la glosa del banco. Se registra como dos pagos de 45.00 (movimientos 18a y 18b). Si entrara completo a un solo lote, Kristina Lam quedaría debiendo y Esmeralda generaría un crédito que no le corresponde.'},
+    {t:'Aviso a dar: Ana Tejada (L-16) y Carlos Castillo (L-12)',
+     d:'Los dos abonaron parcialmente el mes: a Ana Tejada le quedan 40.50 de la cuota de agosto y a Carlos Castillo 31.50, más los recargos que ya traen. Si no completan antes del cierre del mes, el sistema les generará otro recargo sobre la cuota de agosto.'},
+    {t:'Walter Aguilar (H-20) pagó “julio y agosto” y sigue debiendo 4.50',
+     d:'Cubrió las dos cuotas completas, pero el recargo de julio se cobra después de las cuotas, así que quedó pendiente. Si pregunta, esa es la explicación: pagó todo lo que debía en cuotas y sólo le queda el recargo que ya se había ganado.'}
   ]
 };
 // Movimientos ya ingresados. Se guarda por período para que sobreviva a un refresco,
@@ -2071,8 +2084,11 @@ const REV_BANCO = {
 // pagos del propietario, y si el pago no está, la marca se corrige sola.
 const REV_APL_KEY = 'bc_revApl_'+((REV_BANCO&&REV_BANCO.periodo)||'');
 let REV_APL = new Set();
-try{ REV_APL = new Set(JSON.parse(localStorage.getItem(REV_APL_KEY)||'[]')); }catch(e){}
+// El nº de movimiento puede ser texto ('18a', '18b') cuando un mismo depósito del banco
+// se reparte entre dos cuentas, así que la marca se guarda y se compara como texto.
+try{ REV_APL = new Set(JSON.parse(localStorage.getItem(REV_APL_KEY)||'[]').map(String)); }catch(e){}
 function _revAplGuardar(){ try{ localStorage.setItem(REV_APL_KEY, JSON.stringify([...REV_APL])); }catch(e){} }
+const _revMov = m => String(m);
 function renderRevBanco(){
   const card=document.getElementById('revBancoCard'), box=document.getElementById('revBanco');
   if(!card||!box) return;
@@ -2080,11 +2096,11 @@ function renderRevBanco(){
   const R=REV_BANCO, c=R.control;
   card.style.display='';
   document.getElementById('revBancoPeriodo').textContent='· '+R.periodo;
-  const nOk=R.listos.filter(p=>REV_APL.has(p.mov)).length;
+  const nOk=R.listos.filter(p=>REV_APL.has(_revMov(p.mov))).length;
   const pill=document.getElementById('revBancoPill');
   pill.textContent = nOk ? `${nOk} de ${R.listos.length} ingresados` : money(c.pendiente)+' por ingresar';
   pill.className = 'pill '+(nOk===R.listos.length?'ok':'warn');
-  const listos=R.listos.map(p=>{ const ok=REV_APL.has(p.mov); return `<tr class="rev-click${ok?' rev-done':''}" id="revFila${p.mov}" onclick="revComparar(${p.mov})" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
+  const listos=R.listos.map(p=>{ const ok=REV_APL.has(_revMov(p.mov)); return `<tr class="rev-click${ok?' rev-done':''}" id="revFila${p.mov}" onclick="revComparar('${p.mov}')" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
     <td data-label="Mov."><span class="rev-mov">${p.mov}</span></td>
     <td data-label="Fecha" style="white-space:nowrap">${p.fecha}</td>
     <td class="stack-col" data-label="Propietario"><b>${_esc(p.nombre)}</b> <span class="muted">· ${_esc(p.clave)}</span>
@@ -2109,10 +2125,10 @@ function renderRevBanco(){
     <div class="rev-sec">A · Listos para ingresar — ${R.listos.length} pagos, ${money(c.listos)}</div>
     <p class="rev-sub">El número en teal es el del movimiento en el estado de cuenta, en orden, para irlos marcando contra el PDF. <b>Haz clic en cualquier fila</b> para ver el estado de cuenta actual y cómo quedaría con el pago aplicado.</p>
     <table class="stack-table rev-tbl"><thead><tr><th>Mov.</th><th>Fecha</th><th>Propietario</th><th class="num">Monto</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${listos}</tbody></table>
-    <div class="rev-sec">B · Por consultar con el cliente — ${R.consultar.length} partidas, ${money(c.consultar)}</div>
+    ${R.consultar.length ? `<div class="rev-sec">B · Por consultar con el cliente — ${R.consultar.length} partidas, ${money(c.consultar)}</div>
     <p class="rev-sub">Estas <b>no</b> se cargan hasta tener respuesta. El texto de “qué hay que preguntar” se le puede trasladar al cliente tal cual.</p>
-    ${consultar}
-    <div class="rev-sec">C · Observaciones antes de cargar</div>
+    ${consultar}` : ''}
+    <div class="rev-sec">${R.consultar.length?'C':'B'} · Observaciones antes de cargar</div>
     <p class="rev-sub">No bloquean la carga, pero conviene decidirlas antes de correr la actualización.</p>
     ${obs}`;
 }
@@ -2121,7 +2137,7 @@ function renderRevBanco(){
  * con el pago añadido en memoria (parámetros simFecha / simMonto). */
 let REVCMP=null;
 async function revComparar(mov){
-  const p=((REV_BANCO&&REV_BANCO.listos)||[]).find(x=>x.mov===mov);
+  const p=((REV_BANCO&&REV_BANCO.listos)||[]).find(x=>_revMov(x.mov)===_revMov(mov));
   if(!p) return;
   document.getElementById('modalHd').innerHTML=`<div style="font-weight:700">${_esc(p.nombre)}</div>`;
   document.getElementById('modalBd').innerHTML='<div class="muted" style="padding:24px 0;text-align:center">Calculando el estado de cuenta…</div>';
@@ -2140,7 +2156,7 @@ async function revComparar(mov){
   // ¿ya está ese pago en el historial? Misma fecha y mismo monto. Es la comprobación
   // que manda: evita cargarlo dos veces aunque la marca local diga otra cosa.
   const ya=(antes.pagosHistorial||[]).some(x=>String(x.fecha).slice(0,10)===p.iso && Math.abs(Number(x.monto)-p.monto)<0.005);
-  if(ya!==REV_APL.has(p.mov)){ ya?REV_APL.add(p.mov):REV_APL.delete(p.mov); _revAplGuardar(); renderRevBanco(); }
+  if(ya!==REV_APL.has(_revMov(p.mov))){ ya?REV_APL.add(_revMov(p.mov)):REV_APL.delete(_revMov(p.mov)); _revAplGuardar(); renderRevBanco(); }
   REVCMP={p,antes,despues,ya};
   revCmpVista(ya?'antes':'despues');
 }
@@ -2157,7 +2173,7 @@ async function revAplicar(btn){
       referencia:'Estado de cuenta '+REV_BANCO.periodo+' · mov. '+p.mov,
       notas:p.banco, enviarCorreo:false, generarVoucher:true }});
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
-  REV_APL.add(p.mov); _revAplGuardar();
+  REV_APL.add(_revMov(p.mov)); _revAplGuardar();
   // El pago queda registrado aunque falle la constancia; se avisa para poder reintentar.
   REVCMP.voucher = (res&&res.voucherUrl) ? {url:res.voucherUrl, numero:res.voucherNumero||''} : null;
   REVCMP.voucherError = (res&&res.voucherError) ? String(res.voucherError) : '';
