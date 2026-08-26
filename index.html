@@ -3898,6 +3898,7 @@ function comEditorHTML(){
         <span id="cmMsg" class="muted" style="font-size:.82rem;margin-right:auto"></span>
         <button class="btn ghost" onclick="comPrevisualizar(this)">👁 Vista previa</button>
         <button class="btn ghost" onclick="comProbar(this)">✉ Prueba a mi correo</button>
+        ${e.id?`<button class="btn ghost" onclick="comEliminar(this)" title="Sólo se pueden borrar los que aún no se han enviado">🗑 Eliminar</button>`:''}
         <button class="btn ghost" onclick="comGuardar(this,true)">Guardar borrador</button>
         <button class="btn green" id="cmEnviar" onclick="comEnviar(this)" ${editable?'':'disabled'}>Enviar</button>
       </div>
@@ -4022,6 +4023,16 @@ async function comGuardar(btn,avisar){
     return r;
   }catch(e){ if(!onAuthError(e)) comMsg('No se pudo guardar: '+e,true); return null; }
   finally{ if(btn){ btn.disabled=false; btn.textContent=t; } }
+}
+async function comEliminar(btn){
+  if(!COM_EDIT.id) return;
+  if(!confirm(`¿Eliminar «${COM_EDIT.titulo||'este borrador'}»?\n\nSólo se puede porque todavía no se ha enviado.`)) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Eliminando…';
+  try{
+    await post('eliminarComunicado',{id:COM_EDIT.id});
+    toast('✓ Borrador eliminado');
+    COM_VISTA='lista'; COM_STALE=false; await renderComunic(true);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) comMsg('No se pudo eliminar: '+e,true); }
 }
 async function comPrevisualizar(btn){
   const p=comPayload();
