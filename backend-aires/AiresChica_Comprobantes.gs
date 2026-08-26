@@ -288,6 +288,10 @@ function _adjuntosValidos(msg) {
  * Idempotente: deduplica por Message-Id contra la hoja Comprobantes.
  */
 function capturarComprobantes(maxThreads) {
+  return _tarea('capturarComprobantes', function () { return _capturarComprobantes(maxThreads); });
+}
+
+function _capturarComprobantes(maxThreads) {
   ensureSheets();
   // El disparador horario invoca la función pasándole su OBJETO DE EVENTO como primer
   // argumento. Ese objeto caía tal cual en el límite de GmailApp.search() y Gmail

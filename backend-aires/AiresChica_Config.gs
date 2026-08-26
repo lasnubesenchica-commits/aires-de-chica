@@ -213,6 +213,45 @@ function activarNotificaciones() {
   return _listNotifTriggers();
 }
 
+/* ─────────────── última corrida de cada tarea ───────────────
+ * Apps Script no expone por API cuándo corrió por última vez un disparador ni cómo le
+ * fue: eso sólo se ve entrando a Ejecuciones. Así estuvo ocho días fallando la captura
+ * de comprobantes sin que se notara desde el panel. Cada tarea deja aquí su rastro y el
+ * panel lo muestra al lado del interruptor.
+ */
+var TAREAS_PROP = 'AC_TAREAS';
+
+function _tareasLeer() {
+  try { return JSON.parse(_props().getProperty(TAREAS_PROP) || '{}'); } catch (e) { return {}; }
+}
+
+// Nunca debe tumbar la tarea que la llama: dejar de anotar es malo, no enviar es peor.
+function _tareaCorrio(nombre, ok, detalle) {
+  try {
+    var t = _tareasLeer();
+    t[nombre] = { ts: new Date().toISOString(), ok: !!ok, detalle: String(detalle || '').slice(0, 160) };
+    _props().setProperty(TAREAS_PROP, JSON.stringify(t));
+  } catch (e) {}
+}
+
+// Envuelve un handler programado para que quede constancia de cada corrida, salga bien
+// o mal. Un error se vuelve a lanzar: Apps Script lo necesita para marcar la ejecución
+// como fallida, pero antes ya quedó anotado y visible en Opciones.
+function _tarea(nombre, fn) {
+  try {
+    var r = fn() || {};
+    var detalle = r.motivo ? r.motivo
+      : (r.omitido ? 'hoy no tocaba'
+      : (r.enviados != null ? r.enviados + (r.objetivo != null ? ' de ' + r.objetivo : '') + ' enviado(s)'
+      : 'sin novedad'));
+    _tareaCorrio(nombre, true, detalle);
+    return r;
+  } catch (e) {
+    _tareaCorrio(nombre, false, String(e && e.message || e));
+    throw e;
+  }
+}
+
 /* ─────────────── handlers programados ───────────────
  * Cada uno vuelve a comprobar su propio interruptor: un disparador puede sobrevivir a
  * un cambio de configuración (o haber quedado de una versión anterior), y no queremos
@@ -222,35 +261,43 @@ function activarNotificaciones() {
 // Estado de cuenta mensual a TODOS los propietarios (compromiso del contrato:
 // dentro de los primeros 10 días del mes siguiente).
 function estadoCuentaMensual() {
-  var cfg = _cfg();
-  if (!cfg.notifEstadoMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'estado mensual desactivado o envíos pausados' };
-  return enviarRecordatorios('estado');
+  return _tarea('estadoCuentaMensual', function () {
+    var cfg = _cfg();
+    if (!cfg.notifEstadoMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'estado mensual desactivado o envíos pausados' };
+    return enviarRecordatorios('estado');
+  });
 }
 
 // Aviso preventivo: faltan N días para que termine el mes y la cuota del mes en curso
 // sigue sin cubrirse. El objetivo es que el propietario pague a tiempo y NO genere mora.
 function preavisoCuota() {
-  var cfg = _cfg();
-  if (!cfg.notifPreaviso || !cfg.enviosActivos) return { enviados: 0, motivo: 'preaviso desactivado o envíos pausados' };
-  var hoy = new Date();
-  var ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-  var faltan = ultimoDia - hoy.getDate();
-  if (faltan !== Math.floor(Number(cfg.preavisoDias) || 5)) {
-    return { enviados: 0, omitido: true, faltan: faltan, motivo: 'hoy no toca el preaviso' };
-  }
-  return enviarRecordatorios('preaviso');
+  return _tarea('preavisoCuota', function () {
+    var cfg = _cfg();
+    if (!cfg.notifPreaviso || !cfg.enviosActivos) return { enviados: 0, motivo: 'preaviso desactivado o envíos pausados' };
+    var hoy = new Date();
+    var ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+    var faltan = ultimoDia - hoy.getDate();
+    if (faltan !== Math.floor(Number(cfg.preavisoDias) || 5)) {
+      return { enviados: 0, omitido: true, faltan: faltan, motivo: 'faltan ' + faltan + ' días para fin de mes' };
+    }
+    return enviarRecordatorios('preaviso');
+  });
 }
 
 function avisoDeMora() {
-  var cfg = _cfg();
-  if (!cfg.notifMora || !cfg.enviosActivos) return { enviados: 0, motivo: 'aviso de mora desactivado o envíos pausados' };
-  return enviarRecordatorios('mora');
+  return _tarea('avisoDeMora', function () {
+    var cfg = _cfg();
+    if (!cfg.notifMora || !cfg.enviosActivos) return { enviados: 0, motivo: 'aviso de mora desactivado o envíos pausados' };
+    return enviarRecordatorios('mora');
+  });
 }
 
 function _listNotifTriggers() {
+  var ultimas = _tareasLeer();
   return ScriptApp.getProjectTriggers()
     .filter(function (t) { return NOTIF_HANDLERS.indexOf(t.getHandlerFunction()) >= 0; })
     .map(function (t) {
-      return { funcion: t.getHandlerFunction() };
+      var h = t.getHandlerFunction();
+      return { funcion: h, ultima: ultimas[h] || null };
     });
 }

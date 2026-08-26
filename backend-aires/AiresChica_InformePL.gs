@@ -279,13 +279,15 @@ function descargarInformePL(anio, mesIni, mesFin, nota) {
  * Respeta el interruptor maestro y el modo prueba.
  */
 function informeMensual() {
-  var cfg = _cfg();
-  if (!cfg.notifInformeMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'informe mensual desactivado o envíos pausados' };
-  var now = new Date();
-  var m = now.getMonth() + 1, anio = now.getFullYear();
-  var mes = (m === 1) ? 12 : m - 1;      // el mes recién cerrado
-  if (m === 1) anio -= 1;
-  return enviarInformePL(anio, mes, mes, '');
+  return _tarea('informeMensual', function () {
+    var cfg = _cfg();
+    if (!cfg.notifInformeMensual || !cfg.enviosActivos) return { enviados: 0, motivo: 'informe mensual desactivado o envíos pausados' };
+    var now = new Date();
+    var m = now.getMonth() + 1, anio = now.getFullYear();
+    var mes = (m === 1) ? 12 : m - 1;      // el mes recién cerrado
+    if (m === 1) anio -= 1;
+    return enviarInformePL(anio, mes, mes, '');
+  });
 }
 
 function enviarInformePL(anio, mesIni, mesFin, nota) {
