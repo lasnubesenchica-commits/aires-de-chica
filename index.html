@@ -439,6 +439,16 @@ a.btn { display:inline-block; text-decoration:none; }
 .pgTable input[type=number]::-webkit-outer-spin-button,
 .pgTable input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 .pgTable td.acts { padding-left:10px; }
+/* Aviso al equipo al que le quitaron su nombre. */
+.av-usu { border:2px solid var(--ac-coral); background:#fff5f2; border-radius:12px;
+          padding:14px 16px; margin:16px 0 0; display:flex; gap:14px; align-items:flex-start; }
+.av-usu .ico { font-size:1.4rem; line-height:1.2; }
+.av-usu .cuerpo { flex:1; min-width:0; }
+.av-usu b.t { display:block; color:#b3502a; font-size:.95rem; margin-bottom:3px; }
+.av-usu p { margin:0 0 6px; font-size:.84rem; line-height:1.55; }
+.av-usu .cuando { font-size:.75rem; color:var(--ac-muted); }
+.av-usu .acc { display:flex; gap:8px; flex-wrap:wrap; margin-top:9px; }
+@media (max-width:640px){ .av-usu { flex-direction:column; gap:8px; } }
 /* Selector de identidad: padrón de usuarios del panel. */
 .usu-sec { font-size:.7rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
            color:var(--ac-teal-700); margin:16px 0 6px; padding-bottom:4px; border-bottom:2px solid var(--ac-teal-50); }
@@ -598,6 +608,7 @@ a.btn { display:inline-block; text-decoration:none; }
 <div class="grad"></div>
 
 <div class="wrap">
+  <div id="avisoUsu"></div>
   <nav class="tabs" id="tabs">
     <button data-tab="dash" class="active">Estado de cuentas</button>
     <button data-tab="gastos">Gastos</button>
@@ -896,10 +907,7 @@ async function cambiarAutor(){
       `<div class="notice">No se pudo leer la lista de usuarios: ${_esc(String(e))}</div>${_autorForm([],'')}`;
     return;
   }
-  // El padrón manda sobre lo guardado en el navegador: si el servidor dice que este
-  // equipo ya es de alguien, se adopta ese nombre. Cubre el caso de haber quedado
-  // "sin identificar" tras un rechazo, con la reserva todavía en pie.
-  if(d.yo && d.yo!==AUTOR) _setAutor(d.yo);
+  _sincronizarAutor(d);
   _autorPintar(d);
 }
 function _autorPintar(d){
@@ -948,6 +956,64 @@ async function claimAutorAqui(btn){
   closeModal();
   toast('Los cambios se registrarán a nombre de '+AUTOR);
 }
+// Misma normalización que el servidor: mayúsculas, tildes y espacios no distinguen.
+const _nomClave = n => String(n||'').replace(/\s+/g,' ').trim().toUpperCase()
+  .replace(/[ÁÀÄÂ]/g,'A').replace(/[ÉÈËÊ]/g,'E').replace(/[ÍÌÏÎ]/g,'I')
+  .replace(/[ÓÒÖÔ]/g,'O').replace(/[ÚÙÜÛ]/g,'U').replace(/Ñ/g,'N');
+/* El padrón manda sobre lo guardado en el navegador:
+ *   - este equipo ya tiene un nombre        -> se adopta
+ *   - el nombre local es de OTRO equipo     -> se suelta (ya no se puede firmar con él)
+ *   - el nombre local no está en el padrón  -> se deja (es libre; se aparta al escribir)
+ * La tercera regla evita que un despliegue nuevo, con el padrón todavía vacío, deje a
+ * todo el mundo "sin identificar" sin motivo. */
+function _sincronizarAutor(d){
+  const yo=(d&&d.yo)||'', lista=(d&&d.usuarios)||[];
+  if(yo){ if(yo!==AUTOR) _setAutor(yo); return; }
+  if(!AUTOR) return;
+  const mismo=lista.find(u=>_nomClave(u.nombre)===_nomClave(AUTOR));
+  if(mismo && !mismo.mio) _setAutor('');
+}
+/* Al abrir el panel: ¿alguien le quitó el nombre a este equipo mientras no estaba?
+ * No se puede impedir —mover o liberar exige la contraseña, que es una sola para
+ * todos— pero sí avisar en cuanto vuelva, sin esperar a que choque al escribir. */
+async function revisarAvisosUsuario(){
+  const box=document.getElementById('avisoUsu'); if(!box) return;
+  let d; try{ d=await jsonp('getAutores',{dispositivo:DISPOSITIVO}); }catch(e){ return; }
+  _sincronizarAutor(d);
+  const av=d.avisos||[];
+  if(!av.length){ box.innerHTML=''; return; }
+  box.innerHTML=av.map(a=>{
+    // la hora llega en UTC; se muestra en la hora del equipo de quien la lee
+    const D=new Date(a.cuando), dd=n=>String(n).padStart(2,'0');
+    const f=isNaN(D.getTime()) ? String(a.cuando||'')
+      : `${dd(D.getDate())}/${dd(D.getMonth()+1)}/${D.getFullYear()} a las ${dd(D.getHours())}:${dd(D.getMinutes())}`;
+    const quien=a.quien?` desde la sesión de <b>${_esc(a.quien)}</b>`:'';
+    const qué = a.tipo==='movido'
+      ? `Alguien pasó tu nombre <b>«${_esc(a.nombre)}»</b> a otro dispositivo${quien}.`
+      : `Alguien liberó tu nombre <b>«${_esc(a.nombre)}»</b>${quien}, y quedó disponible para que cualquiera lo tome.`;
+    return `<div class="av-usu"><div class="ico">⚠️</div><div class="cuerpo">
+      <b class="t">Tu nombre en el panel cambió de manos</b>
+      <p>${qué} Desde ese momento, este equipo dejó de poder firmar cambios con ese nombre.</p>
+      <p><b>Si no fuiste tú, avísale a la Junta.</b> Quien lo hizo tuvo que escribir la contraseña del panel, y la acción quedó anotada en el <b>Registro</b> con fecha, hora y quién estaba identificado.</p>
+      <div class="cuando">${_esc(f)}</div>
+      <div class="acc">
+        <button class="btn" onclick="irARegistroUsuarios()">Ver en el Registro</button>
+        <button class="btn ghost" onclick="descartarAviso('${_esc(a.id)}',this)">Entendido, descartar</button>
+      </div></div></div>`;
+  }).join('');
+}
+function irARegistroUsuarios(){
+  const b=document.querySelector('[data-tab="reg"]'); if(b) b.click();
+  const s=document.getElementById('regAccion');
+  if(s){ const o=[...s.options].find(o=>/usuario/i.test(o.value)); if(o){ s.value=o.value; } }
+  if(typeof renderRegistro==='function') renderRegistro();
+}
+async function descartarAviso(id, btn){
+  btn.disabled=true; btn.textContent='…';
+  try{ await post('marcarAvisoVisto',{id}); }
+  catch(e){ btn.disabled=false; btn.textContent='Entendido, descartar'; if(!onAuthError(e)) alert('No se pudo descartar: '+e); return; }
+  revisarAvisosUsuario();
+}
 async function moverAutorAqui(nombre, btn){
   const pwd=prompt(`Para pasar «${nombre}» a este dispositivo, escribe la contraseña del panel.\n\nEl cambio queda anotado en la bitácora.`);
   if(pwd===null) return;
@@ -965,7 +1031,7 @@ const SIN_AUTOR=new Set(['ensureSheets','seedInicial','seedGastos2026','seedRecu
   'actualizarJulio2026','rollbackJulio2026','descargarInformePL','enviarInformePL','capturarComprobantes',
   'verifyPassword','setPassword','resetPassword','guardarContrato',
   // con éstas es justamente con las que uno se identifica: pedir autor sería circular
-  'claimAutor','moverAutor']);
+  'claimAutor','moverAutor','marcarAvisoVisto']);
 // Pide identificarse antes de escribir, para no anotar cambios anónimos.
 function exigirAutor(){
   if(AUTOR) return true;
@@ -1003,7 +1069,9 @@ function showGate(){ document.getElementById('app').style.display='none'; docume
 function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block';
   // La revisión del estado de cuenta no consulta al servidor: se pinta al abrir el panel.
   try{ renderRevBanco(); }catch(e){ console.warn('revBanco',e); }
-  try{ pintarAutor(); }catch(e){} }
+  try{ pintarAutor(); }catch(e){}
+  // ¿le quitaron el nombre a este equipo mientras no estaba? Se avisa al entrar.
+  try{ revisarAvisosUsuario(); }catch(e){ console.warn('avisosUsuario',e); } }
 async function boot(){
   // Si no se puede consultar el estado de la sesión NO se asume que el sistema es nuevo:
   // mostrar "Crear contraseña" ante un fallo de red hacía creer que se había perdido

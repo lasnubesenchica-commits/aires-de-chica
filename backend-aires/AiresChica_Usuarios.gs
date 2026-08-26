@@ -28,6 +28,49 @@
 var USU_PROP = 'AC_USUARIOS';
 var USU_MAX  = 60;   // largo máximo del nombre
 
+/**
+ * Avisos para el dispositivo DESPLAZADO.
+ *
+ * Mover o liberar un nombre ajeno exige la contraseña del panel, que es una sola para
+ * todos: no se puede impedir. Lo que sí se puede es que el dueño se entere. Cuando a
+ * un equipo le quitan su nombre se le deja aquí un aviso, y su panel lo muestra en
+ * cuanto vuelva a abrirlo — sin depender de que intente escribir para chocar.
+ */
+var USU_AVISOS_PROP = 'AC_USU_AVISOS';
+var USU_AVISOS_MAX  = 60;
+
+function _avLeer() {
+  var raw = PropertiesService.getScriptProperties().getProperty(USU_AVISOS_PROP);
+  if (!raw) return [];
+  try { var a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function _avGuardar(a) {
+  PropertiesService.getScriptProperties().setProperty(USU_AVISOS_PROP, JSON.stringify(a || []));
+}
+// tipo: 'movido' (se lo llevaron a otro equipo) | 'liberado' (lo soltaron y quedó libre)
+function _avPush(disp, tipo, nombre, quien) {
+  disp = _usuDisp(disp);
+  if (!disp) return;
+  var a = _avLeer();
+  a.unshift({ id: 'A' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000),
+              disp: disp, tipo: tipo, nombre: nombre,
+              quien: String(quien || '').slice(0, 60), cuando: new Date().toISOString() });
+  _avGuardar(a.slice(0, USU_AVISOS_MAX));
+}
+function _avDe(disp) {
+  disp = _usuDisp(disp);
+  if (!disp) return [];
+  return _avLeer().filter(function (x) { return x.disp === disp; });
+}
+/** El dueño ya vio el aviso. Sólo puede descartar los suyos. */
+function marcarAvisoVisto(id, dispositivo) {
+  var disp = _usuDisp(dispositivo);
+  var a = _avLeer(), antes = a.length;
+  a = a.filter(function (x) { return !(x.id === id && x.disp === disp); });
+  _avGuardar(a);
+  return { ok: true, borrado: antes !== a.length, quedan: _avDe(disp).length };
+}
+
 function _usuLeer() {
   var raw = PropertiesService.getScriptProperties().getProperty(USU_PROP);
   if (!raw) return {};
@@ -66,7 +109,7 @@ function getAutores(dispositivo) {
     out.push({ nombre: u.nombre, mio: mio, creado: u.creado || '', ultimo: u.ultimo || '' });
   });
   out.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre), 'es'); });
-  return { usuarios: out, yo: yo };
+  return { usuarios: out, yo: yo, avisos: _avDe(disp) };
 }
 
 /**
@@ -108,6 +151,7 @@ function moverAutor(nombre, dispositivo, password) {
   if (!nom || !disp) throw new Error('Faltan datos para mover el nombre.');
   var v = verifyPassword(password);
   if (!v || !v.ok) throw new Error('La contraseña no coincide.');
+  var quienLoHizo = String(AC_AUTOR || '').trim();   // antes de que AC_AUTOR se reescriba
   var lock = LockService.getScriptLock();
   try { lock.waitLock(8000); } catch (e) {}
   try {
@@ -117,6 +161,8 @@ function moverAutor(nombre, dispositivo, password) {
     var antes = u.dispositivo;
     u.dispositivo = disp; u.ultimo = new Date().toISOString();
     reg[k] = u; _usuGuardar(reg);
+    // al equipo que se queda sin el nombre se le deja un aviso
+    _avPush(antes, 'movido', u.nombre, quienLoHizo);
     AC_AUTOR = u.nombre;
     _reg('usuario.mueve', { propietario: u.nombre, campo: 'dispositivo',
                             antes: String(antes).slice(0, 8) + '…', despues: disp.slice(0, 8) + '…',
@@ -147,8 +193,10 @@ function liberarAutor(nombre, dispositivo, password) {
   try {
     var reg = _usuLeer(), k = _usuClave(nom);
     if (!reg[k]) return { ok: true, liberado: false };
-    var quien = reg[k].nombre;
+    var quien = reg[k].nombre, dispAnterior = reg[k].dispositivo;
     delete reg[k]; _usuGuardar(reg);
+    // si le soltaron el nombre a otra persona, su equipo se entera al volver a entrar
+    if (!esMio) _avPush(dispAnterior, 'liberado', quien, String(AC_AUTOR || '').trim());
     _reg('usuario.libera', { propietario: quien, campo: 'usuario', antes: quien,
                              detalle: esMio ? 'Soltó su propio nombre'
                                             : 'Liberó el nombre de otra persona (con la contraseña del panel)' });

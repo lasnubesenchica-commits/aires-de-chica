@@ -110,6 +110,9 @@ function doPost(e) {
     // pedirles un autor ya validado sería circular. Ver AiresChica_Usuarios.gs.
     if (action === 'claimAutor')            return _reply({ ok: true, data: claimAutor(data.nombre, AC_DISP) }, null);
     if (action === 'moverAutor')            return _reply({ ok: true, data: moverAutor(data.nombre, AC_DISP, data.password) }, null);
+    // A quien le quitaron su nombre no puede escribir con él: descartar su propio
+    // aviso tiene que poder hacerlo igual, así que va antes de exigir identidad.
+    if (action === 'marcarAvisoVisto')      return _reply({ ok: true, data: marcarAvisoVisto(data.id, AC_DISP) }, null);
 
     requireAutor(action);
     // …y que ese nombre sea de QUIEN dice serlo: si ya está reservado por otro
