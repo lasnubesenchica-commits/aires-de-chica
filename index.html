@@ -461,6 +461,14 @@ a.btn { display:inline-block; text-decoration:none; }
 .usu-nuevo input { flex:1; min-width:180px; padding:9px 11px; border:1px solid var(--ac-border);
                    border-radius:8px; font:inherit; font-size:.9rem; }
 .usu-nuevo input:focus { outline:none; border-color:var(--ac-teal-600); }
+.usu-lab { display:block; font-size:.74rem; font-weight:700; color:var(--ac-muted);
+           text-transform:uppercase; letter-spacing:.04em; margin:12px 0 4px; }
+.usu-sel { width:100%; padding:9px 11px; border:1px solid var(--ac-border); border-radius:8px;
+           font:inherit; font-size:.88rem; background:#fff; }
+.usu-sel:focus { outline:none; border-color:var(--ac-teal-600); }
+.usu-ayuda { font-size:.74rem; color:var(--ac-muted); margin-top:5px; line-height:1.45; }
+.usu-mail { font-size:.72rem; color:var(--ac-teal-700); }
+.usu-mail.sin { color:var(--ac-coral); }
 #usuErr .notice { margin-top:10px; }
 /* Revisión de un estado de cuenta bancario antes de cargarlo (tab Conciliación). */
 .rev-sec { font-size:.72rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
@@ -904,7 +912,7 @@ async function cambiarAutor(){
     // Sin padrón (servidor viejo o sin conexión) se vuelve al campo libre: es
     // preferible poder firmar un cambio que quedarse sin identificar.
     document.getElementById('modalBd').innerHTML=
-      `<div class="notice">No se pudo leer la lista de usuarios: ${_esc(String(e))}</div>${_autorForm([],'')}`;
+      `<div class="notice">No se pudo leer la lista de usuarios: ${_esc(String(e))}</div>${_autorForm([],'',null)}`;
     return;
   }
   _sincronizarAutor(d);
@@ -924,17 +932,39 @@ function _autorPintar(d){
       <span class="pill ok">Tu nombre</span></div>` : '';
   document.getElementById('modalBd').innerHTML=`
     <p class="muted" style="margin-top:0;font-size:.82rem">Tu nombre queda anotado en <b>cada cambio</b> que hagas y no se puede borrar de la bitácora. Cada nombre se reserva para un equipo: nadie más puede firmar con el tuyo.</p>
-    ${soy}${lista}${_autorForm(otros, yo)}`;
+    ${soy}${lista}${_autorForm(otros, yo, d)}`;
   const i=document.getElementById('usuNuevo'); if(i){ i.focus(); i.select(); }
 }
-function _autorForm(otros, yo){
+function _autorForm(otros, yo, d){
+  const lotes=(d&&d.lotes)||[], sel=(d&&d.yoClave)||_loteSugerido(lotes, yo||AUTOR);
+  const opciones = lotes.length
+    ? `<label class="usu-lab">Tu lote — de ahí sale el correo al que te avisamos</label>
+       <select id="usuLote" class="usu-sel">
+         <option value="">— no soy propietario (sin alerta por correo) —</option>
+         ${lotes.map(l=>`<option value="${_esc(l.clave)}"${l.clave===sel?' selected':''}>${_esc(l.nombre)} · ${_esc(l.clave)}${l.tieneCorreo?'':' (sin correo)'}</option>`).join('')}
+       </select>
+       <div class="usu-ayuda">Si alguien te quita el nombre del panel, te llega un correo a la dirección que tengas en <b>Propietarios</b>.</div>`
+    : '';
   return `<div class="usu-sec">${yo?'Cambiar mi nombre':'Identifícate'}</div>
     <div class="usu-nuevo">
       <input id="usuNuevo" maxlength="60" placeholder="Tu nombre" value="${_esc(yo||AUTOR||'')}"
              onkeydown="if(event.key==='Enter')claimAutorAqui(document.getElementById('usuGo'))">
       <button class="btn green" id="usuGo" onclick="claimAutorAqui(this)">Identificarme</button>
     </div>
+    ${opciones}
     <div id="usuErr"></div>`;
+}
+// Mejor coincidencia entre el nombre del panel y un propietario, por palabras en común.
+function _loteSugerido(lotes, nombre){
+  const t=_nomClave(nombre).split(/[^A-ZÑ]+/).filter(x=>x.length>2);
+  if(!t.length) return '';
+  let mejor='', punt=0;
+  (lotes||[]).forEach(l=>{
+    const u=_nomClave(l.nombre).split(/[^A-ZÑ]+/).filter(x=>x.length>2);
+    const n=t.filter(x=>u.indexOf(x)>=0).length;
+    if(n>punt){ punt=n; mejor=l.clave; }
+  });
+  return punt?mejor:'';
 }
 async function claimAutorAqui(btn){
   const inp=document.getElementById('usuNuevo'); if(!inp) return;
@@ -943,7 +973,8 @@ async function claimAutorAqui(btn){
   if(!nombre){ err.innerHTML='<div class="notice">Escribe un nombre.</div>'; return; }
   btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…'; err.innerHTML='';
   let r;
-  try{ r=await post('claimAutor',{nombre}); }
+  const selLote=document.getElementById('usuLote');
+  try{ r=await post('claimAutor',{nombre, clave:selLote?selLote.value:undefined}); }
   catch(e){
     btn.disabled=false; btn.textContent=t;
     if(onAuthError(e)) return;
@@ -954,7 +985,8 @@ async function claimAutorAqui(btn){
   }
   _setAutor(r.nombre||nombre);
   closeModal();
-  toast('Los cambios se registrarán a nombre de '+AUTOR);
+  toast(r.email ? 'Identificado como '+AUTOR+' · alertas a '+r.email
+                : 'Los cambios se registrarán a nombre de '+AUTOR);
 }
 // Misma normalización que el servidor: mayúsculas, tildes y espacios no distinguen.
 const _nomClave = n => String(n||'').replace(/\s+/g,' ').trim().toUpperCase()
@@ -995,6 +1027,13 @@ async function revisarAvisosUsuario(){
       <b class="t">Tu nombre en el panel cambió de manos</b>
       <p>${qué} Desde ese momento, este equipo dejó de poder firmar cambios con ese nombre.</p>
       <p><b>Si no fuiste tú, avísale a la Junta.</b> Quien lo hizo tuvo que escribir la contraseña del panel, y la acción quedó anotada en el <b>Registro</b> con fecha, hora y quién estaba identificado.</p>
+      ${a.correo && a.correo.enviado
+        ? `<p style="color:var(--ac-ok)"><b>Te avisamos también por correo</b> a ${_esc(a.correo.email)}.</p>`
+        : (a.correo && a.correo.motivo==='envios-pausados'
+            ? `<p class="cuando">No salió correo porque los envíos del sistema están pausados. Se habría mandado a ${_esc(a.correo.email||'tu dirección')}.</p>`
+            : (a.correo && a.correo.motivo==='sin-correo'
+                ? `<p class="cuando">No salió correo: tu nombre en el panel no está asociado a un lote con dirección. Puedes asociarlo desde el selector de identidad.</p>`
+                : ''))}
       <div class="cuando">${_esc(f)}</div>
       <div class="acc">
         <button class="btn" onclick="irARegistroUsuarios()">Ver en el Registro</button>
@@ -2565,11 +2604,30 @@ async function renderOptsUsuarios(){
     <div class="muted" style="font-size:.82rem;margin-bottom:12px">Cada nombre queda <b>apartado para un dispositivo</b>: desde otro equipo aparece tomado y el servidor rechaza los cambios firmados con él. <b>No es una contraseña por persona</b> — la del panel sigue siendo una sola — pero impide que dos personas usen el mismo nombre o que alguien firme con el de otro desde el panel.</div>
     ${u.length ? u.map(x=>`<div class="usu-row${x.mio?' mio':''}">
         <div><b>${_esc(x.nombre)}</b>${x.mio?' <span class="pill ok">Este dispositivo</span>':'<span class="muted"> · otro dispositivo</span>'}
-          <span class="muted" style="display:block;font-size:.72rem">Desde ${_esc(String(x.creado||'').slice(0,10)||'—')} · última actividad ${_esc(String(x.ultimo||'').slice(0,10)||'—')}</span></div>
+          <span class="muted" style="display:block;font-size:.72rem">Desde ${_esc(String(x.creado||'').slice(0,10)||'—')} · última actividad ${_esc(String(x.ultimo||'').slice(0,10)||'—')}</span>
+          <span class="usu-mail${x.email?'':' sin'}">${x.email ? '✉ alertas a '+_esc(x.email)+(x.clave?' · '+_esc(x.clave):'') : '✉ sin correo de alerta — falta asociar el lote'}</span></div>
         <button class="btn ghost" onclick="liberarAutorOpts('${_esc(x.nombre).replace(/'/g,"\\'")}',${x.mio?'true':'false'},this)">Liberar</button>
       </div>`).join('')
       : '<div class="muted" style="font-size:.85rem">Todavía no hay ningún nombre reservado. El primero que se identifique aparta el suyo.</div>'}
-    <div class="help" style="margin-top:10px">Al liberar un nombre queda disponible para quien lo tome, y la acción se anota en la bitácora. Úsalo cuando alguien deje de usar el sistema o pierda acceso a su equipo. <b>Liberar el nombre de otra persona pide la contraseña del panel</b>; el tuyo propio no.</div>`;
+    <div class="help" style="margin-top:10px">Al liberar un nombre queda disponible para quien lo tome, y la acción se anota en la bitácora. Úsalo cuando alguien deje de usar el sistema o pierda acceso a su equipo. <b>Liberar el nombre de otra persona pide la contraseña del panel</b>; el tuyo propio no.</div>
+    <div class="usu-sec">Alerta por correo</div>
+    <div class="muted" style="font-size:.82rem;margin-bottom:10px">Si a alguien le mueven o le liberan su nombre, el sistema le manda un correo <b>en ese momento</b> a la dirección que tenga en la hoja <b>Propietarios</b>. Sale sólo con el <b>interruptor de envíos encendido</b>; mientras esté apagado, la alerta se ve igual dentro del panel. Aquí puedes probar cómo se ve el correo — la prueba se envía siempre, aunque los envíos estén pausados.</div>
+    <div class="usu-nuevo">
+      <input id="usuPruebaMail" type="email" placeholder="tu@correo.com" value="${_esc(d.usuarios.filter(x=>x.mio&&x.email).map(x=>x.email)[0]||'')}">
+      <button class="btn" onclick="probarAlertaCorreo(this)">Enviar alerta de prueba</button>
+    </div>
+    <div id="usuPruebaMsg" class="help" style="margin-top:8px"></div>`;
+}
+async function probarAlertaCorreo(btn){
+  const inp=document.getElementById('usuPruebaMail'), msg=document.getElementById('usuPruebaMsg');
+  const email=String(inp.value||'').trim();
+  if(!email){ msg.innerHTML='<span style="color:var(--ac-coral)">Escribe una dirección.</span>'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Enviando…'; msg.textContent='';
+  try{ await post('enviarPruebaAlertaUsuario',{email}); }
+  catch(e){ btn.disabled=false; btn.textContent=t;
+    if(!onAuthError(e)) msg.innerHTML='<span style="color:var(--ac-coral)">No se pudo enviar: '+_esc(String(e))+'</span>'; return; }
+  btn.disabled=false; btn.textContent=t;
+  msg.innerHTML='<span style="color:var(--ac-ok)">✓ Enviado a <b>'+_esc(email)+'</b>. Revisa la bandeja (y el spam la primera vez).</span>';
 }
 async function liberarAutorOpts(nombre, mio, btn){
   if(!confirm(`¿Liberar el nombre «${nombre}»?\n\nQuedará disponible para que cualquiera lo tome desde otro dispositivo. La acción se anota en la bitácora.`)) return;

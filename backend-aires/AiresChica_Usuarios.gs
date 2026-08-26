@@ -48,13 +48,14 @@ function _avGuardar(a) {
   PropertiesService.getScriptProperties().setProperty(USU_AVISOS_PROP, JSON.stringify(a || []));
 }
 // tipo: 'movido' (se lo llevaron a otro equipo) | 'liberado' (lo soltaron y quedó libre)
-function _avPush(disp, tipo, nombre, quien) {
+function _avPush(disp, tipo, nombre, quien, correo) {
   disp = _usuDisp(disp);
   if (!disp) return;
   var a = _avLeer();
   a.unshift({ id: 'A' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000),
               disp: disp, tipo: tipo, nombre: nombre,
-              quien: String(quien || '').slice(0, 60), cuando: new Date().toISOString() });
+              quien: String(quien || '').slice(0, 60), cuando: new Date().toISOString(),
+              correo: correo || null });   // { enviado, email } o el motivo por el que no salió
   _avGuardar(a.slice(0, USU_AVISOS_MAX));
 }
 function _avDe(disp) {
@@ -97,6 +98,100 @@ function _usuClave(n) {
 function _usuDisp(d) { return String(d || '').trim().slice(0, 80); }
 
 /**
+ * Quien usa el panel es propietario, así que su correo sale de la hoja Propietarios.
+ * Al identificarse se guarda la CLAVE del lote junto al nombre; de ahí se resuelve el
+ * correo en el momento de avisar, para que un cambio de correo en la hoja se respete
+ * sin tener que re-identificarse.
+ */
+function _usuCorreoDe(clave) {
+  var k = String(clave || '').trim();
+  if (!k) return { clave: '', nombre: '', email: '' };
+  var p = null;
+  getPropietarios(true).forEach(function (x) { if (String(x.clave).trim() === k) p = x; });
+  if (!p) return { clave: k, nombre: '', email: '' };
+  return { clave: k, nombre: String(p.nombre || ''), email: String(p.email || '').trim() };
+}
+
+/** Lista ligera de lotes para el selector de identidad (sin correos ni saldos). */
+function _usuLotes() {
+  return getPropietarios(true).map(function (p) {
+    return { clave: String(p.clave).trim(), nombre: String(p.nombre || ''),
+             lote: String(p.lote || ''), residencial: String(p.residencial || ''),
+             tieneCorreo: !!String(p.email || '').trim() };
+  }).sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+}
+
+/**
+ * Correo de alerta a quien le quitaron su nombre del panel.
+ *
+ * Respeta el interruptor maestro y el modo prueba igual que el resto de los envíos:
+ * mientras `enviosActivos` esté apagado no sale nada, y la alerta en pantalla sigue
+ * funcionando igual. Devuelve qué pasó para dejarlo anotado en el propio aviso.
+ */
+function _avisarPorCorreo(u, tipo, quien) {
+  var cfg = _cfg();
+  var info = _usuCorreoDe(u && u.clave);
+  if (!info.email) return { enviado: false, motivo: 'sin-correo' };
+  if (!cfg.enviosActivos) return { enviado: false, motivo: 'envios-pausados', email: info.email };
+  var prueba = !!(cfg.modoPrueba && cfg.correoPrueba);
+  var destino = prueba ? cfg.correoPrueba : info.email;
+  var B = AC_BRAND;
+  var fecha = Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy') + ' a las ' +
+              Utilities.formatDate(new Date(), CONFIG.TZ, 'HH:mm');
+  var esc = function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  var qué = (tipo === 'movido')
+    ? 'Alguien pasó tu nombre <b>«' + esc(u.nombre) + '»</b> a <b>otro dispositivo</b>.'
+    : 'Alguien <b>liberó</b> tu nombre <b>«' + esc(u.nombre) + '»</b> en el panel, y quedó disponible para que cualquiera lo tome.';
+  var deQuién = quien ? ' La sesión que lo hizo estaba identificada como <b>' + esc(quien) + '</b>.' : '';
+  var asunto = (prueba ? '[PRUEBA→' + info.email + '] ' : '') +
+    '⚠️ Tu nombre en el panel de ' + CONFIG.NEGOCIO + ' cambió de manos';
+  var cuerpo = _emailShell(
+    '<p style="font-size:16px;font-weight:700;color:' + B.coral + ';margin:0 0 10px">Tu nombre en el panel cambió de manos</p>' +
+    '<p>' + qué + deQuién + ' Desde ese momento, tu equipo dejó de poder firmar cambios con ese nombre.</p>' +
+    '<div style="background:#fff5f2;border-left:4px solid ' + B.coral + ';padding:11px 14px;border-radius:6px;margin:14px 0">' +
+      '<b>Si no fuiste tú, avísale a la Junta cuanto antes.</b><br>' +
+      'Para hacerlo hubo que escribir la contraseña del panel, y la acción quedó anotada en el ' +
+      '<b>Registro</b> con fecha, hora y quién estaba identificado.</div>' +
+    '<p style="color:' + B.muted + ';font-size:12.5px">Ocurrió el ' + fecha + ' (hora de Panamá).<br>' +
+    'Si fuiste tú —por ejemplo, porque cambiaste de computadora— puedes ignorar este correo.</p>');
+  try {
+    GmailApp.sendEmail(destino, asunto,
+      'Alguien cambió de dispositivo el nombre con el que firmas en el panel de ' + CONFIG.NEGOCIO +
+      '. Si no fuiste tú, avísale a la Junta.',
+      { name: CONFIG.NEGOCIO, replyTo: CONFIG.REPLY_TO, htmlBody: cuerpo });
+  } catch (e) {
+    return { enviado: false, motivo: String(e && e.message || e), email: info.email };
+  }
+  _reg('usuario.alerta', { clave: info.clave, propietario: u.nombre, campo: 'correo',
+                           despues: destino,
+                           detalle: 'Alerta enviada: le ' + (tipo === 'movido' ? 'movieron' : 'liberaron') + ' su nombre del panel' });
+  return { enviado: true, email: destino, prueba: prueba, destinatarioReal: info.email };
+}
+
+/**
+ * Prueba explícita de la alerta, para verificar el formato antes de abrir los envíos.
+ * Es un envío a una dirección dada, así que NO depende del interruptor maestro —igual
+ * que `enviarPruebaEstado`.
+ */
+function enviarPruebaAlertaUsuario(email) {
+  var to = String(email || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error('Escribe un correo válido para la prueba.');
+  var B = AC_BRAND;
+  var cuerpo = _emailShell(
+    '<p style="font-size:16px;font-weight:700;color:' + B.coral + ';margin:0 0 10px">Tu nombre en el panel cambió de manos</p>' +
+    '<p>Alguien pasó tu nombre <b>«Ejemplo»</b> a <b>otro dispositivo</b>. La sesión que lo hizo estaba identificada como <b>Otra persona</b>. Desde ese momento, tu equipo dejó de poder firmar cambios con ese nombre.</p>' +
+    '<div style="background:#fff5f2;border-left:4px solid ' + B.coral + ';padding:11px 14px;border-radius:6px;margin:14px 0">' +
+      '<b>Si no fuiste tú, avísale a la Junta cuanto antes.</b><br>' +
+      'Para hacerlo hubo que escribir la contraseña del panel, y la acción quedó anotada en el ' +
+      '<b>Registro</b> con fecha, hora y quién estaba identificado.</div>' +
+    '<p style="color:' + B.muted + ';font-size:12.5px">Éste es un <b>correo de prueba</b>: nadie tocó ningún nombre.</p>');
+  GmailApp.sendEmail(to, '[PRUEBA] ⚠️ Tu nombre en el panel de ' + CONFIG.NEGOCIO + ' cambió de manos',
+    'Prueba de la alerta de cambio de identidad.',
+    { name: CONFIG.NEGOCIO, replyTo: CONFIG.REPLY_TO, htmlBody: cuerpo });
+  return { enviado: true, email: to };
+}
+
+/**
  * Lista para el selector del panel. No exige dispositivo: sin él, todos los nombres
  * salen como ajenos, que es justo lo que hay que mostrar.
  */
@@ -106,10 +201,14 @@ function getAutores(dispositivo) {
     var u = reg[k] || {};
     var mio = !!disp && u.dispositivo === disp;
     if (mio) yo = u.nombre;
-    out.push({ nombre: u.nombre, mio: mio, creado: u.creado || '', ultimo: u.ultimo || '' });
+    var info = _usuCorreoDe(u.clave);
+    out.push({ nombre: u.nombre, mio: mio, creado: u.creado || '', ultimo: u.ultimo || '',
+               clave: u.clave || '', email: info.email || '' });
   });
   out.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre), 'es'); });
-  return { usuarios: out, yo: yo, avisos: _avDe(disp) };
+  var yoU = yo ? reg[_usuClave(yo)] : null;
+  return { usuarios: out, yo: yo, yoClave: (yoU && yoU.clave) || '',
+           avisos: _avDe(disp), lotes: _usuLotes() };
 }
 
 /**
@@ -118,7 +217,7 @@ function getAutores(dispositivo) {
  *   ya es suyo      -> no hace nada (idempotente), sólo refresca la última vez
  *   es de otro      -> lanza 'nombre-tomado'
  */
-function claimAutor(nombre, dispositivo) {
+function claimAutor(nombre, dispositivo, clave) {
   var nom = _usuLimpio(nombre), disp = _usuDisp(dispositivo);
   if (!nom) throw new Error('Escribe un nombre para identificarte.');
   if (!disp) throw new Error('No se pudo identificar este dispositivo. Recarga el panel.');
@@ -128,16 +227,19 @@ function claimAutor(nombre, dispositivo) {
     var reg = _usuLeer(), k = _usuClave(nom), u = reg[k];
     if (u && u.dispositivo && u.dispositivo !== disp) throw new Error('nombre-tomado');
     var nuevo = !u;
-    reg[k] = { nombre: u ? u.nombre : nom, dispositivo: disp,
+    // el lote se puede fijar al identificarse y corregir después sin perder la reserva
+    var cla = (clave === undefined || clave === null) ? ((u && u.clave) || '') : String(clave || '').trim();
+    reg[k] = { nombre: u ? u.nombre : nom, dispositivo: disp, clave: cla,
                creado: (u && u.creado) || new Date().toISOString(),
                ultimo: new Date().toISOString() };
     _usuGuardar(reg);
     if (nuevo) {
       AC_AUTOR = reg[k].nombre;   // para que la propia alta quede firmada por quien la hace
-      _reg('usuario.alta', { propietario: reg[k].nombre, campo: 'usuario',
+      _reg('usuario.alta', { clave: cla, propietario: reg[k].nombre, campo: 'usuario',
                              despues: reg[k].nombre, detalle: 'Nombre reservado para este dispositivo' });
     }
-    return { ok: true, nombre: reg[k].nombre, nuevo: nuevo };
+    return { ok: true, nombre: reg[k].nombre, nuevo: nuevo, clave: cla,
+             email: _usuCorreoDe(cla).email };
   } finally { try { lock.releaseLock(); } catch (e) {} }
 }
 
@@ -158,11 +260,13 @@ function moverAutor(nombre, dispositivo, password) {
     var reg = _usuLeer(), k = _usuClave(nom), u = reg[k];
     if (!u) return claimAutor(nom, disp);
     if (u.dispositivo === disp) return { ok: true, nombre: u.nombre, movido: false };
-    var antes = u.dispositivo;
+    var antes = u.dispositivo, duenoAnterior = { nombre: u.nombre, clave: u.clave || '' };
     u.dispositivo = disp; u.ultimo = new Date().toISOString();
     reg[k] = u; _usuGuardar(reg);
-    // al equipo que se queda sin el nombre se le deja un aviso
-    _avPush(antes, 'movido', u.nombre, quienLoHizo);
+    // al equipo que se queda sin el nombre se le deja un aviso — y un correo, si los
+    // envíos están abiertos y el propietario tiene dirección en la hoja.
+    var mail = _avisarPorCorreo(duenoAnterior, 'movido', quienLoHizo);
+    _avPush(antes, 'movido', u.nombre, quienLoHizo, mail);
     AC_AUTOR = u.nombre;
     _reg('usuario.mueve', { propietario: u.nombre, campo: 'dispositivo',
                             antes: String(antes).slice(0, 8) + '…', despues: disp.slice(0, 8) + '…',
@@ -194,9 +298,14 @@ function liberarAutor(nombre, dispositivo, password) {
     var reg = _usuLeer(), k = _usuClave(nom);
     if (!reg[k]) return { ok: true, liberado: false };
     var quien = reg[k].nombre, dispAnterior = reg[k].dispositivo;
+    var dueno = { nombre: quien, clave: reg[k].clave || '' };
     delete reg[k]; _usuGuardar(reg);
     // si le soltaron el nombre a otra persona, su equipo se entera al volver a entrar
-    if (!esMio) _avPush(dispAnterior, 'liberado', quien, String(AC_AUTOR || '').trim());
+    // —y por correo, si los envíos están abiertos.
+    if (!esMio) {
+      var mail = _avisarPorCorreo(dueno, 'liberado', String(AC_AUTOR || '').trim());
+      _avPush(dispAnterior, 'liberado', quien, String(AC_AUTOR || '').trim(), mail);
+    }
     _reg('usuario.libera', { propietario: quien, campo: 'usuario', antes: quien,
                              detalle: esMio ? 'Soltó su propio nombre'
                                             : 'Liberó el nombre de otra persona (con la contraseña del panel)' });

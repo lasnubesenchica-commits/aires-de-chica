@@ -108,7 +108,7 @@ function doPost(e) {
     // El padrón de usuarios se resuelve ANTES de exigir identidad: son justamente
     // las acciones con las que alguien se identifica o recupera su nombre, así que
     // pedirles un autor ya validado sería circular. Ver AiresChica_Usuarios.gs.
-    if (action === 'claimAutor')            return _reply({ ok: true, data: claimAutor(data.nombre, AC_DISP) }, null);
+    if (action === 'claimAutor')            return _reply({ ok: true, data: claimAutor(data.nombre, AC_DISP, data.clave) }, null);
     if (action === 'moverAutor')            return _reply({ ok: true, data: moverAutor(data.nombre, AC_DISP, data.password) }, null);
     // A quien le quitaron su nombre no puede escribir con él: descartar su propio
     // aviso tiene que poder hacerlo igual, así que va antes de exigir identidad.
@@ -149,6 +149,7 @@ function doPost(e) {
     else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
+    else if (action === 'enviarPruebaAlertaUsuario') out = { ok: true, data: enviarPruebaAlertaUsuario(data.email) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
     else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };

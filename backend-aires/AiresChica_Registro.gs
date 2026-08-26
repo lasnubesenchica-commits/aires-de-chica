@@ -68,7 +68,8 @@ var REG_ACCIONES = {
   'correo.envia':     'Estado de cuenta enviado',
   'usuario.alta':     'Usuario identificado',
   'usuario.mueve':    'Usuario movido de dispositivo',
-  'usuario.libera':   'Nombre de usuario liberado'
+  'usuario.libera':   'Nombre de usuario liberado',
+  'usuario.alerta':   'Alerta de identidad enviada'
 };
 
 function _regSheet() {
