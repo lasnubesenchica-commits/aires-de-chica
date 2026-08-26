@@ -182,7 +182,9 @@ function conciliarBanco(rows, filename) {
     if (sh) sh.appendRow([new Date(), filename || '', rows.length - hIdx - 1,
       pagos.filter(function (p) { return p.match; }).length, duplicados,
       _round2(pagos.reduce(function (a, p) { return a + (p.match ? p.monto : 0); }, 0)),
-      Session.getActiveUser().getEmail()]);
+      // _autor(), no la identidad de Google: el web app es anónimo y
+      // Session.getActiveUser() devuelve siempre cadena vacía aquí.
+      _autor()]);
   } catch (e) {}
 
   pagos.sort(function (a, b) { return (a.match === b.match) ? 0 : (a.match ? -1 : 1); });
