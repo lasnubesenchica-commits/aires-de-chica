@@ -125,10 +125,23 @@ function moverAutor(nombre, dispositivo, password) {
   } finally { try { lock.releaseLock(); } catch (e) {} }
 }
 
-/** Suelta un nombre: vuelve a quedar disponible para quien lo tome. */
-function liberarAutor(nombre) {
+/**
+ * Suelta un nombre: vuelve a quedar disponible para quien lo tome.
+ *
+ * El PROPIO nombre se suelta sin más. El de otra persona exige la contraseña del
+ * panel, porque si no bastaba con identificarse con cualquier nombre libre, liberar
+ * el ajeno y reclamarlo acto seguido: tres clics y la reserva no servía de nada.
+ */
+function liberarAutor(nombre, dispositivo, password) {
   var nom = _usuLimpio(nombre);
   if (!nom) throw new Error('Falta el nombre.');
+  var actual = _usuLeer()[_usuClave(nom)];
+  var esMio = !!(actual && actual.dispositivo && _usuDisp(dispositivo) &&
+                 actual.dispositivo === _usuDisp(dispositivo));
+  if (actual && !esMio) {
+    var v = verifyPassword(password);
+    if (!v || !v.ok) throw new Error('Para liberar el nombre de otra persona hace falta la contraseña del panel.');
+  }
   var lock = LockService.getScriptLock();
   try { lock.waitLock(8000); } catch (e) {}
   try {
@@ -137,7 +150,8 @@ function liberarAutor(nombre) {
     var quien = reg[k].nombre;
     delete reg[k]; _usuGuardar(reg);
     _reg('usuario.libera', { propietario: quien, campo: 'usuario', antes: quien,
-                             detalle: 'El nombre queda disponible' });
+                             detalle: esMio ? 'Soltó su propio nombre'
+                                            : 'Liberó el nombre de otra persona (con la contraseña del panel)' });
     return { ok: true, liberado: true, nombre: quien };
   } finally { try { lock.releaseLock(); } catch (e) {} }
 }

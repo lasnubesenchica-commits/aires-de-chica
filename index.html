@@ -2498,15 +2498,22 @@ async function renderOptsUsuarios(){
     ${u.length ? u.map(x=>`<div class="usu-row${x.mio?' mio':''}">
         <div><b>${_esc(x.nombre)}</b>${x.mio?' <span class="pill ok">Este dispositivo</span>':'<span class="muted"> · otro dispositivo</span>'}
           <span class="muted" style="display:block;font-size:.72rem">Desde ${_esc(String(x.creado||'').slice(0,10)||'—')} · última actividad ${_esc(String(x.ultimo||'').slice(0,10)||'—')}</span></div>
-        <button class="btn ghost" onclick="liberarAutorOpts('${_esc(x.nombre).replace(/'/g,"\\'")}',this)">Liberar</button>
+        <button class="btn ghost" onclick="liberarAutorOpts('${_esc(x.nombre).replace(/'/g,"\\'")}',${x.mio?'true':'false'},this)">Liberar</button>
       </div>`).join('')
       : '<div class="muted" style="font-size:.85rem">Todavía no hay ningún nombre reservado. El primero que se identifique aparta el suyo.</div>'}
-    <div class="help" style="margin-top:10px">Al liberar un nombre queda disponible para quien lo tome, y la acción se anota en la bitácora. Úsalo cuando alguien deje de usar el sistema o pierda acceso a su equipo.</div>`;
+    <div class="help" style="margin-top:10px">Al liberar un nombre queda disponible para quien lo tome, y la acción se anota en la bitácora. Úsalo cuando alguien deje de usar el sistema o pierda acceso a su equipo. <b>Liberar el nombre de otra persona pide la contraseña del panel</b>; el tuyo propio no.</div>`;
 }
-async function liberarAutorOpts(nombre, btn){
+async function liberarAutorOpts(nombre, mio, btn){
   if(!confirm(`¿Liberar el nombre «${nombre}»?\n\nQuedará disponible para que cualquiera lo tome desde otro dispositivo. La acción se anota en la bitácora.`)) return;
+  // Soltar el nombre propio es gratis; el de otra persona exige la contraseña, para
+  // que "liberar y reclamar" no sea un atajo para firmar como alguien más.
+  let password='';
+  if(!mio){
+    const v=prompt(`«${nombre}» es de otra persona.\n\nPara liberarlo escribe la contraseña del panel. Queda anotado en la bitácora.`);
+    if(v===null) return; password=v;
+  }
   btn.disabled=true; const t=btn.textContent; btn.textContent='Liberando…';
-  try{ await post('liberarAutor',{nombre}); }
+  try{ await post('liberarAutor',{nombre, password}); }
   catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('No se pudo liberar: '+e); return; }
   // si me liberé a mí mismo, dejo de estar identificado
   if(AUTOR && AUTOR.toLowerCase()===String(nombre).toLowerCase()) _setAutor('');
