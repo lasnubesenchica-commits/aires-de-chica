@@ -250,6 +250,46 @@ var COM_TIPOS = [
     accion: '' }
 ];
 
+/* Palabras con las que uno BUSCA un comunicado, que no siempre están en su nombre:
+ * quien tiene una fuga escribe «agua» o «tubería», no «mantenimiento programado».
+ * Van aparte del catálogo para no ensuciar cada plantilla con una línea más. */
+var COM_CLAVES = {
+  'mant.programado': 'mantenimiento trabajos reparacion obra tecnico',
+  'mant.agua':       'agua acueducto suministro corte bomba cisterna tuberia',
+  'mant.luz':        'luz energia electricidad electrico corte apagon transformador',
+  'mant.areas':      'poda desbroce limpieza jardin grama monte maleza areas comunes',
+  'mant.fumigacion': 'fumigacion plagas mosquitos zancudos insectos ratas veneno',
+  'mant.vias':       'calle calles camino via acceso asfalto bache carretera',
+  'inc.averia':      'averia dano falla rotura emergencia fuga urgente agua luz tuberia',
+  'inc.restablecido':'restablecido resuelto reparado normalidad solucionado listo agua luz',
+  'inc.dano':        'dano destrozo vandalismo bien comun rotura perjuicio',
+  'seg.alerta':      'seguridad robo hurto intruso sospechoso alerta vigilancia policia',
+  'seg.protocolo':   'acceso visitantes contratistas garita porton control ingreso invitados',
+  'seg.clima':       'lluvia lluvias tormenta clima temporada inundacion viento deslizamiento',
+  'pro.inicio':      'obra proyecto mejora inicio construccion contratista arranque',
+  'pro.avance':      'avance progreso obra proyecto estado porcentaje',
+  'pro.entrega':     'entrega inauguracion obra terminada mejora lista concluida',
+  'gob.convocatoria':'asamblea convocatoria reunion junta orden del dia quorum citacion',
+  'gob.segunda':     'segunda convocatoria asamblea quorum reunion',
+  'gob.acta':        'acta acuerdos asamblea resultados votacion minuta',
+  'gob.junta':       'junta directiva eleccion presidente tesorero secretario vocal',
+  'fin.informe':     'informe financiero estados cuentas balance ingresos egresos',
+  'fin.presupuesto': 'presupuesto partidas anual aprobado gastos plan',
+  'fin.cuota':       'cuota aumento ajuste mensualidad precio tarifa',
+  'fin.extraordinaria':'cuota extraordinaria aporte derrama especial recaudacion',
+  'fin.cuenta':      'cuenta banco bancaria transferencia deposito fraude estafa pago',
+  'nor.reglamento':  'reglamento normas reglas estatutos disposiciones',
+  'nor.recordatorio':'convivencia ruido musica mascotas perros basura horarios respeto',
+  'nor.construccion':'construccion obra planos escombros horario permiso remodelacion',
+  'nor.incumplimiento':'incumplimiento infraccion falta aviso individual personal amonestacion',
+  'com.evento':      'evento actividad fiesta celebracion invitacion reunion social',
+  'com.jornada':     'jornada limpieza voluntariado comunitaria trabajo mingas',
+  'com.bienvenida':  'bienvenida nuevo propietario vecino llegada',
+  'com.saludo':      'saludo navidad ano nuevo felicitacion temporada mensaje',
+  'con.encuesta':    'encuesta consulta opinion votacion sondeo preferencia',
+  'gen.aviso':       'aviso general otro libre cualquier tema comunicado'
+};
+
 function _comTipo(id) {
   for (var i = 0; i < COM_TIPOS.length; i++) if (COM_TIPOS[i].id === id) return COM_TIPOS[i];
   return { id: 'gen.aviso', grupo: 'com', nombre: 'Aviso general', prioridad: 'informativo', campos: [] };
@@ -880,6 +920,7 @@ function getComunicados(limite) {
     tipos: COM_TIPOS.map(function (t) {
       return { id: t.id, grupo: t.grupo, nombre: t.nombre, prioridad: t.prioridad || 'informativo',
                campos: t.campos || [], individual: !!t.individual, acuse: !!t.acuse,
+               claves: COM_CLAVES[t.id] || '',
                titulo: t.titulo || '', cuerpo: t.cuerpo || '', accion: t.accion || '' };
     }),
     grupos: COM_GRUPOS,

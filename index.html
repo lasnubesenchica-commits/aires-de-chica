@@ -636,12 +636,33 @@ a.btn { display:inline-block; text-decoration:none; }
 .cm-chip.on { background:var(--ac-teal-50); border-color:var(--ac-teal); color:var(--ac-teal-700); font-weight:600; }
 .cm-cuenta { font-size:.82rem; font-weight:700; color:var(--ac-teal-700); background:var(--ac-teal-50);
   border-radius:9px; padding:9px 12px; margin-top:8px; }
-.cm-tipos { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:9px; }
-.cm-tipo { text-align:left; border:1px solid var(--ac-border); border-radius:11px; padding:11px 13px;
-  background:#fff; cursor:pointer; font:inherit; }
-.cm-tipo:hover { border-color:var(--ac-teal); background:var(--ac-teal-50); }
-.cm-tipo b { display:block; font-size:.88rem; color:var(--ac-ink); }
-.cm-tipo span { font-size:.74rem; color:var(--ac-muted); }
+/* Catálogo de tipos: 34 opciones. Buscador arriba, lo más usado a mano, y cada grupo
+   con un separador que se vea. Las tarjetas eran filas rotas (la rejilla daba 5 columnas
+   y los grupos tienen 6, 3, 3, 3, 4, 5, 4, 5 y 1), y todas repetían «A la comunidad»,
+   que es el caso normal y no informa nada. */
+.cm-buscar { position:relative; margin-bottom:6px; }
+.cm-buscar input { width:100%; font:inherit; padding:11px 14px 11px 38px; border-radius:10px;
+  border:1px solid var(--ac-border); background:#fff; }
+.cm-buscar .lupa { position:absolute; left:13px; top:50%; transform:translateY(-50%); opacity:.5; }
+.cm-frec { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.cm-frec button { font:inherit; font-weight:600; font-size:.85rem; text-align:left; cursor:pointer;
+  border:1px solid var(--ac-teal); background:var(--ac-teal-50); color:var(--ac-teal-700);
+  border-radius:10px; padding:10px 12px; }
+.cm-frec button:hover { background:#dcf0f7; }
+.cm-gh { display:flex; align-items:center; gap:10px; margin:22px 0 6px; }
+.cm-gh .ico { font-size:1.1rem; line-height:1; }
+.cm-gh .nom { font-weight:800; font-size:.86rem; color:var(--ac-ink); text-transform:uppercase; letter-spacing:.04em; }
+.cm-gh .linea { flex:1; height:1px; background:var(--ac-border); }
+.cm-gh .n { font-size:.72rem; color:var(--ac-muted); font-weight:700; }
+.cm-filas { display:grid; grid-template-columns:1fr 1fr; gap:2px 18px; }
+@media (max-width:720px){ .cm-filas { grid-template-columns:1fr; } }
+.cm-fila { display:flex; align-items:center; gap:9px; width:100%; text-align:left; font:inherit;
+  background:none; border:0; border-radius:8px; padding:8px 10px; cursor:pointer; color:var(--ac-ink); }
+.cm-fila:hover { background:var(--ac-teal-50); color:var(--ac-teal-700); }
+.cm-fila .t { flex:1; min-width:0; font-size:.87rem; font-weight:600; }
+.cm-tag { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  border-radius:20px; padding:2px 8px; white-space:nowrap; background:var(--ac-teal-50); color:var(--ac-teal-700); }
+.cm-tag.indiv { background:#fbf0dc; color:var(--ac-warn); }
 .cm-grupo { font-size:.76rem; font-weight:700; color:var(--ac-muted); text-transform:uppercase;
   letter-spacing:.06em; margin:16px 0 7px; }
 .cm-prev { border:1px solid var(--ac-border); border-radius:11px; background:#fff; width:100%;
@@ -3901,26 +3922,76 @@ function comFecha(s){
 }
 
 /* ───────── vista 2: catálogo de tipos ───────── */
-function comNuevo(){ comVista('tipos'); }
+function comNuevo(){ COM_Q=''; comVista('tipos'); }
+/* Orden de los grupos: por urgencia con la que se buscan, no por el orden del catálogo.
+   Cuando hay una avería se entra con prisa; el saludo de temporada puede esperar abajo. */
+const COM_ORDEN=['inc','seg','mant','gob','fin','pro','nor','com','con'];
+// Con qué arranca «lo que más usas» mientras no haya historial del que aprender.
+const COM_FREC_BASE=['mant.agua','inc.averia','gob.convocatoria','gen.aviso'];
+let COM_Q='';
+const _comNorm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function comFrecuentes(){
+  const ts=COM_DATA.tipos||[], cuenta={};
+  (COM_DATA.comunicados||[]).forEach(c=>{ cuenta[c.tipo]=(cuenta[c.tipo]||0)+1; });
+  const usados=Object.keys(cuenta).sort((a,b)=>cuenta[b]-cuenta[a]);
+  const ids=[...new Set([...usados, ...COM_FREC_BASE])].slice(0,4);
+  return ids.map(id=>ts.find(t=>t.id===id)).filter(Boolean);
+}
 function comTiposHTML(){
-  const gs=COM_DATA.grupos||[], ts=COM_DATA.tipos||[];
-  const bloques=gs.map(g=>{
-    const dentro=ts.filter(t=>t.grupo===g.id);
-    if(!dentro.length) return '';
-    return `<div class="cm-grupo">${_esc(g.icono)} ${_esc(g.nombre)}</div>
-      <div class="cm-tipos">${dentro.map(t=>`
-        <button class="cm-tipo" onclick="comElegirTipo('${_esc(t.id)}')">
-          <b>${_esc(t.nombre)}</b>
-          <span>${t.individual?'A un solo propietario':'A la comunidad'}${t.acuse?' · pide acuse':''}</span>
-        </button>`).join('')}</div>`;
-  }).join('');
   return `<div class="card"><div class="hd"><h2>¿Qué vas a comunicar?</h2>
     <div class="spacer" style="flex:1"></div>
     <button class="btn ghost" onclick="comVolver()">← Volver</button></div>
     <div class="bd" style="padding:18px">
-      <p class="muted" style="margin-top:0">Elige el tipo: cada uno trae una <b>plantilla</b> con los puntos
-      que ese comunicado suele necesitar. Puedes cambiar todo el texto después.</p>
-      ${bloques}</div></div>`;
+      <p class="muted" style="margin:0 0 10px;font-size:.82rem">Cada tipo trae una <b>plantilla</b> con los
+      puntos que ese comunicado suele necesitar. Puedes cambiar todo el texto después.</p>
+      <div class="cm-buscar"><span class="lupa">🔎</span>
+        <input type="search" id="cmBuscaTipo" autocomplete="off" value="${_esc(COM_Q)}"
+          placeholder="Escribe qué pasó: agua, asamblea, ruido, obra…"
+          oninput="comFiltraTipos(this.value)"></div>
+      <div id="cmCatalogo">${comCatalogoHTML()}</div>
+    </div></div>`;
+}
+function comCatalogoHTML(){
+  const ts=COM_DATA.tipos||[], gs=COM_DATA.grupos||[];
+  const q=_comNorm(COM_Q).trim();
+  // Se busca por nombre, por grupo y por las palabras clave del catálogo: quien tiene
+  // una fuga escribe «agua», no «mantenimiento programado».
+  const casa=t=>{
+    if(!q) return true;
+    const g=gs.find(x=>x.id===t.grupo)||{};
+    const heno=_comNorm([t.nombre,g.nombre,t.claves].join(' '));
+    return q.split(/\s+/).every(w=>heno.includes(w));
+  };
+  const fila=t=>`<button class="cm-fila" onclick="comElegirTipo('${_esc(t.id)}')">
+      <span class="t">${_esc(t.nombre)}</span>
+      ${t.individual?'<span class="cm-tag indiv">Individual</span>':''}
+      ${t.acuse?'<span class="cm-tag">Pide acuse</span>':''}
+    </button>`;
+  const orden=[...COM_ORDEN, ...gs.map(g=>g.id).filter(id=>COM_ORDEN.indexOf(id)<0)];
+  const bloques=orden.map(id=>{
+    const g=gs.find(x=>x.id===id); if(!g) return '';
+    const dentro=ts.filter(t=>t.grupo===id&&casa(t));
+    if(!dentro.length) return '';
+    return `<div class="cm-gh"><span class="ico">${_esc(g.icono)}</span>
+        <span class="nom">${_esc(g.nombre)}</span><span class="linea"></span>
+        <span class="n">${dentro.length}</span></div>
+      <div class="cm-filas">${dentro.map(fila).join('')}</div>`;
+  }).join('');
+  if(q && !bloques) return `<div class="muted" style="padding:22px 0">
+    No hay ningún tipo que coincida con <b>«${_esc(COM_Q)}»</b>.
+    Prueba con otra palabra, o usa <button class="link-btn" onclick="comElegirTipo('gen.aviso')">Aviso general</button>
+    para escribir libremente.</div>`;
+  const frec=comFrecuentes();
+  const arriba=(!q && frec.length)? `<div class="cm-gh" style="margin-top:16px">
+      <span class="nom">Lo que más usas</span><span class="linea"></span></div>
+    <div class="cm-frec">${frec.map(t=>
+      `<button onclick="comElegirTipo('${_esc(t.id)}')">${_esc(t.nombre)}</button>`).join('')}</div>` : '';
+  return arriba+bloques;
+}
+function comFiltraTipos(q){
+  COM_Q=q;
+  const c=document.getElementById('cmCatalogo');
+  if(c) c.innerHTML=comCatalogoHTML();   // sólo el catálogo: el buscador no pierde el foco
 }
 function comElegirTipo(id){
   const t=(COM_DATA.tipos||[]).find(x=>x.id===id);
