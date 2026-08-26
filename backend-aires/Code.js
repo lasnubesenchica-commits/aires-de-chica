@@ -71,6 +71,7 @@ function doGet(e) {
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
     else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
         desde: p.desde, hasta: p.hasta, autor: p.autor, accion: p.accionFiltro, q: p.q, limite: p.limite }) }; }
+    else if (action === 'getAutores')      { requireAuth(p.token); out = { ok: true, data: getAutores(p.dispositivo) }; }
     else out = { ok: false, error: 'accion desconocida: ' + action };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
@@ -87,6 +88,9 @@ function doPost(e) {
   // sola contraseña compartida. Al haber multiusuario real, _autor() debe leer la
   // sesión y este renglón sobra.
   AC_AUTOR = String(data.autor || '').trim().slice(0, 60);
+  // Dispositivo desde el que se escribe. Lo usa el padrón de usuarios para que un
+  // nombre ya reservado no se pueda usar desde otro equipo (AiresChica_Usuarios.gs).
+  var AC_DISP = String(data.dispositivo || '').trim().slice(0, 80);
   var out;
   try {
     // acciones de autenticación (públicas)
@@ -101,8 +105,18 @@ function doPost(e) {
     // …y además exige saber QUIÉN lo hace. Se valida en el servidor, no sólo en el
     // panel: cualquiera con el token podría hacer un POST directo sin identificarse
     // y la bitácora quedaría con cambios anónimos.
+    // El padrón de usuarios se resuelve ANTES de exigir identidad: son justamente
+    // las acciones con las que alguien se identifica o recupera su nombre, así que
+    // pedirles un autor ya validado sería circular. Ver AiresChica_Usuarios.gs.
+    if (action === 'claimAutor')            return _reply({ ok: true, data: claimAutor(data.nombre, AC_DISP) }, null);
+    if (action === 'moverAutor')            return _reply({ ok: true, data: moverAutor(data.nombre, AC_DISP, data.password) }, null);
+
     requireAutor(action);
-    if (action === 'ensureSheets')          out = { ok: true, data: ensureSheets(true) };
+    // …y que ese nombre sea de QUIEN dice serlo: si ya está reservado por otro
+    // dispositivo, la escritura se corta.
+    requireAutorDispositivo(action, AC_AUTOR, AC_DISP);
+    if (action === 'liberarAutor')          out = { ok: true, data: liberarAutor(data.nombre) };
+    else if (action === 'ensureSheets')     out = { ok: true, data: ensureSheets(true) };
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };
     else if (action === 'registrarPago')    out = { ok: true, data: registrarPago(data.pago) };
     else if (action === 'eliminarPago')     out = { ok: true, data: eliminarPago(data.id) };

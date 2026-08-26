@@ -65,7 +65,10 @@ var REG_ACCIONES = {
   'comprob.aplica':   'Comprobante aplicado',
   'comprob.rechaza':  'Comprobante rechazado',
   'config.edita':     'Opciones modificadas',
-  'correo.envia':     'Estado de cuenta enviado'
+  'correo.envia':     'Estado de cuenta enviado',
+  'usuario.alta':     'Usuario identificado',
+  'usuario.mueve':    'Usuario movido de dispositivo',
+  'usuario.libera':   'Nombre de usuario liberado'
 };
 
 function _regSheet() {

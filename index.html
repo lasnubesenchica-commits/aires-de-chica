@@ -439,6 +439,19 @@ a.btn { display:inline-block; text-decoration:none; }
 .pgTable input[type=number]::-webkit-outer-spin-button,
 .pgTable input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 .pgTable td.acts { padding-left:10px; }
+/* Selector de identidad: padrón de usuarios del panel. */
+.usu-sec { font-size:.7rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+           color:var(--ac-teal-700); margin:16px 0 6px; padding-bottom:4px; border-bottom:2px solid var(--ac-teal-50); }
+.usu-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:space-between;
+           border:1px solid var(--ac-border); border-radius:9px; padding:9px 12px; margin-bottom:7px; font-size:.85rem; }
+.usu-row.mio { background:var(--ac-teal-50); border-color:var(--ac-teal-600); }
+.usu-row.tomado { background:#f7f9fa; color:var(--ac-muted); }
+.usu-row.tomado b { color:var(--ac-ink); }
+.usu-nuevo { display:flex; gap:8px; flex-wrap:wrap; }
+.usu-nuevo input { flex:1; min-width:180px; padding:9px 11px; border:1px solid var(--ac-border);
+                   border-radius:8px; font:inherit; font-size:.9rem; }
+.usu-nuevo input:focus { outline:none; border-color:var(--ac-teal-600); }
+#usuErr .notice { margin-top:10px; }
 /* Revisión de un estado de cuenta bancario antes de cargarlo (tab Conciliación). */
 .rev-sec { font-size:.72rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
            color:var(--ac-teal-700); margin:22px 0 4px; padding-bottom:5px; border-bottom:2px solid var(--ac-teal-50); }
@@ -837,11 +850,23 @@ function jsonp(action, params={}, opts={}){
   });
 }
 /* ───────── Quién usa el panel ─────────
- * Identidad DECLARADA, no autenticada: el sistema tiene una sola contraseña
- * compartida, así que esto dice "quién dijo ser", no "quién demostró ser".
- * Se envía en cada escritura para que la bitácora tenga autor.
+ * El nombre ya no es texto libre: el servidor lleva un padrón donde cada nombre
+ * queda APARTADO para un dispositivo (ver backend-aires/AiresChica_Usuarios.gs).
+ * Desde otro equipo, un nombre ya tomado aparece bloqueado y el servidor rechaza
+ * la escritura aunque alguien lo fuerce.
+ *
+ * Sigue sin ser autenticación: la contraseña del panel es una sola para todos, así
+ * que esto evita el choque accidental y que alguien se ponga el nombre de otro desde
+ * el panel — no una suplantación decidida. Eso llega con una clave por persona.
  */
 let AUTOR = localStorage.getItem('bc_autor') || '';
+// Identificador estable de este navegador. Es lo que amarra el nombre a un equipo.
+let DISPOSITIVO = localStorage.getItem('bc_dev') || '';
+if(!DISPOSITIVO){
+  DISPOSITIVO = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+              : 'd'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  try{ localStorage.setItem('bc_dev', DISPOSITIVO); }catch(e){}
+}
 function pintarAutor(){
   const b=document.getElementById('btnAutor'), n=document.getElementById('autorNombre');
   if(!b||!n) return;
@@ -850,19 +875,97 @@ function pintarAutor(){
   b.title = AUTOR ? `Los cambios se registran a nombre de ${AUTOR}. Haz clic para cambiar.`
                   : 'Nadie se ha identificado: los cambios quedarán como "Sin identificar". Haz clic para poner tu nombre.';
 }
-function cambiarAutor(){
-  const v=prompt('¿Quién está usando el panel?\n\nSu nombre queda registrado en cada cambio que haga.', AUTOR||'');
-  if(v===null) return;
-  AUTOR=String(v).trim().slice(0,60);
+function _setAutor(nombre){
+  AUTOR=String(nombre||'').trim().slice(0,60);
   if(AUTOR) localStorage.setItem('bc_autor',AUTOR); else localStorage.removeItem('bc_autor');
   pintarAutor();
-  if(AUTOR) toast('Los cambios se registrarán a nombre de '+AUTOR);
+}
+/* Selector de identidad. Muestra el padrón: quién eres en este equipo, qué nombres
+ * están tomados por otros, y el campo para uno nuevo. */
+async function cambiarAutor(){
+  document.getElementById('modalHd').innerHTML='<div style="font-weight:700">¿Quién está usando el panel?</div>';
+  document.getElementById('modalBd').innerHTML='<div class="muted" style="padding:24px 0;text-align:center">Leyendo los nombres ya registrados…</div>';
+  document.getElementById('modal').classList.add('show');
+  let d;
+  try{ d=await jsonp('getAutores',{dispositivo:DISPOSITIVO}); }
+  catch(e){
+    if(onAuthError(e)) return;
+    // Sin padrón (servidor viejo o sin conexión) se vuelve al campo libre: es
+    // preferible poder firmar un cambio que quedarse sin identificar.
+    document.getElementById('modalBd').innerHTML=
+      `<div class="notice">No se pudo leer la lista de usuarios: ${_esc(String(e))}</div>${_autorForm([],'')}`;
+    return;
+  }
+  // El padrón manda sobre lo guardado en el navegador: si el servidor dice que este
+  // equipo ya es de alguien, se adopta ese nombre. Cubre el caso de haber quedado
+  // "sin identificar" tras un rechazo, con la reserva todavía en pie.
+  if(d.yo && d.yo!==AUTOR) _setAutor(d.yo);
+  _autorPintar(d);
+}
+function _autorPintar(d){
+  const yo=d.yo||'', otros=(d.usuarios||[]).filter(u=>!u.mio);
+  const mio=(d.usuarios||[]).find(u=>u.mio);
+  const lista = otros.length ? `
+    <div class="usu-sec">Nombres ya tomados</div>
+    <p class="muted" style="font-size:.78rem;margin:0 0 8px">Están apartados para otro equipo, así que no se pueden escoger aquí. Si alguno es tuyo y cambiaste de computadora o de navegador, puedes pasarlo a este equipo con la contraseña del panel.</p>
+    ${otros.map(u=>`<div class="usu-row tomado">
+      <div><b>${_esc(u.nombre)}</b><span class="muted"> · en uso en otro dispositivo</span></div>
+      <button class="btn ghost" onclick="moverAutorAqui('${_esc(u.nombre).replace(/'/g,"\\'")}',this)">Es mío, pasarlo aquí</button>
+    </div>`).join('')}` : '';
+  const soy = mio ? `<div class="usu-row mio"><div>En este equipo eres <b>${_esc(mio.nombre)}</b></div>
+      <span class="pill ok">Tu nombre</span></div>` : '';
+  document.getElementById('modalBd').innerHTML=`
+    <p class="muted" style="margin-top:0;font-size:.82rem">Tu nombre queda anotado en <b>cada cambio</b> que hagas y no se puede borrar de la bitácora. Cada nombre se reserva para un equipo: nadie más puede firmar con el tuyo.</p>
+    ${soy}${lista}${_autorForm(otros, yo)}`;
+  const i=document.getElementById('usuNuevo'); if(i){ i.focus(); i.select(); }
+}
+function _autorForm(otros, yo){
+  return `<div class="usu-sec">${yo?'Cambiar mi nombre':'Identifícate'}</div>
+    <div class="usu-nuevo">
+      <input id="usuNuevo" maxlength="60" placeholder="Tu nombre" value="${_esc(yo||AUTOR||'')}"
+             onkeydown="if(event.key==='Enter')claimAutorAqui(document.getElementById('usuGo'))">
+      <button class="btn green" id="usuGo" onclick="claimAutorAqui(this)">Identificarme</button>
+    </div>
+    <div id="usuErr"></div>`;
+}
+async function claimAutorAqui(btn){
+  const inp=document.getElementById('usuNuevo'); if(!inp) return;
+  const nombre=String(inp.value||'').trim().slice(0,60);
+  const err=document.getElementById('usuErr');
+  if(!nombre){ err.innerHTML='<div class="notice">Escribe un nombre.</div>'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…'; err.innerHTML='';
+  let r;
+  try{ r=await post('claimAutor',{nombre}); }
+  catch(e){
+    btn.disabled=false; btn.textContent=t;
+    if(onAuthError(e)) return;
+    err.innerHTML = String(e)==='nombre-tomado'
+      ? `<div class="notice"><b>«${_esc(nombre)}» ya está tomado</b> por otro dispositivo. Si es tuyo, usa «Es mío, pasarlo aquí» en la lista de arriba; si no, escoge otro nombre.</div>`
+      : `<div class="notice">No se pudo guardar: ${_esc(String(e))}</div>`;
+    return;
+  }
+  _setAutor(r.nombre||nombre);
+  closeModal();
+  toast('Los cambios se registrarán a nombre de '+AUTOR);
+}
+async function moverAutorAqui(nombre, btn){
+  const pwd=prompt(`Para pasar «${nombre}» a este dispositivo, escribe la contraseña del panel.\n\nEl cambio queda anotado en la bitácora.`);
+  if(pwd===null) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Moviendo…';
+  let r;
+  try{ r=await post('moverAutor',{nombre, password:pwd}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('No se pudo mover: '+e); return; }
+  _setAutor(r.nombre||nombre);
+  closeModal();
+  toast('«'+AUTOR+'» quedó asignado a este dispositivo');
 }
 // Acciones de arranque/mantenimiento que el servidor permite sin autor humano.
 // Se replica aquí sólo para no molestar con el prompt; quien manda es el servidor.
 const SIN_AUTOR=new Set(['ensureSheets','seedInicial','seedGastos2026','seedRecurrentes',
   'actualizarJulio2026','rollbackJulio2026','descargarInformePL','enviarInformePL','capturarComprobantes',
-  'verifyPassword','setPassword','resetPassword','guardarContrato']);
+  'verifyPassword','setPassword','resetPassword','guardarContrato',
+  // con éstas es justamente con las que uno se identifica: pedir autor sería circular
+  'claimAutor','moverAutor']);
 // Pide identificarse antes de escribir, para no anotar cambios anónimos.
 function exigirAutor(){
   if(AUTOR) return true;
@@ -874,7 +977,7 @@ async function post(action,data={}){
   // El servidor rechaza los cambios sin autor; aquí se pide el nombre antes de
   // mandar, para que el usuario vea una petición clara y no un error del servidor.
   if(!SIN_AUTOR.has(action) && !exigirAutor()) throw 'sin-autor';
-  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,...data})});
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,dispositivo:DISPOSITIVO,...data})});
   const j=await r.json(); if(!j.ok) throw j.error; return j.data;
 }
 function onAuthError(e){
@@ -883,6 +986,12 @@ function onAuthError(e){
   if(String(e)==='sin-autor'){
     if(!AUTOR){ exigirAutor(); if(AUTOR) toast('Ya puedes repetir la acción'); }
     else alert('El cambio no se guardó: el servidor no recibió tu nombre. Vuelve a intentarlo.');
+    return true;
+  }
+  // El nombre con el que se intentó firmar está apartado para otro dispositivo.
+  if(String(e)==='autor-de-otro'){
+    alert(`El cambio no se guardó.\n\n«${AUTOR}» está reservado para otro dispositivo, así que desde aquí no se puede firmar con ese nombre.\n\nIdentifícate con tu propio nombre, o —si de verdad es el tuyo— pásalo a este equipo desde el selector.`);
+    _setAutor(''); cambiarAutor();
     return true;
   }
   return false;
@@ -2348,6 +2457,9 @@ async function renderOpts(){
       <span id="optsMsg" class="muted"></span>
     </div></div>
 
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>👤 Quién usa el panel</h2></div>
+      <div class="bd" style="padding:18px" id="optsUsuarios"><div class="muted">Cargando…</div></div></div>
+
     <div class="card" style="margin-top:16px"><div class="hd"><h2>🔒 Seguridad · Contraseña de acceso</h2></div>
       <div class="bd" style="padding:18px;max-width:460px">
         <div class="field"><label>Contraseña actual</label>
@@ -2373,6 +2485,33 @@ async function renderOpts(){
         <div id="ujMsg" class="muted" style="margin-top:10px"></div>
       </div></div>`;
   ujLoadStatus();
+  renderOptsUsuarios();
+}
+/* Padrón de usuarios en Opciones: quién tiene apartado cada nombre y cómo soltarlo. */
+async function renderOptsUsuarios(){
+  const box=document.getElementById('optsUsuarios'); if(!box) return;
+  let d; try{ d=await jsonp('getAutores',{dispositivo:DISPOSITIVO}); }
+  catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">No se pudo leer: '+_esc(String(e))+'</div>'; return; }
+  const u=d.usuarios||[];
+  box.innerHTML=`
+    <div class="muted" style="font-size:.82rem;margin-bottom:12px">Cada nombre queda <b>apartado para un dispositivo</b>: desde otro equipo aparece tomado y el servidor rechaza los cambios firmados con él. <b>No es una contraseña por persona</b> — la del panel sigue siendo una sola — pero impide que dos personas usen el mismo nombre o que alguien firme con el de otro desde el panel.</div>
+    ${u.length ? u.map(x=>`<div class="usu-row${x.mio?' mio':''}">
+        <div><b>${_esc(x.nombre)}</b>${x.mio?' <span class="pill ok">Este dispositivo</span>':'<span class="muted"> · otro dispositivo</span>'}
+          <span class="muted" style="display:block;font-size:.72rem">Desde ${_esc(String(x.creado||'').slice(0,10)||'—')} · última actividad ${_esc(String(x.ultimo||'').slice(0,10)||'—')}</span></div>
+        <button class="btn ghost" onclick="liberarAutorOpts('${_esc(x.nombre).replace(/'/g,"\\'")}',this)">Liberar</button>
+      </div>`).join('')
+      : '<div class="muted" style="font-size:.85rem">Todavía no hay ningún nombre reservado. El primero que se identifique aparta el suyo.</div>'}
+    <div class="help" style="margin-top:10px">Al liberar un nombre queda disponible para quien lo tome, y la acción se anota en la bitácora. Úsalo cuando alguien deje de usar el sistema o pierda acceso a su equipo.</div>`;
+}
+async function liberarAutorOpts(nombre, btn){
+  if(!confirm(`¿Liberar el nombre «${nombre}»?\n\nQuedará disponible para que cualquiera lo tome desde otro dispositivo. La acción se anota en la bitácora.`)) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Liberando…';
+  try{ await post('liberarAutor',{nombre}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('No se pudo liberar: '+e); return; }
+  // si me liberé a mí mismo, dejo de estar identificado
+  if(AUTOR && AUTOR.toLowerCase()===String(nombre).toLowerCase()) _setAutor('');
+  toast('Nombre liberado');
+  renderOptsUsuarios();
 }
 async function ujLoadStatus(){
   const el=document.getElementById('ujStatus'); if(!el) return;
