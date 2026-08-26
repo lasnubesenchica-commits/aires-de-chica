@@ -118,6 +118,9 @@ function doPost(e) {
     // …y que ese nombre sea de QUIEN dice serlo: si ya está reservado por otro
     // dispositivo, la escritura se corta.
     requireAutorDispositivo(action, AC_AUTOR, AC_DISP);
+    // Las acciones de Opciones (reglas del sistema, cargas masivas, envíos de prueba)
+    // piden además la contraseña, aunque la sesión ya esté abierta.
+    requireAdmin(action, data.password);
     if (action === 'liberarAutor')          out = { ok: true, data: liberarAutor(data.nombre, AC_DISP, data.password) };
     else if (action === 'ensureSheets')     out = { ok: true, data: ensureSheets(true) };
     else if (action === 'seedInicial')      out = { ok: true, data: seedInicial(!!data.force) };

@@ -74,3 +74,35 @@ function requireAuth(token) {
   if (token && token === _sessionToken()) return true;
   throw new Error('no-auth');
 }
+
+/**
+ * Acciones administrativas: además del token, exigen escribir la CONTRASEÑA.
+ *
+ * El token vive en el navegador, así que quien se siente frente a un panel abierto
+ * ya lo tiene. Eso alcanza para el trabajo del día —registrar un pago, aplicar un
+ * comprobante—, pero no para cambiar las reglas del sistema: la cuota, la mora, el
+ * interruptor de envíos o una carga masiva. Esas piden la contraseña aunque la sesión
+ * esté abierta, de modo que un equipo desatendido no baste para tocarlas.
+ *
+ * Se comprueba en el SERVIDOR y no sólo en el panel: si viviera únicamente en la
+ * interfaz, un POST directo con el token se la saltaría entera.
+ */
+var ADMIN_ACCIONES = {
+  guardarConfig: 1,              // cuota, mora, notificaciones, cuenta de cobro, envíos
+  liberarAutor: 1,               // soltar un nombre del padrón de usuarios
+  actualizarJulio2026: 1, rollbackJulio2026: 1,
+  seedInicial: 1, seedGastos2026: 1, seedRecurrentes: 1,
+  seedRegistro18Ago: 1, rollbackSeedRegistro18Ago: 1,
+  enviarPruebaEstado: 1, enviarPruebaAlertaUsuario: 1,
+  emitirConstanciasFaltantes: 1,
+  // escriben a TODOS los propietarios de una vez
+  enviarRecordatorios: 1, enviarInformePL: 1
+};
+
+function requireAdmin(accion, password) {
+  if (!ADMIN_ACCIONES[accion]) return true;
+  if (!_props().getProperty(AUTH_PROP_HASH)) return true;   // aún sin contraseña (bootstrap)
+  var v = verifyPassword(password);
+  if (v && v.ok) return true;
+  throw new Error('admin-clave');
+}

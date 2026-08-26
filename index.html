@@ -557,6 +557,9 @@ a.btn { display:inline-block; text-decoration:none; }
 .drop.drag { background:var(--ac-teal-50); border-color:var(--ac-teal); }
 .muted { color:var(--ac-muted); }
 /* Opciones */
+.opts-llave { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:space-between;
+              background:var(--ac-teal-50); border:1px solid var(--ac-border); border-radius:10px;
+              padding:9px 14px; margin-bottom:14px; font-size:.82rem; color:var(--ac-teal-700); }
 .opts-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 @media (max-width:820px){ .opts-grid{grid-template-columns:1fr} }
 .field { margin-bottom:14px; }
@@ -793,6 +796,8 @@ a.btn { display:inline-block; text-decoration:none; }
 
   <section id="tab-opts" style="display:none">
     <div id="optsBody" class="muted">Cargando…</div>
+    <!-- Bajo la misma llave que el resto de Opciones: se oculta hasta desbloquear. -->
+    <div id="optsExtra" style="display:none">
     <div class="card" style="margin-top:16px"><div class="hd"><h2>Envío de recordatorios y estados de cuenta</h2></div>
       <div class="bd" style="padding:18px">
         <p class="muted">Envía a cada propietario su estado de cuenta en PDF por correo. Antes de enviar a todos, puedes <b>enviarte una prueba a tu correo</b> para verificar el formato.</p>
@@ -822,6 +827,7 @@ a.btn { display:inline-block; text-decoration:none; }
         </div>
         <div id="recorResult" style="margin-top:14px"></div>
       </div></div>
+    </div><!-- /optsExtra -->
   </section>
 </div>
 
@@ -1082,15 +1088,48 @@ async function post(action,data={}){
   // El servidor rechaza los cambios sin autor; aquí se pide el nombre antes de
   // mandar, para que el usuario vea una petición clara y no un error del servidor.
   if(!SIN_AUTOR.has(action) && !exigirAutor()) throw 'sin-autor';
-  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,dispositivo:DISPOSITIVO,...data})});
+  // Las acciones de Opciones viajan con la contraseña; el servidor la exige aparte
+  // del token. Se manda desde un solo sitio para no depender de recordarlo en cada
+  // botón. Ver ADMIN_ACCIONES en backend-aires/AiresChica_Auth.gs.
+  // adminAbierto(), no "hay contraseña": si el desbloqueo caducó hay que dejar de
+  // mandarla, y de paso soltarla de memoria.
+  if(ADMIN_PWD && !adminAbierto()) adminCerrar();
+  const extra = ADMIN_ACCIONES.has(action) && adminAbierto() ? {password:ADMIN_PWD} : {};
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,dispositivo:DISPOSITIVO,...extra,...data})});
   const j=await r.json(); if(!j.ok) throw j.error; return j.data;
 }
+/* ───────── Opciones bajo llave ─────────
+ * El token de sesión vive en el navegador, así que quien se siente frente a un panel
+ * abierto lo tiene. Para el trabajo del día está bien; para cambiar las REGLAS del
+ * sistema, no. Estas acciones piden la contraseña aunque la sesión esté abierta.
+ *
+ * La contraseña se guarda sólo en memoria y por un rato: nunca en localStorage, y se
+ * pierde al recargar o al salir. Quien encuentre el panel abierto puede registrar un
+ * pago, pero no apagar los correos ni cambiar la mora.
+ */
+const ADMIN_ACCIONES = new Set(['guardarConfig','liberarAutor',
+  'actualizarJulio2026','rollbackJulio2026','seedInicial','seedGastos2026','seedRecurrentes',
+  'seedRegistro18Ago','rollbackSeedRegistro18Ago',
+  'enviarPruebaEstado','enviarPruebaAlertaUsuario','emitirConstanciasFaltantes',
+  'enviarRecordatorios','enviarInformePL']);
+const ADMIN_MINUTOS = 10;
+let ADMIN_PWD = '', ADMIN_HASTA = 0;
+function adminAbierto(){ return !!ADMIN_PWD && Date.now() < ADMIN_HASTA; }
+function adminCerrar(){ ADMIN_PWD=''; ADMIN_HASTA=0; }
+function _adminAbrir(pwd){ ADMIN_PWD=pwd; ADMIN_HASTA=Date.now()+ADMIN_MINUTOS*60000; }
 function onAuthError(e){
   if(String(e)==='no-auth'){ TOKEN=''; localStorage.removeItem('ac_token'); showGate(); return true; }
   // El servidor rechazó el cambio por no saber quién lo hacía.
   if(String(e)==='sin-autor'){
     if(!AUTOR){ exigirAutor(); if(AUTOR) toast('Ya puedes repetir la acción'); }
     else alert('El cambio no se guardó: el servidor no recibió tu nombre. Vuelve a intentarlo.');
+    return true;
+  }
+  // Acción de Opciones sin contraseña vigente (o el desbloqueo caducó).
+  if(String(e)==='admin-clave'){
+    adminCerrar();
+    alert('El cambio no se guardó.\n\nLas opciones del sistema piden la contraseña del panel, y el desbloqueo caducó (dura '+ADMIN_MINUTOS+' minutos).\n\nVuelve a desbloquear y repite la acción.');
+    if(typeof renderOpts==='function') renderOpts();
     return true;
   }
   // El nombre con el que se intentó firmar está apartado para otro dispositivo.
@@ -1177,7 +1216,7 @@ document.getElementById('gateForm').addEventListener('submit', async e=>{
   }catch(ex){ err.textContent='Error: '+ex; }
 });
 function logout(){
-  TOKEN=''; localStorage.removeItem('ac_token');
+  TOKEN=''; localStorage.removeItem('ac_token'); adminCerrar();
   // También se olvida quién era: si la siguiente persona entra con la misma
   // contraseña, sus cambios no deben quedar firmados por la anterior.
   AUTOR=''; localStorage.removeItem('bc_autor'); pintarAutor();
@@ -2475,10 +2514,16 @@ async function auditarDup(btn){
 /* ───────── Opciones / Admin ───────── */
 let OPTS=null;
 async function renderOpts(){
-  const body=document.getElementById('optsBody'); body.innerHTML='<div class="muted">Cargando…</div>';
+  const body=document.getElementById('optsBody');
+  if(!adminAbierto()){ _optsCandado(body); return; }
+  body.innerHTML='<div class="muted">Cargando…</div>';
   let d; try{ d=await jsonp('getConfig'); }catch(e){ if(onAuthError(e))return; body.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
-  OPTS=d; const c=d.config, mon=d.moneda||'B/.';
+  OPTS=d; _optsExtra(true); const c=d.config, mon=d.moneda||'B/.';
   body.innerHTML=`
+    <div class="opts-llave">
+      <span>🔓 <b>Opciones desbloqueado</b> · se vuelve a bloquear solo en ${ADMIN_MINUTOS} minutos, al recargar o al salir.</span>
+      <button class="btn ghost" onclick="adminCerrar();renderOpts()">Bloquear ahora</button>
+    </div>
     <div class="opts-grid">
       <div class="card"><div class="hd"><h2>Parámetros de cobro</h2></div><div class="bd" style="padding:18px">
         <div class="field"><label>Cuota de mantenimiento</label>
@@ -2594,6 +2639,44 @@ async function renderOpts(){
   ujLoadStatus();
   renderOptsUsuarios();
 }
+/* Candado del tab: sin contraseña no se ve ni se toca nada de Opciones. */
+function _optsExtra(ver){
+  const e=document.getElementById('optsExtra'); if(e) e.style.display = ver ? '' : 'none';
+}
+function _optsCandado(body){
+  _optsExtra(false);
+  body.innerHTML=`
+    <div class="card"><div class="bd" style="padding:26px;max-width:440px;margin:0 auto;text-align:center">
+      <div style="font-size:2.2rem;line-height:1;margin-bottom:10px">🔒</div>
+      <h2 style="margin:0 0 6px;font-size:1.05rem">Opciones está bajo llave</h2>
+      <p class="muted" style="font-size:.84rem;line-height:1.55;margin:0 0 16px">
+        Aquí se cambian las <b>reglas del sistema</b>: la cuota, la mora, el interruptor de
+        correos, la cuenta de cobro y las cargas masivas. Por eso pide la contraseña aunque
+        ya hayas entrado — así un panel abierto y desatendido no alcanza para tocarlas.</p>
+      <div class="usu-nuevo" style="justify-content:center">
+        <input type="password" id="optsPwd" placeholder="Contraseña del panel" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')desbloquearOpts(document.getElementById('optsGo'))">
+        <button class="btn green" id="optsGo" onclick="desbloquearOpts(this)">Desbloquear</button>
+      </div>
+      <div id="optsPwdErr" style="margin-top:10px"></div>
+      <div class="help" style="margin-top:12px">El desbloqueo dura ${ADMIN_MINUTOS} minutos y se pierde al recargar o al salir. La contraseña no se guarda en el navegador.</div>
+    </div></div>`;
+  const i=document.getElementById('optsPwd'); if(i) i.focus();
+}
+async function desbloquearOpts(btn){
+  const inp=document.getElementById('optsPwd'), err=document.getElementById('optsPwdErr');
+  const pwd=String(inp.value||'');
+  if(!pwd){ err.innerHTML='<div class="notice">Escribe la contraseña.</div>'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Comprobando…'; err.innerHTML='';
+  let r;
+  try{ r=await post('verifyPassword',{password:pwd}); }
+  catch(e){ btn.disabled=false; btn.textContent=t;
+    if(!onAuthError(e)) err.innerHTML='<div class="notice">No se pudo comprobar: '+_esc(String(e))+'</div>'; return; }
+  if(!r||!r.ok){ btn.disabled=false; btn.textContent=t; inp.value=''; inp.focus();
+    err.innerHTML='<div class="notice">La contraseña no coincide.</div>'; return; }
+  _adminAbrir(pwd);
+  renderOpts();
+}
 /* Padrón de usuarios en Opciones: quién tiene apartado cada nombre y cómo soltarlo. */
 async function renderOptsUsuarios(){
   const box=document.getElementById('optsUsuarios'); if(!box) return;
@@ -2630,16 +2713,10 @@ async function probarAlertaCorreo(btn){
   msg.innerHTML='<span style="color:var(--ac-ok)">✓ Enviado a <b>'+_esc(email)+'</b>. Revisa la bandeja (y el spam la primera vez).</span>';
 }
 async function liberarAutorOpts(nombre, mio, btn){
-  if(!confirm(`¿Liberar el nombre «${nombre}»?\n\nQuedará disponible para que cualquiera lo tome desde otro dispositivo. La acción se anota en la bitácora.`)) return;
-  // Soltar el nombre propio es gratis; el de otra persona exige la contraseña, para
-  // que "liberar y reclamar" no sea un atajo para firmar como alguien más.
-  let password='';
-  if(!mio){
-    const v=prompt(`«${nombre}» es de otra persona.\n\nPara liberarlo escribe la contraseña del panel. Queda anotado en la bitácora.`);
-    if(v===null) return; password=v;
-  }
+  // La contraseña ya se dio al desbloquear el tab; post() la adjunta sola.
+  if(!confirm(`¿Liberar el nombre «${nombre}»?\n\n${mio?'Dejarás de estar identificado en este equipo.':'Quedará disponible para que cualquiera lo tome, y a su dueño se le avisa.'}\n\nLa acción se anota en la bitácora.`)) return;
   btn.disabled=true; const t=btn.textContent; btn.textContent='Liberando…';
-  try{ await post('liberarAutor',{nombre, password}); }
+  try{ await post('liberarAutor',{nombre}); }
   catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('No se pudo liberar: '+e); return; }
   // si me liberé a mí mismo, dejo de estar identificado
   if(AUTOR && AUTOR.toLowerCase()===String(nombre).toLowerCase()) _setAutor('');

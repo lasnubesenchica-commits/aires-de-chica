@@ -278,9 +278,9 @@ function moverAutor(nombre, dispositivo, password) {
 /**
  * Suelta un nombre: vuelve a quedar disponible para quien lo tome.
  *
- * El PROPIO nombre se suelta sin más. El de otra persona exige la contraseña del
- * panel, porque si no bastaba con identificarse con cualquier nombre libre, liberar
- * el ajeno y reclamarlo acto seguido: tres clics y la reserva no servía de nada.
+ * La contraseña ya la exigió `requireAdmin` en el router: liberar es una acción de
+ * Opciones. Aquí sólo se distingue si el nombre era propio o ajeno, para que la
+ * bitácora lo diga y para avisar al dueño cuando no lo era.
  */
 function liberarAutor(nombre, dispositivo, password) {
   var nom = _usuLimpio(nombre);
@@ -288,10 +288,6 @@ function liberarAutor(nombre, dispositivo, password) {
   var actual = _usuLeer()[_usuClave(nom)];
   var esMio = !!(actual && actual.dispositivo && _usuDisp(dispositivo) &&
                  actual.dispositivo === _usuDisp(dispositivo));
-  if (actual && !esMio) {
-    var v = verifyPassword(password);
-    if (!v || !v.ok) throw new Error('Para liberar el nombre de otra persona hace falta la contraseña del panel.');
-  }
   var lock = LockService.getScriptLock();
   try { lock.waitLock(8000); } catch (e) {}
   try {
