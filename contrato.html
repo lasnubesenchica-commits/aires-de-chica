@@ -21,6 +21,9 @@
   .sign{display:flex;gap:46px;margin-top:52px;page-break-inside:avoid;}
   .sign > div{flex:1;text-align:center;}
   .sign .line{border-top:1px solid var(--ink);margin-top:46px;padding-top:6px;font-family:Helvetica,Arial,sans-serif;font-size:12px;}
+  .sign .line b{font-size:12.5px;}
+  .sign .fecha{display:inline-block;margin-top:10px;color:var(--muted);font-size:11.5px;}
+  .muted{color:var(--muted);}
   .foot-note{margin-top:30px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted);font-size:10.5px;text-align:center;font-family:Helvetica,Arial,sans-serif;}
   @media print{
     @page{ size:A4; margin:15mm; }
@@ -89,13 +92,11 @@
     <div class="sub">Sistema de registro y reportes · admin.airesdechica.org</div>
   </div>
 
-  <div class="note">Los textos entre corchetes <b>[ ]</b> son campos por completar (nombres, cédulas, fechas y datos de pago). Haz clic y reemplázalos.</div>
-
   <p>Conste por el presente documento el <b>Contrato de Prestación de Servicios Digitales</b> que celebran, por una parte:</p>
 
   <div class="parties">
-    <p><b>EL PROVEEDOR:</b> <b>Joslyn Alonso Lopez</b>, con cédula/identificación <b>8-743-456</b> y correo <b>josh@balanceclip.net</b>; en adelante, <b>"El Proveedor"</b>.</p>
-    <p><b>EL CLIENTE:</b> <span class="fill">[Asociación de Propietarios de Aires de Chicá]</span>, representada por <span class="fill">[Nombre del representante]</span>, con cédula <span class="fill">[__________]</span>; en adelante, <b>"El Cliente"</b>.</p>
+    <p><b>EL PROVEEDOR:</b> <b>Joslyn Alonso López</b>, con cédula/identificación <b>8-743-456</b> y correo <b>josh@balanceclip.net</b>; en adelante, <b>"El Proveedor"</b>.</p>
+    <p><b>EL CLIENTE:</b> <b>Asociación de Propietarios de Aires de Chicá</b>, representada por <b>Javier Della Cella S.</b>, con cédula <b>8-336-128</b>, en su condición de <b>Presidente de la Junta Directiva</b>; en adelante, <b>"El Cliente"</b>.</p>
   </div>
 
   <p>Ambas partes, de común acuerdo, celebran este contrato conforme a las siguientes cláusulas:</p>
@@ -104,19 +105,19 @@
   <p>El Proveedor pone a disposición del Cliente una plataforma web (<b>admin.airesdechica.org</b>) para el registro de los ingresos y los gastos de la comunidad y la generación automática de reportes. Conforme a la propuesta aceptada, el servicio comprende las siguientes funciones:</p>
   <p class="oh"><b>1. Registro de ingresos:</b></p>
   <ul class="obj">
-    <li>Captura el pago enviado por correo, de forma automática.</li>
-    <li>Registra el ingreso al propietario que realizó el pago.</li>
-    <li>Puede notificar al propietario que su pago fue recibido y procesado.</li>
-    <li>Puede enviar el estado de cuenta al propietario.</li>
-    <li>Guarda la constancia de pago de cada propietario.</li>
-    <li>Lleva el historial de pagos.</li>
+    <li>Capturar el pago enviado por correo, de forma automática.</li>
+    <li>Registrar el ingreso al propietario que realizó el pago.</li>
+    <li>Notificar al propietario que su pago fue recibido y procesado.</li>
+    <li>Enviar el estado de cuenta al propietario dentro de los primeros 10 días del mes siguiente.</li>
+    <li>Guardar la constancia de pago de cada propietario.</li>
+    <li>Llevar el historial de pagos.</li>
   </ul>
   <p class="oh"><b>2. Registro de gastos:</b></p>
   <ul class="obj">
-    <li>Captura el gasto con solo enviar el comprobante al correo, de forma automática.</li>
-    <li>Registra cada gasto por categoría.</li>
-    <li>Guarda el comprobante de cada gasto.</li>
-    <li>Lleva el historial de gastos.</li>
+    <li>Capturar el gasto con solo enviar el comprobante al correo, de forma automática.</li>
+    <li>Registrar cada gasto por categoría.</li>
+    <li>Guardar el comprobante de cada gasto.</li>
+    <li>Llevar el historial de gastos.</li>
     <li>Incluye plantillas para los gastos recurrentes de cada mes.</li>
   </ul>
   <p class="oh"><b>3. Generación de reportes:</b></p>
@@ -129,16 +130,16 @@
   <p>El Proveedor se encarga de la configuración y el mantenimiento del sistema.</p>
 
   <h2 class="cl">Segunda — Alcance y limitaciones</h2>
-  <p>El servicio es una <b>herramienta de registro y generación de reportes</b>. No constituye asesoría contable, legal ni fiscal, ni una <b>auditoría o certificación por parte de un Contador Público Autorizado (CPA)</b>. La administración de la comunidad, las gestiones de cobro y la comunicación con los propietarios son responsabilidad exclusiva del Cliente; nuestra responsabilidad es la veracidad y exactitud de los datos que registra el sistema.</p>
+  <p>El servicio es una <b>herramienta de registro y generación de reportes</b>. No constituye asesoría contable, legal ni fiscal, ni una <b>auditoría o certificación por parte de un Contador Público Autorizado (CPA)</b>. La administración de la comunidad, las gestiones de cobro y la comunicación con los propietarios son responsabilidad exclusiva del Cliente; el Proveedor es responsable de la veracidad y exactitud de los datos que registra el sistema.</p>
 
   <h2 class="cl">Tercera — Propiedad intelectual y licencia de uso</h2>
   <p>El sistema, su panel de control (<i>dashboard</i>), su código fuente y su diseño son <b>propiedad exclusiva del Proveedor</b>. El Proveedor otorga al Cliente una licencia de uso <b>no exclusiva e intransferible</b>, vigente mientras el pago de la mensualidad se mantenga al día. El Cliente no adquiere derecho de propiedad alguno sobre el software.</p>
 
   <h2 class="cl">Cuarta — Autonomía y datos del Cliente</h2>
-  <p>El dominio <b>airesdechica.org</b>, la cuenta de Google institucional y <b>todos los datos</b> registrados (ingresos, gastos, comprobantes e historial) son <b>propiedad del Cliente</b>. Los datos son portables y permanecen con el Cliente, incluso al terminar el contrato. El Proveedor facilitará el acceso y la entrega de dichos datos a la finalización del servicio.&nbsp;</p><p><br></p><p><br></p><p><br></p>
+  <p>El dominio <b>airesdechica.org</b>, la cuenta de Google institucional y <b>todos los datos</b> registrados (ingresos, gastos, comprobantes e historial) son <b>propiedad del Cliente</b>. Los datos son portables y permanecen con el Cliente, incluso al terminar el contrato. El Proveedor facilitará el acceso y la entrega de dichos datos a la finalización del servicio.</p>
 
   <h2 class="cl">Quinta — Precio y forma de pago</h2>
-  <p>El Cliente pagará al Proveedor una mensualidad de <b>B/. 290.00</b> (doscientos noventa balboas con 00/100), con todo incluido: la plataforma en funcionamiento, el dominio y la cuenta institucional, el almacenamiento de datos, el servicio de lectura de comprobantes, el mantenimiento, los respaldos y el soporte. El pago se realizará por <b>mes adelantado</b>, dentro de los primeros <span class="fill">[cinco (5)]</span> días de cada mes, mediante <span class="fill">[transferencia/ACH]</span> a la cuenta que indique el Proveedor. Un atraso mayor a <span class="fill">[quince (15)]</span> días podrá suspender el servicio hasta regularizar el pago.</p>
+  <p>El Cliente pagará al Proveedor una mensualidad de <b>B/. 290.00</b> (doscientos noventa balboas con 00/100), con todo incluido: la plataforma en funcionamiento, el dominio y la cuenta institucional, el almacenamiento de datos, el servicio de lectura de comprobantes, el mantenimiento, los respaldos y el soporte. El pago se realizará por <b>mes adelantado</b>, dentro de los primeros <b>cinco (5) días</b> de cada mes, mediante <b>transferencia bancaria o ACH</b> a la cuenta que indique el Proveedor. Un atraso mayor a <b>quince (15) días</b> podrá suspender el servicio hasta regularizar el pago.</p>
 
   <h2 class="cl">Sexta — Vigencia y renovación</h2>
   <p>Este contrato entra en vigencia el <b>01 de agosto de 2026</b> y tiene una duración inicial de <b>doce (12) meses</b>, renovable <b>automáticamente</b> por periodos anuales iguales, salvo que alguna de las partes notifique lo contrario conforme a la cláusula Séptima.</p>
@@ -164,20 +165,24 @@
   <h2 class="cl">Décima tercera — Funcionalidades acordadas (Anexo A)</h2>
   <p>El Proveedor incorporará, <b>sin costo adicional</b> y dentro de los <b>treinta (30) días</b> siguientes a la firma de este contrato, las funcionalidades descritas en el <b>Anexo A</b>, el cual forma parte integral del presente contrato.</p>
 
-  <p style="margin-top:20px">En señal de conformidad, las partes firman el presente contrato en la ciudad de <span class="fill">[ciudad]</span>, el <span class="fill">[día]</span> de <span class="fill">[mes]</span> de <span class="fill">[año]</span>.</p>
+  <h2 class="cl">Décima cuarta — Sustitución del contrato anterior</h2>
+  <p>El presente documento <b>sustituye íntegramente</b> al contrato de idéntico objeto suscrito entre las mismas partes mediante firma electrónica, bajo el sobre Docusign identificado con el <b>Envelope ID 70315472-E51E-8D38-8235-06AAA6B53455</b>, el cual queda sin efecto. La sustitución obedece <b>únicamente</b> a completar datos que quedaron sin llenar en aquel documento —la ciudad y la fecha de suscripción, la identificación de las partes y la forma de pago de la Cláusula Quinta—, <b>sin alteración alguna de las obligaciones acordadas</b>. Para todos los efectos, y en particular para el cómputo del plazo de <b>treinta (30) días</b> previsto en la Cláusula Décima tercera, las obligaciones de las partes se cuentan <b>desde la fecha de finalización de aquel sobre</b>, según consta en su Certificado de Finalización.</p>
+
+  <p style="margin-top:20px">En señal de conformidad, las partes firman el presente contrato en la <b>Ciudad de Panamá, República de Panamá</b>, en la <b>fecha de firma electrónica</b> que consta al pie de cada firma y en el <b>Certificado de Finalización</b> del sobre electrónico correspondiente, el cual forma parte integral de este documento.</p>
 
   <div class="sign">
-    <div><div class="line">El Proveedor<br><span class="fill">[Nombre y cédula]</span></div></div>
-    <div><div class="line">El Cliente<br><span class="fill">[Nombre, cargo y cédula]</span></div></div>
+    <div><div class="line">El Proveedor<br><b>Joslyn Alonso López</b><br>Cédula 8-743-456<br><span class="fecha">Fecha: ______________________</span></div></div>
+    <div><div class="line">El Cliente<br><b>Javier Della Cella S.</b><br>Cédula 8-336-128 · Presidente de la Junta Directiva<br><span class="fecha">Fecha: ______________________</span></div></div>
   </div>
 
   <h2 class="cl" style="margin-top:34px;border-top:1px solid var(--border);padding-top:16px">Anexo A — Funcionalidades acordadas</h2>
   <p class="muted" style="margin-top:0">Funcionalidades que el Proveedor incorporará al sistema conforme a la cláusula Décima tercera, sin costo adicional y dentro de los treinta (30) días siguientes a la firma.</p>
   <p><b>1. Motivo obligatorio de desactivación.</b> Al desactivar un propietario, el sistema exigirá registrar el motivo de la acción, que quedará documentado.</p>
-  <p><b>2. Multiusuario, roles y auditoría.</b> El sistema contará con <b>cuentas de usuario individuales</b> y un modelo de <b>roles</b>: un <b>Superadministrador</b> (el Proveedor) con control total, y usuarios de <b>consulta</b> con acceso de solo lectura y descarga de reportes. <b>Toda edición de datos financieros y el envío de comunicaciones a los propietarios serán exclusivos del Superadministrador.</b> El sistema mantendrá un <b>registro de auditoría</b> que dejará constancia de quién realizó cada registro o modificación, con la acción efectuada y la fecha y hora correspondientes.</p>
+  <p><b>2. Multiusuario, roles y auditoría.</b> El sistema contará con <b>cuentas de usuario individuales</b> y un modelo de <b>roles</b>: un <b>Superadministrador</b> (el Proveedor) con control total, y usuarios de <b>consulta</b> con acceso de solo lectura y descarga de reportes. <b>Toda edición de datos financieros y el envío de comunicaciones a los propietarios serán exclusivos del Superadministrador.</b> El sistema mantendrá un <b>registro de auditoría</b> que dejará constancia de quién realizó cada registro o modificación, con la acción efectuada, la fecha y hora correspondientes, así como la razón de la modificación y cualquier información que respalde la misma.</p>
   <p><b>3. Política de contraseña.</b> La contraseña de acceso exigirá un mínimo de <b>ocho (8) caracteres</b> e incluirá mayúsculas, números y caracteres especiales.</p>
-  <p><b>4. Cierre de presupuesto.</b> Una vez aprobado, el presupuesto podrá <b>cerrarse</b> para impedir su modificación durante el período fiscal en curso; su reapertura quedará restringida al administrador.</p>
+  <p><b>4. Cierre de presupuesto.</b> Una vez aprobado, el presupuesto se <b>cerrará</b> para impedir su modificación durante el período fiscal en curso. Cuando sea necesario realizar ajustes, reasignaciones o traslados presupuestarios, su reapertura podrá efectuarse únicamente <b>previa autorización de la Junta Directiva</b>. La ejecución de la reapertura y de las modificaciones autorizadas estará restringida al administrador.</p>
   <p><b>5. Control y formato del presupuesto.</b> Al ingresar el presupuesto, el sistema calculará el <b>total anual de forma dinámica</b> a medida que se ingresa cada línea, y aplicará <b>formato contable</b> (separadores de miles y decimales) a los campos numéricos, con opción de exportación.</p>
+  <p><b>6. Código de acceso al portón.</b> Incluir en el maestro de propietario un campo para registrar el <b>código de acceso telefónico</b> asignado al propietario para abrir el portón vía llamada telefónica por celular.</p>
 
   <div class="foot-note">Aires de Chicá · Contrato de servicios digitales · admin.airesdechica.org</div>
 </div></div>
