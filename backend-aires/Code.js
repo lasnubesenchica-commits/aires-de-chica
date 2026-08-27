@@ -68,6 +68,7 @@ function doGet(e) {
     else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
     else if (action === 'getPropuesta')     out = { ok: true, data: getPropuesta() };
     else if (action === 'getContrato')      out = { ok: true, data: getContrato() };
+    else if (action === 'getComunicadoDoc')  out = { ok: true, data: getComunicadoDoc() };
     else if (action === 'getDashboard')    { requireAuth(p.token); out = { ok: true, data: buildDashboard(p.asOf || null) }; }
     else if (action === 'getPropietarios') { requireAuth(p.token); out = { ok: true, data: getPropietarios(p.todos === '1') }; }
     else if (action === 'getPagos')        { requireAuth(p.token); out = { ok: true, data: getPagos() }; }
@@ -116,6 +117,7 @@ function doPost(e) {
     if (action === 'resetPassword')         return _reply({ ok: true, data: resetPassword(data.resetToken, data.nueva) }, null);
     // guardado del contrato: público (para que el Cliente pueda editar/sugerir sin la contraseña del panel)
     if (action === 'guardarContrato')       return _reply({ ok: true, data: guardarContrato(data.html, data.quien, data.version) }, null);
+    if (action === 'guardarComunicadoDoc')  return _reply({ ok: true, data: guardarComunicadoDoc(data.html, data.quien, data.version) }, null);
 
     // el resto exige token válido (permite bootstrap si aún no hay contraseña)
     requireAuth(data.token);

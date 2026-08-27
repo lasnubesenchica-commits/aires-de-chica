@@ -56,3 +56,10 @@ function guardarPropuesta(html, quien, version) { return _docStore('AC_PROPUESTA
 // ── Contrato ──
 function getContrato() { return _docLoad('AC_CONTRATO_META', 'AC_CONTRATO_CHUNK_'); }
 function guardarContrato(html, quien, version) { return _docStore('AC_CONTRATO_META', 'AC_CONTRATO_CHUNK_', html, quien, version); }
+
+// ── Comunicado a los propietarios ──
+// Ojo con el nombre: guardarComunicado (sin Doc) es otra cosa — el comunicado que se
+// envía por correo desde el panel, en AiresChica_Comunicados.gs. Esto es el DOCUMENTO
+// que la administración redacta a varias manos, como el contrato y la propuesta.
+function getComunicadoDoc() { return _docLoad('AC_COMDOC_META', 'AC_COMDOC_CHUNK_'); }
+function guardarComunicadoDoc(html, quien, version) { return _docStore('AC_COMDOC_META', 'AC_COMDOC_CHUNK_', html, quien, version); }
