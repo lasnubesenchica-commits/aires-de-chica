@@ -1205,7 +1205,7 @@ let GATE_MODE='login';
 function showGate(){ document.getElementById('app').style.display='none'; document.getElementById('gate').classList.add('show'); }
 function showApp(){ document.getElementById('gate').classList.remove('show'); document.getElementById('app').style.display='block';
   // La revisión del estado de cuenta no consulta al servidor: se pinta al abrir el panel.
-  try{ renderRevBanco(); }catch(e){ console.warn('revBanco',e); }
+  try{ renderRevBanco(); revSincronizar(); }catch(e){ console.warn('revBanco',e); }
   try{ pintarAutor(); }catch(e){}
   // ¿le quitaron el nombre a este equipo mientras no estaba? Se avisa al entrar.
   try{ revisarAvisosUsuario(); }catch(e){ console.warn('avisosUsuario',e); } }
@@ -2432,16 +2432,48 @@ const REV_BANCO = {
      d:'Cubrió las dos cuotas completas, pero el recargo de julio se cobra después de las cuotas, así que quedó pendiente. Si pregunta, esa es la explicación: pagó todo lo que debía en cuotas y sólo le queda el recargo que ya se había ganado.'}
   ]
 };
-// Movimientos ya ingresados. Se guarda por período para que sobreviva a un refresco,
-// pero NO es la verdad: al abrir el modal se comprueba contra el historial real de
-// pagos del propietario, y si el pago no está, la marca se corrige sola.
+/* Movimientos ya ingresados.
+ *
+ * La marca vivía SÓLO en el localStorage de cada navegador, y eso hacía que dos
+ * personas vieran cosas distintas: quien aplicaba los pagos los veía en verde y el
+ * otro los veía pendientes. El pago no se duplicaba —el modal siempre comprobó contra
+ * el historial real y bloquea el botón—, pero la lista mentía.
+ *
+ * Ahora la verdad son los PAGOS REGISTRADOS. El localStorage queda sólo como caché
+ * para pintar al instante; en cuanto llega la respuesta del servidor se recalcula y
+ * se repinta. Un movimiento cuenta como ingresado si existe un pago de la misma
+ * cuenta, la misma fecha y el mismo monto, o uno cuya referencia lo nombre.
+ */
 const REV_APL_KEY = 'bc_revApl_'+((REV_BANCO&&REV_BANCO.periodo)||'');
 let REV_APL = new Set();
+let REV_SINC = false;   // ¿ya se confirmó contra el servidor?
 // El nº de movimiento puede ser texto ('18a', '18b') cuando un mismo depósito del banco
 // se reparte entre dos cuentas, así que la marca se guarda y se compara como texto.
 try{ REV_APL = new Set(JSON.parse(localStorage.getItem(REV_APL_KEY)||'[]').map(String)); }catch(e){}
 function _revAplGuardar(){ try{ localStorage.setItem(REV_APL_KEY, JSON.stringify([...REV_APL])); }catch(e){} }
 const _revMov = m => String(m);
+
+async function revSincronizar(){
+  if(!REV_BANCO) return;
+  let pagos;
+  try{ pagos = await jsonp('getPagos'); }
+  catch(e){
+    // Sin respuesta se conserva la caché —vaciar la lista sería peor que dejarla vieja—
+    // pero se dice que no está confirmada, para que nadie la tome por verdad.
+    console.warn('revBanco: no se pudo confirmar contra los pagos', e);
+    REV_SINC='error'; renderRevBanco(); return;
+  }
+  const iso = f => String(f||'').slice(0,10);
+  const reales = new Set();
+  REV_BANCO.listos.forEach(p=>{
+    const hay = pagos.some(x =>
+      (String(x.clave)===p.clave && iso(x.fecha)===p.iso && Math.abs(Number(x.monto)-p.monto)<0.005) ||
+      new RegExp('· mov\\. '+_revMov(p.mov)+'$').test(String(x.referencia||'')));
+    if(hay) reales.add(_revMov(p.mov));
+  });
+  REV_APL = reales; REV_SINC = true; _revAplGuardar();
+  renderRevBanco();   // siempre: aunque las marcas no cambien, cae el «confirmando…»
+}
 function renderRevBanco(){
   const card=document.getElementById('revBancoCard'), box=document.getElementById('revBanco');
   if(!card||!box) return;
@@ -2451,8 +2483,14 @@ function renderRevBanco(){
   document.getElementById('revBancoPeriodo').textContent='· '+R.periodo;
   const nOk=R.listos.filter(p=>REV_APL.has(_revMov(p.mov))).length;
   const pill=document.getElementById('revBancoPill');
-  pill.textContent = nOk ? `${nOk} de ${R.listos.length} ingresados` : money(c.pendiente)+' por ingresar';
+  const _sfx = REV_SINC===true ? '' : (REV_SINC==='error' ? ' · sin confirmar' : ' · confirmando…');
+  pill.textContent = (nOk ? `${nOk} de ${R.listos.length} ingresados` : money(c.pendiente)+' por ingresar') + _sfx;
   pill.className = 'pill '+(nOk===R.listos.length?'ok':'warn');
+  pill.title = REV_SINC===true
+    ? 'Confirmado contra los pagos registrados en el sistema, no contra este navegador.'
+    : (REV_SINC==='error'
+        ? 'No se pudo consultar los pagos registrados: esto es lo último que vio este equipo.'
+        : 'Confirmando contra los pagos registrados…');
   const listos=R.listos.map(p=>{ const ok=REV_APL.has(_revMov(p.mov)); return `<tr class="rev-click${ok?' rev-done':''}" id="revFila${p.mov}" onclick="revComparar('${p.mov}')" title="Abrir el estado de cuenta: cómo está hoy y cómo quedaría con este pago">
     <td data-label="Mov."><span class="rev-mov">${p.mov}</span></td>
     <td data-label="Fecha" style="white-space:nowrap">${p.fecha}</td>
@@ -2527,6 +2565,7 @@ async function revAplicar(btn){
       notas:p.banco, generarVoucher:true }});
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
   REV_APL.add(_revMov(p.mov)); _revAplGuardar();
+  revSincronizar();   // que el resto de la lista también quede al día
   // El pago queda registrado aunque falle la constancia; se avisa para poder reintentar.
   REVCMP.voucher = (res&&res.voucherUrl) ? {url:res.voucherUrl, numero:res.voucherNumero||''} : null;
   REVCMP.voucherError = (res&&res.voucherError) ? String(res.voucherError) : '';
