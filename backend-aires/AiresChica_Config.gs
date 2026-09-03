@@ -58,6 +58,9 @@ function _cfgDefaults() {
     notifInformeMensual: false,  // envío mensual del Informe Financiero a los propietarios
     informeMensualDia: 10,       // día del mes siguiente en que sale el informe del mes cerrado
     fondoInicial:      0,        // saldo/fondo disponible al inicio del año (para el Informe Financiero)
+    // Balance: qué parte del saldo con MÁS DE 90 DÍAS se considera incobrable.
+    // 0 = no se provisiona nada (lo que se debe se muestra íntegro).
+    provisionIncobrablesPct: 0,
     capturaComprobantes: false,  // lee comprobantes@ 1 vez al día y los deja pendientes de revisión
     // Cuenta de cobro (editable). Se usa en correos, instructivo de pago y verificación de comprobantes.
     banco:             CONFIG.BANCO,
@@ -137,6 +140,7 @@ function guardarConfig(nueva) {
   clean.notifPreaviso = !!clean.notifPreaviso;
   clean.notifInformeMensual = !!clean.notifInformeMensual;
   clean.fondoInicial = _round2(Math.max(0, Number(clean.fondoInicial) || 0));
+  clean.provisionIncobrablesPct = _round2(Math.min(100, Math.max(0, Number(clean.provisionIncobrablesPct) || 0)));
   clean.enviosActivos = !!clean.enviosActivos;
   clean.modoPrueba = !!clean.modoPrueba;
   clean.correoPrueba = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(clean.correoPrueba || '').trim())

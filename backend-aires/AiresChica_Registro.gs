@@ -77,7 +77,10 @@ var REG_ACCIONES = {
   'comunicado.baja':    'Comunicado eliminado',
   'comunicado.envia':   'Comunicado enviado',
   'comunicado.reenvia': 'Comunicado reenviado',
-  'comunicado.recuerda':'Recordatorio de comunicado enviado'
+  'comunicado.recuerda':'Recordatorio de comunicado enviado',
+  'balance.alta':       'Partida del balance registrada',
+  'balance.edita':      'Partida del balance modificada',
+  'balance.baja':       'Partida del balance eliminada'
 };
 
 function _regSheet() {

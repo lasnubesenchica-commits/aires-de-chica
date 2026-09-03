@@ -196,6 +196,16 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
 .fin-seg-b { border:0; background:none; font:inherit; font-size:.75rem; font-weight:600; color:#fff;
   opacity:.85; padding:4px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; }
 .fin-seg-b.on { background:#fff; color:var(--ac-teal-700); opacity:1; }
+/* Igual que .fin-seg pero sobre fondo claro: elige Resultado o Balance dentro del tab. */
+.fin-vseg { display:inline-flex; background:#eef6f9; border:1px solid var(--ac-border);
+  border-radius:9px; padding:3px; gap:2px; }
+.fin-vseg-b { border:0; background:none; font:inherit; font-size:.8rem; font-weight:700;
+  color:var(--ac-muted); padding:5px 13px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.fin-vseg-b.on { background:var(--ac-teal-700); color:#fff; }
+/* La tabla del patrimonio reusa el aire de "mes a mes", pero sólo tiene dos
+   columnas y conceptos largos: sin esto el monto se sale de la pantalla en móvil. */
+.fin-m2m.bal-pat td:first-child { white-space:normal; }
+.fin-m2m.bal-pat td:last-child { width:1%; }
 .fin-m2m { width:100%; border-collapse:collapse; font-size:.83rem; }
 /* La tabla va al ras del widget: la barra oscura de arriba ya es su encabezado,
    así que la fila de columnas es clara y no se ve un marco dentro de otro. */
@@ -2815,6 +2825,10 @@ async function renderOpts(){
           </select></div>
           <div class="help">Sobre qué monto se calcula el recargo. Con la <b>cuota íntegra</b>, un abono parcial no lo reduce y el recargo siempre es un número redondo. Con la <b>parte sin cubrir</b> salen montos como 4.05 que el propietario no puede verificar.</div></div>
         <div class="help">La mora <b>no se borra</b> al pagar la cuota: queda como saldo aparte (columna Mora del estado de cuenta). Cambiar estos valores recalcula al instante todos los estados de cuenta.</div>
+        <div class="field" style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--ac-border)">
+          <label>Provisión para incobrables (Balance)</label>
+          <div class="in"><input type="number" id="o_provinc" step="1" min="0" max="100" value="${c.provisionIncobrablesPct||0}"><span class="unit">% del saldo con más de 90 días</span></div>
+          <div class="help">Sólo afecta al <b>Balance</b>: descuenta esa parte de «lo que nos deben» para no mostrar como cobrable lo que probablemente no entre. <b>No condona nada</b> ni cambia el estado de cuenta de nadie. En 0% la cartera se muestra íntegra.</div></div>
       </div></div>
     <div class="card" style="margin-top:16px"><div class="hd"><h2>Cuenta de cobro (Aires de Chicá)</h2></div>
       <div class="bd" style="padding:18px">
@@ -3028,6 +3042,7 @@ async function guardarOpts(){
     moraCrece:document.getElementById('o_moracrece').value==='crece',
     moraOrden:document.getElementById('o_moraorden').value,
     moraBase:document.getElementById('o_morabase').value,
+    provisionIncobrablesPct:+document.getElementById('o_provinc').value||0,
     enviosActivos:document.getElementById('o_maestro').checked,
     modoPrueba:document.getElementById('o_prueba').checked,
     correoPrueba:document.getElementById('o_correoprueba').value.trim(),
@@ -3055,6 +3070,7 @@ async function guardarOpts(){
     if(r.aviso){ msg.innerHTML='<span class="notice" style="display:inline-block;padding:4px 10px">'+r.aviso+'</span>'; }
     else { msg.innerHTML='<span class="ok-msg">✓ Guardado</span>'; setTimeout(renderOpts,1400); }
     OPTS_SUCIO=false; _optsPintarSucio();
+    BAL_DATA=null;   // la provisión de incobrables vive en el config: el balance queda viejo
     if(typeof renderDash==='function') renderDash(); // refleja la nueva cuota/mora en los KPIs
   }catch(e){ if(!onAuthError(e)){ msg.textContent='Error: '+e; } }
 }
@@ -4748,6 +4764,12 @@ function _gastoFormModal(g){
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Método de pago</span><input type="text" id="ga_met" value="${esc(g.metodoPago)}" placeholder="Transferencia, ACH…" style="width:100%"></label>
       <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Grupo del informe <span style="font-weight:400">(esquema de 5 columnas de la junta)</span></span><select id="ga_grupo" onchange="this.dataset.touched='1'" ${g.grupoInforme?'data-touched="1"':''} style="width:100%">${['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'].map(x=>`<option ${g.grupoInforme===x?'selected':''}>${x}</option>`).join('')}</select></label>
     </div>
+    ${g.id?'':`<label style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;
+      border:1px solid var(--ac-border);border-radius:10px;padding:10px 13px;cursor:pointer">
+      <input type="checkbox" id="ga_bien" style="flex:none;width:auto;margin-top:2px">
+      <span style="font-size:.82rem;line-height:1.45">Esto es además un <b>bien de la comunidad</b>
+        <span class="muted" style="display:block;font-size:.76rem">Portón, luminarias, cámaras, cerca, pozo, equipos.
+        Al guardar se abre la ficha del balance ya llena — el gasto no cambia.</span></span></label>`}
     <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px">
       <span id="ga_msg" class="muted" style="font-size:.8rem"></span>
       <button class="btn ghost" onclick="closeModal()">Cancelar</button>
@@ -4777,11 +4799,20 @@ async function guardarGastoUI(id){
   const msg=document.getElementById('ga_msg'); msg.className='muted';
   if(!(gasto.monto>0)){ msg.textContent='Indica un monto válido.'; return; }
   if(!gasto.categoria){ msg.textContent='Selecciona una categoría.'; return; }
+  const chk=document.getElementById('ga_bien');
+  const esBien=!id&&chk&&chk.checked;
   const btn=document.getElementById('ga_save'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
   try{
     if(id) await post('actualizarGasto',{id, datos:gasto});
     else await post('registrarGasto',{gasto});
     closeModal(); await renderGastos(); toast(id?'Gasto actualizado':'Gasto registrado');
+    // "También es un bien": el gasto ya quedó registrado tal cual; lo que sigue es
+    // anotarlo en el balance, con la ficha ya llena para no teclear dos veces.
+    if(esBien){
+      if(!BAL_DATA) await cargarBalance();
+      _balFormModal({ grupo:'bienes', nombre:gasto.detalle||gasto.proveedor,
+        detalle:gasto.proveedor, fecha:gasto.fecha.slice(0,10), monto:gasto.monto });
+    }
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
 }
 async function eliminarGastoUI(id,btn){
@@ -4935,6 +4966,507 @@ async function guardarPresupuestoUI(){
     GASTOS_DATA=null; await renderGastos(); toast('Presupuesto guardado');
   }catch(e){ btn.disabled=false; btn.textContent='Guardar presupuesto'; if(!onAuthError(e)) alert('Error: '+e); }
 }
+/* ───────── Balance (segunda vista del tab de Finanzas) ─────────
+ * Finanzas responde "cómo nos fue" (ingresos menos egresos del período). El
+ * Balance responde "cómo estamos parados" a una fecha, y casi todo ya lo sabe
+ * el sistema: el efectivo sale de Finanzas y la cartera, los recargos y los
+ * pagos adelantados salen del tablero, que ya están en memoria. Lo único que
+ * pide el servidor son las partidas que no se mueven por cuotas ni por gastos
+ * (bienes, préstamos, cuentas por pagar), y esa llamada es de una sola hoja.
+ *
+ * Criterio: balance de caja + patrimonio (ver backend-aires/AiresChica_Balance.gs).
+ * Los bienes NO salen del gasto: se registran al costo aparte y su contrapartida
+ * es el patrimonio, así ninguna cifra que los propietarios ya conocen cambia.
+ */
+let BAL_DATA=null, BAL_ERROR='', BAL_ABIERTO=null, FIN_VISTA='resultado';
+
+function finVista(v){
+  if(FIN_VISTA===v) return;
+  FIN_VISTA=v; BAL_ABIERTO=null; FIN_ABIERTO=null;
+  if(v==='balance'){
+    // El balance es una foto a la fecha de corte del tablero: si Finanzas está
+    // parada en otro año, las cifras derivadas no se podrían mezclar.
+    const anio=(DASH&&DASH.anio)||new Date().getFullYear();
+    if(GASTOS_ANIO!==anio){ GASTOS_ANIO=anio; renderFinanzas(); }
+    else paintFinanzas();
+    if(!BAL_DATA) cargarBalance();
+    return;
+  }
+  paintFinanzas();
+}
+async function cargarBalance(){
+  BAL_ERROR='';
+  try{ BAL_DATA=await jsonp('getBalance'); }
+  catch(e){ if(onAuthError(e))return; BAL_ERROR=String(e); }
+  if(FIN_VISTA==='balance') paintFinanzas();
+}
+function balAbrir(k){
+  BAL_ABIERTO=(BAL_ABIERTO===k)?null:k; paintFinanzas();
+  if(BAL_ABIERTO) setTimeout(()=>{ const e=document.querySelector('#balDet .tb-det');
+    if(e) e.scrollIntoView({behavior:'smooth',block:'nearest'}); },40);
+}
+
+// Modelo del balance: junta lo derivado (Finanzas + tablero) con las partidas
+// del servidor. Separado del render para poder probarlo.
+function _balCalc(d,bal,dash){
+  const t=bal.totales||{};
+  const anioCorte=+String(bal.asOf||'').slice(0,4)||d.anio;
+  // Efectivo: fondo con el que arrancó el año + resultado acumulado hasta el
+  // mes del corte. Es un SALDO, así que acumula desde enero.
+  const mes = d.anio<anioCorte ? 12 : (d.anio>anioCorte ? 0 : (+String(bal.asOf).slice(5,7)||12));
+  const im=d.ingresosPorMes||[], em=d.porMes||[];
+  let ing=0, egr=0;
+  for(let i=0;i<mes;i++){ ing=_r2(ing+(im[i]||0)); egr=_r2(egr+(em[i]||0)); }
+  const fondoIni=_r2(d.fondoInicial), resultado=_r2(ing-egr), efectivo=_r2(fondoIni+resultado);
+
+  const k=(dash&&dash.kpis)||{};
+  const cartera=_r2(k.carteraVencida), mora=_r2(k.moraAcumulada);
+  const c90=_r2(((dash&&dash.agingMonto)||{})['90+']||0);
+  const provPct=_r2(bal.provisionPct||0);
+  const provision=_r2(c90*provPct/100);
+  const cxc=_r2(cartera+mora-provision);
+  const adelantos=_r2(k.creditoAFavorTotal||0);
+
+  const bienesNeto=_r2(t.bienesNeto), otros=_r2(t.otrosActivos);
+  const activo=_r2(efectivo+cxc+bienesNeto+otros);
+  const pasivo=_r2(_r2(t.pasivoManual)+adelantos);
+  const patrimonio=_r2(activo-pasivo);
+  return { mes, anioCorte, fondoIni, ing, egr, resultado, efectivo,
+           cartera, mora, c90, provPct, provision, cxc, adelantos,
+           bienesNeto, otros, activo, pasivo, patrimonio, t,
+           // el patrimonio es la diferencia, así que el cuadre es exacto por
+           // construcción; se muestra igual porque es lo que un contador busca
+           cuadre:_r2(activo-_r2(pasivo+patrimonio)) };
+}
+
+function _balPartidas(grupo){
+  return ((BAL_DATA&&BAL_DATA.partidas)||[]).filter(p=>p.grupo===grupo&&p.activo);
+}
+function _balNombreGrupo(id){
+  const g=((BAL_DATA&&BAL_DATA.grupos)||[]).find(x=>x.id===id); return g?g.nombre:id;
+}
+
+function _balanceVista(d){
+  if(BAL_ERROR) return `<div class="notice" style="margin-top:14px">No se pudo cargar el balance: ${_esc(BAL_ERROR)}
+    <button class="link-btn" onclick="cargarBalance()">Reintentar</button></div>`;
+  // El tablero se pide antes que nada: sin él no hay cartera ni pagos adelantados,
+  // y es mejor decirlo que quedarse girando.
+  if(!DASH) return `<div class="notice" style="margin-top:14px">El balance necesita el tablero.
+    Abre primero el tab <b>Cuentas</b>.</div>`;
+  if(!BAL_DATA) return `<div class="muted" style="margin-top:14px;display:flex;gap:9px;align-items:center">
+    <span class="ac-spin"></span> Cargando el balance…</div>`;
+  const b=BAL_DATA, m=_balCalc(d,b,DASH);
+  const neg=v=>v<-0.009;
+  const cCol=v=>v>=0?'var(--ac-green-600)':'var(--ac-danger)';
+
+  /* ── 1. La foto ── */
+  const foto=`<div class="tb-hoy" style="margin:14px 0">
+    <div class="hd"><span class="t">Balance de la asociación</span>
+      <span class="p">Al ${fmtDate(b.asOf)}</span></div>
+    <div class="bd">
+      <div>
+        <div class="tb-cap" title="Todo lo que la asociación tiene y le deben, menos todo lo que debe.">Patrimonio neto</div>
+        <div class="tb-big ${neg(m.patrimonio)?'':'t'}" style="font-size:2.05rem;${neg(m.patrimonio)?'color:var(--ac-danger)':''}">${money(m.patrimonio)}</div>
+        <div class="tb-den">Resultado del año
+          <b style="color:${cCol(m.resultado)}">${money(m.resultado)}</b>
+          · <button class="link-btn" onclick="finVista('resultado')">ver el detalle</button></div>
+      </div>
+      <div class="tb-chips">
+        <div class="tb-chip ok" title="Efectivo disponible más los bienes y depósitos de la comunidad.">
+          <div class="n" style="font-size:1.15rem">${money(_r2(m.efectivo+m.bienesNeto+m.otros))}</div>
+          <div class="l">Lo que tenemos</div></div>
+        <div class="tb-chip w" title="Cuotas y recargos pendientes de cobro, ya descontada la provisión de incobrables.">
+          <div class="n" style="font-size:1.15rem">${money(m.cxc)}</div>
+          <div class="l">Lo que nos deben</div></div>
+        <div class="tb-chip r" title="Préstamos, cuentas por pagar, compromisos y los pagos que los propietarios adelantaron.">
+          <div class="n" style="font-size:1.15rem">${money(m.pasivo)}</div>
+          <div class="l">Lo que debemos</div></div>
+      </div>
+    </div>
+  </div>`;
+
+  /* ── 2. Activo ── */
+  const fA=[];
+  fA.push({k:'efectivo', et:'Efectivo disponible', sub:'en banco y caja', v:m.efectivo});
+  if(m.cartera>0.009) fA.push({k:'cartera', et:'Cuentas por cobrar a propietarios', sub:'cuotas vencidas', v:m.cartera});
+  if(m.mora>0.009)    fA.push({k:'mora', et:'Recargos por cobrar', sub:'moras acumuladas', v:m.mora});
+  if(m.provision>0.009) fA.push({k:'provision', et:'(−) Provisión para incobrables',
+    sub:`${m.provPct}% del saldo con más de 90 días`, v:-m.provision, neg:true});
+  ['bienes','terreno','garantia','porCobrar'].forEach(g=>{
+    const lista=_balPartidas(g); if(!lista.length) return;
+    const val=g==='bienes'?_r2(b.totales.bienesNeto):_r2(lista.reduce((s,p)=>s+p.monto,0));
+    fA.push({k:g, et:_balNombreGrupo(g),
+      sub:g==='bienes'?`${lista.length} bien${lista.length===1?'':'es'} · valor neto de depreciación`
+                      :`${lista.length} partida${lista.length===1?'':'s'}`, v:val});
+  });
+
+  /* ── 3. Pasivo ── */
+  const fP=[];
+  ['prestamo','cxp','compromiso'].forEach(g=>{
+    const lista=_balPartidas(g); if(!lista.length) return;
+    const val=g==='prestamo'?_r2(b.totales.prestamos):_r2(lista.reduce((s,p)=>s+p.monto,0));
+    let sub=`${lista.length} partida${lista.length===1?'':'s'}`;
+    if(g==='prestamo'){ const mr=lista.filter(p=>p.mesesRest>0).map(p=>p.mesesRest);
+      if(mr.length) sub=`quedan ${Math.max(...mr)} mes${Math.max(...mr)===1?'':'es'} al ritmo actual`; }
+    const vencido=(g==='cxp'&&b.totales.cxpVencida>0.009);
+    fP.push({k:g, et:_balNombreGrupo(g), sub, v:val,
+             alerta:vencido?money(b.totales.cxpVencida)+' vencido':''});
+  });
+  if(m.adelantos>0.009) fP.push({k:'adelantos', et:'Pagos adelantados de propietarios',
+    sub:'cuotas cobradas que aún no se han devengado', v:m.adelantos});
+
+  const tabla=(filas,total,etTotal)=>filas.length||total>0.009
+    ? `<table class="fin-t"><tbody>${filas.map(f=>`
+        <tr class="d${BAL_ABIERTO===f.k?' act':''}" onclick="balAbrir('${f.k}')">
+          <td>${_esc(f.et)}${f.sub?`<span class="muted" style="font-size:.76rem"> · ${_esc(f.sub)}</span>`:''}
+            ${f.alerta?` <span class="fin-sob">· ${_esc(f.alerta)}</span>`:''}</td>
+          <td class="num" style="font-weight:600;white-space:nowrap${f.neg?';color:var(--ac-muted)':''}">${
+            f.v<0?'− '+money(-f.v):money(f.v)}</td>
+          <td class="num muted" style="width:26px">${BAL_ABIERTO===f.k?'▾':'▸'}</td></tr>`).join('')}
+        <tr class="tot"><td>${etTotal}</td><td class="num">${money(total)}</td><td></td></tr>
+      </tbody></table>`
+    : `<div class="muted" style="padding:10px 0;font-size:.85rem">Nada registrado todavía.</div>`;
+
+  const agregar=(grupos)=>`<div class="tb-mas">Agregar: ${grupos.map(g=>
+    `<button class="link-btn" onclick="balNueva('${g}')">${_esc(_balNombreGrupo(g))}</button>`).join(' · ')}</div>`;
+
+  const activoCard=`<div class="tb-desg" style="margin-top:14px">
+    <div class="hd"><span class="t">Lo que tenemos y lo que nos deben</span>
+      <span class="p">Activo al ${fmtDate(b.asOf)}</span></div>
+    <div class="bd">
+      ${tabla(fA,m.activo,'TOTAL ACTIVO')}
+      ${agregar(['bienes','terreno','garantia','porCobrar'])}
+      <div id="${BAL_ABIERTO&&fA.some(f=>f.k===BAL_ABIERTO)?'balDet':'balDetA'}">${
+        fA.some(f=>f.k===BAL_ABIERTO)?_balDetalle(BAL_ABIERTO,m,b):''}</div>
+    </div></div>`;
+
+  const pasivoCard=`<div class="tb-desg">
+    <div class="hd"><span class="t">Lo que debemos</span>
+      <span class="p">Pasivo al ${fmtDate(b.asOf)}</span></div>
+    <div class="bd">
+      ${tabla(fP,m.pasivo,'TOTAL PASIVO')}
+      ${agregar(['prestamo','cxp','compromiso'])}
+      <div id="${BAL_ABIERTO&&fP.some(f=>f.k===BAL_ABIERTO)?'balDet':'balDetP'}">${
+        fP.some(f=>f.k===BAL_ABIERTO)?_balDetalle(BAL_ABIERTO,m,b):''}</div>
+    </div></div>`;
+
+  /* ── 4. Patrimonio y cuadre ── */
+  const cuadra=Math.abs(m.cuadre)<0.02;
+  const patrimonioCard=`<div class="tb-hoy" style="margin-top:14px;margin-bottom:24px">
+    <div class="hd"><span class="t">Patrimonio</span><span class="p">de qué está hecho</span></div>
+    <div class="bd fin-m2m-bd">
+      <table class="fin-m2m bal-pat"><tbody>
+        <tr><td>Efectivo disponible</td><td>${money(m.efectivo)}</td></tr>
+        <tr><td>Por cobrar neto</td><td>${money(m.cxc)}</td></tr>
+        <tr><td>Bienes de la comunidad (valor neto)</td><td>${money(m.bienesNeto)}</td></tr>
+        ${m.otros>0.009?`<tr><td>Terrenos, depósitos y otros activos</td><td>${money(m.otros)}</td></tr>`:''}
+        <tr><td>− Deudas y compromisos</td><td style="color:var(--ac-danger)">${money(m.pasivo)}</td></tr>
+        <tr class="tot"><td>PATRIMONIO NETO</td><td>${money(m.patrimonio)}</td></tr>
+      </tbody></table>
+      <div class="fin-m2m-pie" style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap">
+        <span>Activo ${money(m.activo)} = Pasivo ${money(m.pasivo)} + Patrimonio ${money(m.patrimonio)}</span>
+        <span style="color:${cuadra?'var(--ac-green-600)':'var(--ac-danger)'};font-weight:700">${
+          cuadra?'✓ cuadra':'⚠ diferencia de '+money(m.cuadre)}</span>
+      </div>
+    </div></div>`;
+
+  const nota=`<div class="tb-nota" style="margin-bottom:24px">
+    <b>Cómo se lee.</b> El efectivo sale de Finanzas (fondo inicial más ingresos menos egresos);
+    lo que nos deben sale del tablero de cuentas; los bienes y las deudas se registran aquí.
+    <br><span style="opacity:.85">Los bienes se anotan <b>al costo, sin salir del gasto</b>: lo pagado siguió
+    siendo egreso del año, y el bien aparece en el balance con su contrapartida en el patrimonio. Así el balance
+    no cambia ninguna cifra que los propietarios ya conocen.${m.provPct>0?'':
+    ' La <b>provisión para incobrables</b> está en 0%: se define en ⚙ Opciones.'}</span></div>`;
+
+  return foto+activoCard+pasivoCard+patrimonioCard+nota;
+}
+
+// Lo que compone un renglón del balance.
+function _balDetalle(k,m,b){
+  const cerrar=`<button class="x" type="button" onclick="balAbrir(null)" title="Cerrar">×</button>`;
+  const caja=(titulo,cuerpo,pie)=>`<div class="tb-det"><div class="dh">
+      <span class="t">${_esc(titulo)}</span>${cerrar}</div>
+    <div class="dl">${cuerpo}</div>
+    ${pie?`<div class="df">${pie}</div>`:''}</div>`;
+  const tr=(a,c,d)=>`<tr><td class="lo" style="width:auto">${a}</td><td>${c||''}</td><td class="num">${d}</td></tr>`;
+
+  if(k==='efectivo') return caja('Efectivo disponible',
+    `<table><tbody>
+      ${tr('Fondo inicial del año','con lo que arrancó '+(m.anioCorte),money(m.fondoIni))}
+      ${tr('+ Ingresos acumulados','cuotas y otros ingresos',money(m.ing))}
+      ${tr('− Egresos acumulados','todos los gastos registrados',money(m.egr))}
+    </tbody></table>`,
+    `<span>Efectivo al corte <b>${money(m.efectivo)}</b></span>
+     <span>Se calcula, no se teclea: cámbialo registrando pagos y gastos.</span>`);
+
+  if(k==='cartera'||k==='mora'){
+    const top=(DASH&&DASH.topMorosos)||[];
+    const cuerpo=top.length?`<table><tbody>${top.map(x=>`
+      <tr onclick="openEstado('${_esc(x.clave)}')" style="cursor:pointer">
+        <td class="lo">${_esc(x.lote)}</td><td>${_esc(x.nombre)}</td>
+        <td class="num">${money(k==='mora'?x.mora:x.saldo)}</td>
+        <td class="num ec">estado de cuenta →</td></tr>`).join('')}</tbody></table>`
+      : '<div class="muted" style="padding:12px 14px;font-size:.84rem">Nadie con saldo pendiente.</div>';
+    return caja(k==='mora'?'Recargos por cobrar':'Cuentas por cobrar a propietarios', cuerpo,
+      `<span>Las 10 cuentas de mayor saldo</span><span>Total ${money(k==='mora'?m.mora:m.cartera)}</span>`);
+  }
+
+  if(k==='provision') return caja('Provisión para incobrables',
+    `<table><tbody>
+      ${tr('Saldo con más de 90 días','del tablero de cuentas',money(m.c90))}
+      ${tr('Porcentaje provisionado','definido en ⚙ Opciones',m.provPct+'%')}
+    </tbody></table>`,
+    `<span>Provisión <b>${money(m.provision)}</b></span>
+     <span>Se resta de lo que nos deben; no se le cobra a nadie de menos.</span>`);
+
+  if(k==='adelantos') return caja('Pagos adelantados de propietarios',
+    `<div class="muted" style="padding:12px 14px;font-size:.84rem;line-height:1.55">
+      Son <b>${money(m.adelantos)}</b> que ya entraron a la cuenta pero corresponden a cuotas
+      que todavía no vencen. Hasta que venzan son una obligación de la asociación, no un ingreso
+      ganado, por eso figuran del lado del pasivo.<br>
+      El detalle por cuenta está en el tab <b>Cuentas</b>, en la columna de crédito a favor.</div>`);
+
+  // grupos con partidas
+  const lista=_balPartidas(k);
+  if(!lista.length) return caja(_balNombreGrupo(k),
+    '<div class="muted" style="padding:12px 14px;font-size:.84rem">Sin partidas registradas.</div>');
+
+  const esPrestamo=(k==='prestamo'), esBien=(k==='bienes'), esCxp=(k==='cxp');
+  const cabecera=esPrestamo?['Acreedor','Principal','Abonado','Saldo']
+    :esBien?['Bien','Costo','Depreciación','Valor neto']
+    :esCxp?['Proveedor','Vence','','Monto']:['Partida','','','Monto'];
+  const filas=lista.map(p=>{
+    const acciones=`<td class="num" style="white-space:nowrap">
+      <button class="icon-btn" title="Editar" onclick="event.stopPropagation();balEditar('${p.id}')">✏️</button>
+      <button class="icon-btn danger" title="Eliminar" onclick="event.stopPropagation();eliminarPartidaUI('${p.id}',this)">🗑</button></td>`;
+    if(esPrestamo) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
+        ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
+      <td class="num">${money(p.monto)}</td>
+      <td class="num muted">${money(p.abonado)}${p.abonos.length?` <span class="no">(${p.abonos.length} abono${p.abonos.length===1?'':'s'})</span>`:''}</td>
+      <td class="num" style="font-weight:700">${money(p.saldo)}</td>${acciones}</tr>`;
+    if(esBien) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
+        ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
+      <td class="num">${money(p.monto)}</td>
+      <td class="num muted">${p.vidaUtil>0?money(p.deprAcum):'<span class="no">no deprecia</span>'}</td>
+      <td class="num" style="font-weight:700">${money(p.neto)}</td>${acciones}</tr>`;
+    if(esCxp) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
+        ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
+      <td class="no"${p.vencida?' style="color:var(--ac-danger);font-weight:700"':''}>${p.vence?fmtDate(p.vence):'—'}</td>
+      <td></td><td class="num" style="font-weight:700">${money(p.monto)}</td>${acciones}</tr>`;
+    return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
+        ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
+      <td></td><td></td><td class="num" style="font-weight:700">${money(p.monto)}</td>${acciones}</tr>`;
+  }).join('');
+
+  const pie=esPrestamo
+    ? `<span>El saldo baja solo con los gastos de categoría <b>${_esc(b.catPrestamo)}</b> a nombre del acreedor.</span>
+       <button class="link-btn" onclick="balNueva('${k}')">＋ Agregar</button>`
+    : `<span>${lista.length} partida${lista.length===1?'':'s'}</span>
+       <button class="link-btn" onclick="balNueva('${k}')">＋ Agregar</button>`;
+
+  return caja(_balNombreGrupo(k),
+    `<table><thead><tr>${cabecera.map((c,i)=>`<th style="text-align:${i?'right':'left'};font-size:.7rem;
+      text-transform:uppercase;letter-spacing:.05em;color:var(--ac-muted);padding:6px 8px">${c}</th>`).join('')}<th></th></tr></thead>
+     <tbody>${filas}</tbody></table>`, pie);
+}
+
+/* ── Alta y edición de partidas ── */
+function balNueva(grupo){ _balFormModal({grupo}); }
+function balEditar(id){
+  const p=((BAL_DATA&&BAL_DATA.partidas)||[]).find(x=>x.id===id);
+  if(p) _balFormModal(p);
+}
+function _balFormModal(p){
+  p=p||{};
+  const grupos=(BAL_DATA&&BAL_DATA.grupos)||[];
+  const g=grupos.find(x=>x.id===p.grupo)||grupos[0]||{};
+  const esc=s=>String(s==null?'':s).replace(/"/g,'&quot;');
+  const hoy=new Date().toISOString().slice(0,10);
+  const provs=[...new Set(((GASTOS_DATA&&GASTOS_DATA.gastos)||[])
+    .filter(x=>x.categoria===(BAL_DATA&&BAL_DATA.catPrestamo))
+    .map(x=>String(x.proveedor||'').trim()).filter(Boolean))];
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${p.id?'Editar partida':'Nueva partida del balance'}</div>
+    <div class="muted" style="font-size:.82rem">${_esc(g.nombre||'')}${g.ayuda?' · '+_esc(g.ayuda):''}</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Grupo</span>
+        <select id="bp_grupo" onchange="_balFormCampos()" style="width:100%">${grupos.map(x=>
+          `<option value="${x.id}" ${x.id===g.id?'selected':''}>${x.tipo==='activo'?'Activo':'Pasivo'} · ${x.nombre}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Nombre *</span>
+        <input type="text" id="bp_nombre" value="${esc(p.nombre)}" placeholder="Ej.: Portón eléctrico de la entrada" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Detalle</span>
+        <input type="text" id="bp_detalle" value="${esc(p.detalle)}" placeholder="Opcional: marca, proveedor, Nº de factura" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px" id="bp_lfecha">Fecha</span>
+        <input type="date" id="bp_fecha" value="${esc(p.fecha||hoy)}" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px" id="bp_lmonto">Monto (B/.) *</span>
+        <input type="number" id="bp_monto" step="0.01" min="0" inputmode="decimal" value="${p.monto||''}" placeholder="0.00" style="width:100%;text-align:right"></label>
+      <label style="min-width:0" id="bp_wvida"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Vida útil (años)</span>
+        <input type="number" id="bp_vida" step="1" min="0" max="60" value="${p.vidaUtil||''}" placeholder="0 = no deprecia" style="width:100%;text-align:right"></label>
+      <label style="min-width:0" id="bp_wvence"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Vence el</span>
+        <input type="date" id="bp_vence" value="${esc(p.vence)}" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0" id="bp_wamort"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Se amortiza con los gastos a nombre de</span>
+        <input type="text" id="bp_amort" list="bp_provs" value="${esc(p.amortizaCon)}" placeholder="Proveedor tal como aparece en Gastos" style="width:100%">
+        <datalist id="bp_provs">${provs.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Notas</span>
+        <input type="text" id="bp_notas" value="${esc(p.notas)}" style="width:100%"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px" id="bp_ayuda"></div>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px">
+      <span id="bp_msg" class="muted" style="font-size:.8rem"></span>
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" id="bp_save" onclick="guardarPartidaUI('${p.id||''}')">${p.id?'Guardar cambios':'Registrar partida'}</button>
+    </div>`;
+  _balFormCampos();
+  document.getElementById('modal').classList.add('show');
+}
+// Cada grupo pide cosas distintas: se muestran sólo los campos que aplican.
+function _balFormCampos(){
+  const grupos=(BAL_DATA&&BAL_DATA.grupos)||[];
+  const id=document.getElementById('bp_grupo').value;
+  const g=grupos.find(x=>x.id===id)||{};
+  const ver=(wid,on)=>{ const e=document.getElementById(wid); if(e) e.style.display=on?'':'none'; };
+  ver('bp_wvida', !!g.deprecia); ver('bp_wvence', !!g.vence); ver('bp_wamort', !!g.amortiza);
+  const lf=document.getElementById('bp_lfecha');
+  if(lf) lf.textContent = g.deprecia?'Fecha de compra':(g.amortiza?'Fecha del préstamo':'Fecha');
+  const lm=document.getElementById('bp_lmonto');
+  if(lm) lm.textContent = g.deprecia?'Costo (B/.) *':(g.amortiza?'Principal (B/.) *':'Monto (B/.) *');
+  const ay=document.getElementById('bp_ayuda');
+  if(ay) ay.innerHTML = g.deprecia
+    ? 'Se registra <b>al costo</b> y se deprecia línea recta desde la fecha de compra. El gasto ya registrado no se toca: el bien aparece en el balance con contrapartida en el patrimonio.'
+    : g.amortiza
+      ? `El principal se teclea una sola vez. El saldo lo bajan solos los gastos de categoría <b>${_esc((BAL_DATA&&BAL_DATA.catPrestamo)||'')}</b> a nombre del acreedor indicado.`
+      : (g.ayuda?_esc(g.ayuda):'');
+}
+async function guardarPartidaUI(id){
+  const val=i=>{ const e=document.getElementById(i); return e?e.value:''; };
+  const partida={ id, grupo:val('bp_grupo'), nombre:val('bp_nombre').trim(),
+    detalle:val('bp_detalle').trim(), fecha:val('bp_fecha'), monto:+val('bp_monto'),
+    vidaUtil:+val('bp_vida')||0, vence:val('bp_vence'), amortizaCon:val('bp_amort').trim(),
+    notas:val('bp_notas').trim() };
+  const msg=document.getElementById('bp_msg'); msg.className='muted';
+  if(!partida.nombre){ msg.textContent='Ponle un nombre a la partida.'; return; }
+  if(!(partida.monto>0)){ msg.textContent='Indica un monto mayor que cero.'; return; }
+  const btn=document.getElementById('bp_save'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('guardarPartidaBalance',{partida});
+    closeModal(); await cargarBalance(); toast(id?'Partida actualizada':'Partida registrada');
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function eliminarPartidaUI(id,btn){
+  if(!confirm('¿Eliminar esta partida del balance? No se puede deshacer.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarPartidaBalance',{id}); await cargarBalance(); toast('Partida eliminada'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
+/* ── Exportación en el formato del contador ──
+ * El panel presenta el balance en lenguaje llano; el CPA espera dos hojas con
+ * códigos de cuenta y el resultado mes a mes. Se genera aquí, con los mismos
+ * números que se ven en pantalla, para que nadie tenga que retecleármelos.
+ * Todo va en POSITIVO con el renglón rotulado, no con pasivos en negativo.
+ */
+function exportarBalanceContable(btn){
+  const d=GASTOS_DATA, b=BAL_DATA;
+  if(!d||!b||!DASH){ alert('Abre el balance antes de exportarlo.'); return; }
+  const m=_balCalc(d,b,DASH);
+  if(btn){ btn.disabled=true; var _t=btn.textContent; btn.textContent='Generando…'; }
+  try{
+    const bienes=_balPartidas('bienes'), terrenos=_balPartidas('terreno');
+    const A=[], sec=[], tot=[];
+    const push=(cod,desc,val)=>{ A.push([cod,desc,val==null?'':val]); };
+    const seccion=t=>{ sec.push(A.length); A.push(['',t,'']); };
+    const total=(t,v)=>{ tot.push(A.length); A.push(['',t,v]); };
+
+    A.push(['BALANCE GENERAL','','']);
+    A.push(['Al '+fmtDate(b.asOf),'','']);
+    A.push(['Aires de Chicá · Asociación Privada de Propietarios','','']);
+    A.push(['','','']);
+
+    seccion('ACTIVO CORRIENTE');
+    push('1020','Efectivo en banco y caja',m.efectivo);
+    push('1100','Cuentas por cobrar — cuotas de mantenimiento',m.cartera);
+    push('1101','Cuentas por cobrar — recargos por mora',m.mora);
+    if(m.provision>0.009) push('1105','Provisión para cuentas incobrables',-m.provision);
+    if(m.t.porCobrar>0.009) push('1104','Otras cuentas por cobrar',_r2(m.t.porCobrar));
+    total('TOTAL DE ACTIVO CORRIENTE',_r2(m.efectivo+m.cxc+m.t.porCobrar));
+
+    if(m.t.garantia>0.009){ seccion('OTROS ACTIVOS');
+      _balPartidas('garantia').forEach((p,i)=>push('3'+String(100+i),p.nombre,p.monto));
+      total('TOTAL OTROS ACTIVOS',_r2(m.t.garantia)); }
+
+    if(bienes.length||terrenos.length){
+      seccion('ACTIVOS FIJOS');
+      bienes.forEach((p,i)=>{ push('2'+String(10+i*2).padStart(3,'0'),p.nombre,p.monto);
+        if(p.deprAcum>0.009) push('2'+String(11+i*2).padStart(3,'0'),'Depreciación acumulada — '+p.nombre,-p.deprAcum); });
+      terrenos.forEach((p,i)=>push('2'+String(300+i),p.nombre,p.monto));
+      total('TOTAL DE ACTIVOS FIJOS',_r2(m.t.bienesNeto+m.t.terreno));
+    }
+    total('TOTAL DE ACTIVO',m.activo);
+
+    A.push(['','','']);
+    seccion('PASIVO');
+    _balPartidas('cxp').forEach((p,i)=>push('4'+String(200+i),'Cuenta por pagar — '+p.nombre,p.monto));
+    _balPartidas('prestamo').forEach((p,i)=>push('4'+String(210+i),'Préstamo por pagar — '+p.nombre,p.saldo));
+    _balPartidas('compromiso').forEach((p,i)=>push('4'+String(300+i),p.nombre,p.monto));
+    if(m.adelantos>0.009) push('4400','Cuotas cobradas por adelantado',m.adelantos);
+    total('TOTAL DE PASIVOS',m.pasivo);
+
+    A.push(['','','']);
+    seccion('PATRIMONIO');
+    push('7100','Patrimonio acumulado',_r2(m.patrimonio-m.resultado));
+    push('7200','Resultado del período',m.resultado);
+    total('TOTAL PATRIMONIO',m.patrimonio);
+    total('TOTAL PASIVO Y PATRIMONIO',_r2(m.pasivo+m.patrimonio));
+    A.push(['','','']);
+    A.push(['','Pasivos y patrimonio se presentan en positivo, rotulados por su naturaleza.','']);
+    A.push(['','Criterio: balance de caja + patrimonio. Los bienes se registran al costo sin salir del gasto del período.','']);
+
+    const ws1=_sheet(A,[2],[10,58,16]);
+    _s(ws1,0,0,ST.title); _s(ws1,1,0,ST.sub); _s(ws1,2,0,ST.sub);
+    sec.forEach(r=>{ _s(ws1,r,0,ST.section); _s(ws1,r,1,ST.section); _s(ws1,r,2,ST.section); });
+    tot.forEach(r=>{ _s(ws1,r,0,ST.total); _s(ws1,r,1,ST.total); _s(ws1,r,2,ST.totalMoney); });
+
+    // ── Estado de resultado: mismo layout de columnas que usa el contador ──
+    const im=d.ingresosPorMes||[], em=d.porMes||[], cm=d.cuotasPorMes||[], om=d.otrosPorMes||[];
+    const sum=a=>_r2((a||[]).reduce((s,x)=>s+(Number(x)||0),0));
+    const R=[['ESTADO DE RESULTADO','','','','','','','','','','','','',''],
+             ['Al '+fmtDate(b.asOf),'','','','','','','','','','','','',''],
+             ['Aires de Chicá','','','','','','','','','','','','','']  ,
+             ['','','','','','','','','','','','','','']];
+    R.push(['INGRESOS Y GASTOS','TOTAL',...GMESES]);
+    const rSec=[], rTot=[];
+    rSec.push(R.length); R.push(['INGRESOS','','','','','','','','','','','','','']);
+    R.push(['Cuotas de mantenimiento',sum(cm),...cm.map(x=>_r2(x))]);
+    R.push(['Otros ingresos',sum(om),...om.map(x=>_r2(x))]);
+    rTot.push(R.length); R.push(['Total INGRESOS',sum(im),...im.map(x=>_r2(x))]);
+    R.push(['','','','','','','','','','','','','','']);
+    rSec.push(R.length); R.push(['GASTOS','','','','','','','','','','','','','']);
+    const cats={};
+    (d.gastos||[]).forEach(g=>{ const c=String(g.categoria||'(sin categoría)').trim();
+      const mm=new Date(g.fecha).getMonth();
+      const a=cats[c]||(cats[c]=[0,0,0,0,0,0,0,0,0,0,0,0]); a[mm]=_r2(a[mm]+(Number(g.monto)||0)); });
+    Object.keys(cats).sort().forEach(c=>R.push([c,sum(cats[c]),...cats[c]]));
+    rTot.push(R.length); R.push(['Total GASTOS',sum(em),...em.map(x=>_r2(x))]);
+    R.push(['','','','','','','','','','','','','','']);
+    rTot.push(R.length);
+    R.push(['Resultado del período',_r2(sum(im)-sum(em)),...im.map((x,i)=>_r2((x||0)-(em[i]||0)))]);
+
+    const ws2=_sheet(R,[1,2,3,4,5,6,7,8,9,10,11,12,13],[36,13,11,11,11,11,11,11,11,11,11,11,11,11]);
+    _s(ws2,0,0,ST.title); _s(ws2,1,0,ST.sub); _s(ws2,2,0,ST.sub);
+    for(let c=0;c<14;c++) _s(ws2,4,c,ST.th);
+    rSec.forEach(r=>{ for(let c=0;c<14;c++) _s(ws2,r,c,ST.section); });
+    rTot.forEach(r=>{ _s(ws2,r,0,ST.total); for(let c=1;c<14;c++) _s(ws2,r,c,ST.totalMoney); });
+
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws1,'Balance');
+    XLSX.utils.book_append_sheet(wb,ws2,'Estado de resultado');
+    XLSX.writeFile(wb,`AiresDeChica_Balance_${String(b.asOf).replace(/-/g,'')}.xlsx`);
+    toast('Archivo generado');
+  }catch(e){ alert('No se pudo generar el archivo: '+e); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=_t; } }
+}
+
 /* ───────── Finanzas (Presupuesto vs ejecución + Estado de resultados) ───────── */
 let FIN_MES_INI=1, FIN_MES_FIN=12, RES_AGRUP='categoria', ING_AGRUP='residencial';
 async function renderFinanzas(){
@@ -4956,21 +5488,32 @@ function paintFinanzas(){
   const mi=Math.max(1,Math.min(12,FIN_MES_INI||1)), mf=Math.max(mi,Math.min(12,FIN_MES_FIN||12));
   const rango=!(mi===1&&mf===12);
   const mopts=sel=>GMESES.map((m,i)=>`<option value="${i+1}" ${sel===i+1?'selected':''}>${m}</option>`).join('');
+  // Las dos vistas del tab: Resultado (cómo nos fue en el período) y Balance
+  // (cómo estamos parados a una fecha). El período sólo manda sobre la primera.
+  const esBal=FIN_VISTA==='balance';
+  const vseg=`<span class="fin-vseg">
+      <button type="button" class="fin-vseg-b${esBal?'':' on'}" onclick="finVista('resultado')">Resultado</button>
+      <button type="button" class="fin-vseg-b${esBal?' on':''}" onclick="finVista('balance')">Balance</button>
+    </span>`;
   const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap">
       <div style="font-weight:700;font-size:1.1rem">Finanzas</div>
-      <label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
+      ${vseg}
+      ${esBal?`<span class="muted" style="font-size:.85rem">Foto al <b>${
+          fmtDate((BAL_DATA&&BAL_DATA.asOf)||(DASH&&DASH.asOfStr)||new Date().toISOString().slice(0,10))}</b></span>`
+       :`<label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
       <span style="width:1px;height:20px;background:var(--ac-border)"></span>
       <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Periodo
         <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; FIN_ABIERTO=null; paintFinanzas()">${mopts(mi)}</select></label>
       <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">a
         <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; FIN_ABIERTO=null; paintFinanzas()">${mopts(mf)}</select></label>
       ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;FIN_ABIERTO=null;paintFinanzas()">Año completo</button>`
-             :'<span class="muted" style="font-size:.78rem">(año completo)</span>'}
+             :'<span class="muted" style="font-size:.78rem">(año completo)</span>'}`}
       <span class="spacer" style="flex:1"></span>
-      <button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
-      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button>
+      ${esBal?`<button class="btn ghost" onclick="exportarBalanceContable(this)">⬇ Formato contable</button>`
+       :`<button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
+      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button>`}
     </div></div>`;
-  body.innerHTML=header+_gastosResultado(d);
+  body.innerHTML=header+(esBal?_balanceVista(d):_gastosResultado(d));
 }
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;

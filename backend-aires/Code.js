@@ -82,6 +82,7 @@ function doGet(e) {
       out = { ok: true, data: getEstadoCuentaByKey(p.clave, _sim) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
+    else if (action === 'getBalance')      { requireAuth(p.token); out = { ok: true, data: getBalance(p.asOf || null) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
     else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
         desde: p.desde, hasta: p.hasta, autor: p.autor, accion: p.accionFiltro, q: p.q, limite: p.limite }) }; }
@@ -158,6 +159,8 @@ function doPost(e) {
     else if (action === 'eliminarGasto')    out = { ok: true, data: eliminarGasto(data.id) };
     else if (action === 'guardarGastoRecurrente') out = { ok: true, data: guardarGastoRecurrente(data.plantilla) };
     else if (action === 'eliminarGastoRecurrente') out = { ok: true, data: eliminarGastoRecurrente(data.id) };
+    else if (action === 'guardarPartidaBalance')  out = { ok: true, data: guardarPartidaBalance(data.partida || {}) };
+    else if (action === 'eliminarPartidaBalance') out = { ok: true, data: eliminarPartidaBalance(data.id) };
     else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };
     else if (action === 'seedGastos2026')   out = { ok: true, data: seedGastos2026(!!data.force) };

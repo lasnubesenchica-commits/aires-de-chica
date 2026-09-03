@@ -37,6 +37,8 @@ var COL_GASTOS = ['id','fecha','mes','categoria','proveedor','detalle','monto','
 var COL_GRECUR = ['id','categoria','proveedor','detalle','monto','activo','notas'];
 // Presupuesto anual por categoría
 var COL_PRESUP = ['anio','categoria','monto'];
+// Balance — la hoja `Balance` y sus columnas se declaran en AiresChica_Balance.gs
+// (SH_BAL / COL_BAL), junto al resto de las reglas del módulo.
 
 /* ─────────────── setup de pestañas ─────────────── */
 
@@ -54,7 +56,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v3-2026-08-comunicados';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v4-2026-09-balance';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -68,7 +70,8 @@ function ensureSheets(force) {
   var created = [];
   [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
    [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP],
-   [SH.REGISTRO, COL_REG], [SH_COM, COL_COM], [SH_ENVIOS, COL_ENVIOS]].forEach(function (pair) {
+   [SH.REGISTRO, COL_REG], [SH_COM, COL_COM], [SH_ENVIOS, COL_ENVIOS],
+   [SH_BAL, COL_BAL]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }
