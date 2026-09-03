@@ -541,6 +541,13 @@ a.btn { display:inline-block; text-decoration:none; }
 .rev-cmp-acc { display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap;
                margin-top:11px; padding-top:10px; border-top:1px solid var(--ac-border); }
 .rev-cmp-ok { color:var(--ac-ok); font-weight:700; font-size:.86rem; }
+/* Confirmación del pago manual recién registrado, arriba del estado de cuenta.
+   Sobrevive al repintado del modal para que el enlace al PDF no se pierda. */
+.pg-ok { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;
+         background:#e4f5ec; border:1px solid #bfe6cf; border-radius:10px; padding:10px 14px; }
+.pg-ok .t { font-weight:700; font-size:.86rem; color:var(--ac-ok); flex:1; min-width:180px; }
+.pg-ok .err { font-size:.78rem; color:var(--ac-coral); flex:1; min-width:180px; }
+.pg-ok .btn { padding:7px 12px; font-size:.8rem; }
 /* Identidad de quien usa el panel (queda en la bitácora) */
 .quien { font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; margin-right:10px;
          background:rgba(255,255,255,.16); color:#fff; border:1px solid rgba(255,255,255,.35);
@@ -1747,7 +1754,15 @@ function renderTabla(){
 }
 ['fQ','fRes','fEstado'].forEach(id=>document.getElementById(id).addEventListener('input',renderTabla));
 
+/* Último pago registrado a mano desde este modal, con su constancia.
+ * Vive fuera del render porque _renderEstado reconstruye el modal entero al
+ * recargar el estado de cuenta: sin esto, el enlace al PDF se perdería en el
+ * repintado y no habría dónde reintentar si Drive falló. Se limpia al abrir
+ * otra cuenta o al cerrar el modal. */
+let PG_ULTIMO = null;
+
 function openEstado(clave){
+  PG_ULTIMO = null;
   const e = ((DASH && DASH.cuentas) || []).find(c=>c.clave===clave);
   if(e && e.mensual){ _renderEstado(e); return; }
   // respaldo: si el detalle aún no vino en el dashboard, lo pide al backend
@@ -1821,6 +1836,7 @@ function _renderEstado(e, opts){
   const all=!!e.moraCondonAll;
   document.getElementById('modalBd').innerHTML=`
     ${opts.banner||''}
+    ${opts.sim?'':_pgAviso(e.clave)}
     <table style="margin-bottom:12px"><thead><tr><th>Mes</th><th class="num mCuota">Cuota</th><th class="num">Mora</th><th class="num">Pagado</th><th class="num">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map((b,_i,_arr)=>{
       const esUltimo=_i===_arr.length-1;
@@ -1907,7 +1923,8 @@ function _renderEstado(e, opts){
     </div>
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
       <div style="font-weight:600;margin-bottom:2px">Registrar pago manual</div>
-      <div class="muted" style="font-size:.78rem;margin-bottom:10px">Para pagos verificados directamente en la banca en línea, sin comprobante por correo.</div>
+      <div class="muted" style="font-size:.78rem;margin-bottom:10px">Para pagos verificados directamente en la banca en línea, sin comprobante por correo.
+        Al guardarlo se emite la <b>constancia de pago en PDF</b>, igual que al aplicar un pago desde Conciliación.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px;align-items:end">
         <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha del pago</span><input type="date" id="pgFecha" value="${today}" max="${today}" style="width:100%"></label>
         <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span><input type="number" id="pgMonto" step="0.01" min="0" placeholder="0.00" inputmode="decimal" oninput="previewPagoManual('${e.clave}')" style="width:100%;text-align:right"></label>
@@ -1923,7 +1940,36 @@ function _renderEstado(e, opts){
     </div>`}`;
   document.getElementById('modal').classList.add('show');
 }
-function closeModal(){ document.getElementById('modal').classList.remove('show'); }
+function closeModal(){ PG_ULTIMO = null; document.getElementById('modal').classList.remove('show'); }
+
+/* Tira de confirmación del pago manual recién registrado, con su constancia.
+ * Es el mismo trato que da Conciliación al aplicar un pago del banco: si la
+ * constancia falla, el pago igual quedó registrado y se ofrece reintentarla. */
+function _pgAviso(clave){
+  const u = PG_ULTIMO;
+  if(!u || u.clave !== clave) return '';
+  return `<div class="pg-ok">
+    <div class="t">✓ Pago de ${money(u.monto)} registrado con fecha ${fmtDate(u.fecha)}</div>
+    ${u.voucher
+      ? `<a class="btn ghost" href="${u.voucher.url}" target="_blank"
+           title="Constancia de pago en PDF, guardada en Drive y enlazada al pago">📄 Ver constancia${
+           u.voucher.numero?' · '+_esc(u.voucher.numero):''}</a>`
+      : `<span class="err">El pago quedó registrado, pero no se pudo emitir la constancia.</span>
+         <button class="btn ghost" onclick="pgVoucherReintentar(this)">Reintentar constancia</button>`}
+  </div>`;
+}
+// Vuelve a emitir la constancia cuando la primera falló (Drive caído, permisos…).
+async function pgVoucherReintentar(btn){
+  if(!PG_ULTIMO || !PG_ULTIMO.pagoId) return;
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Emitiendo…';
+  let r;
+  try{ r=await post('generarVoucherPago',{id:PG_ULTIMO.pagoId}); }
+  catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
+  PG_ULTIMO.voucher={url:r.url, numero:r.numero||''};
+  toast('Constancia emitida');
+  try{ _renderEstado(await jsonp('getEstadoCuenta',{clave:PG_ULTIMO.clave})); }
+  catch(e){ /* la tira ya no se repinta, pero la constancia quedó emitida */ }
+}
 async function condonarMora(clave, mes, condonar, ev){
   if(ev) ev.preventDefault();
   if(mes==='ALL' && !confirm(condonar?'¿Condonar TODA la mora de este propietario?':'¿Reactivar toda la mora de este propietario?')) return;
@@ -2045,10 +2091,17 @@ async function guardarPagoManual(clave){
   const btn=document.getElementById('pgSave'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
   try{
     // fecha a mediodía para que ninguna zona horaria la corra al día anterior
-    await post('registrarPago',{pago:{clave, monto, fecha:fecha+'T12:00:00', referencia:ref, origen:'manual', notas:'Registro manual (banca en línea)'}});
+    // generarVoucher: el pago manual emite su constancia igual que el de Conciliación.
+    // Si Drive falla, el pago queda registrado igual y la constancia se reintenta.
+    const res=await post('registrarPago',{pago:{clave, monto, fecha:fecha+'T12:00:00', referencia:ref,
+      origen:'manual', notas:'Registro manual (banca en línea)', generarVoucher:true}});
+    PG_ULTIMO = { clave, monto, fecha, pagoId:(res&&res.id)||'',
+      voucher:(res&&res.voucherUrl) ? {url:res.voucherUrl, numero:res.voucherNumero||''} : null };
     const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
     if(typeof renderDash==='function') renderDash();
-    toast('Pago registrado');
+    toast(PG_ULTIMO.voucher
+      ? 'Pago registrado · constancia '+(PG_ULTIMO.voucher.numero||'')+' emitida'
+      : 'Pago registrado · saldos y mora recalculados');
   }catch(err){ btn.disabled=false; btn.textContent=t; if(!onAuthError(err)) alert('Error: '+err); }
 }
 async function mailEstado(clave,btn){
