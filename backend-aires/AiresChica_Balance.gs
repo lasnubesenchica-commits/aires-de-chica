@@ -36,6 +36,13 @@ var SH_BAL = 'Balance';
 var COL_BAL = ['id', 'tipo', 'grupo', 'nombre', 'detalle', 'fecha', 'monto',
                'vidaUtil', 'vence', 'amortizaCon', 'activo', 'notas', 'creado'];
 
+// Abonos que NO pasan por Gastos ni por Pagos: el caso típico es el préstamo a un
+// colaborador, que se recupera descontándolo del honorario. Ese descuento no mueve
+// el banco —se paga menos, y ya—, así que no puede registrarse como gasto ni como
+// ingreso sin descuadrar el efectivo. Vive aquí y sólo baja el saldo de su partida.
+var SH_BALABO = 'BalanceAbonos';
+var COL_BALABO = ['id', 'partidaId', 'fecha', 'monto', 'nota', 'creado'];
+
 // Categoría de Gastos con la que se amortizan los préstamos. Tiene que ser una
 // de las del presupuesto (ver DEFAULT_GASTO_CATS). El acreedor puede recibir
 // otros pagos —Doraida Castillo cobra además honorarios administrativos—, así
@@ -43,11 +50,12 @@ var COL_BAL = ['id', 'tipo', 'grupo', 'nombre', 'detalle', 'fecha', 'monto',
 var BAL_CAT_PRESTAMO = 'Línea de crédito / préstamo';
 
 /**
- * Los siete grupos del balance. Lista cerrada a propósito: el formato contable
+ * Los ocho grupos del balance. Lista cerrada a propósito: el formato contable
  * de referencia tiene 96 renglones y 40 en cero, que es justo lo que vuelve
  * ilegible un balance.
  *   deprecia : admite vida útil y se deprecia línea recta
  *   amortiza : el saldo baja con los abonos registrados en Gastos
+ *   descuenta: el saldo baja con abonos que se capturan a mano (hoja BalanceAbonos)
  *   vence    : lleva fecha de vencimiento y se marca en rojo si ya pasó
  */
 var BAL_GRUPOS = [
@@ -55,6 +63,8 @@ var BAL_GRUPOS = [
     ayuda: 'Portón, luminarias, cámaras, cerca perimetral, pozo, equipos.' },
   { id: 'terreno',    tipo: 'activo', nombre: 'Terrenos y áreas comunes',
     ayuda: 'No se deprecian.' },
+  { id: 'prestamoCol', tipo: 'activo', nombre: 'Préstamos a colaboradores', descuenta: true,
+    ayuda: 'Adelantos que se recuperan descontándolos de los honorarios.' },
   { id: 'garantia',   tipo: 'activo', nombre: 'Depósitos en garantía',
     ayuda: 'Depósitos entregados a terceros que la asociación recuperará.' },
   { id: 'porCobrar',  tipo: 'activo', nombre: 'Otros por cobrar',
@@ -140,6 +150,25 @@ function _balAbonos(hasta) {
   return out;
 }
 
+// Abonos capturados a mano, por partida (hoja BalanceAbonos).
+function _balAbonosManual(hasta) {
+  var out = {};
+  var corte = hasta ? hasta.getTime() + 86399999 : Infinity;
+  _sheetRows(SH_BALABO).forEach(function (a) {
+    var pid = String(a.partidaId || '').trim();
+    var f = _balFecha(a.fecha);
+    if (!pid || !f || f.getTime() > corte) return;
+    (out[pid] = out[pid] || []).push({
+      id: String(a.id || ''), fecha: _balISO(f), monto: _round2(a.monto),
+      detalle: String(a.nota || ''), manual: true
+    });
+  });
+  Object.keys(out).forEach(function (k) {
+    out[k].sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+  });
+  return out;
+}
+
 /**
  * Partidas del balance a una fecha de corte, ya resueltas: depreciación
  * acumulada de los bienes y saldo vivo de los préstamos.
@@ -150,6 +179,7 @@ function getBalance(asOf) {
   var corte = _balFecha(asOf) || new Date();
   var rows = _balRows();
   var abonos = _balAbonos(corte);
+  var manuales = _balAbonosManual(corte);
   var cfg = _cfg();
 
   var partidas = rows.map(function (r) {
@@ -186,6 +216,18 @@ function getBalance(asOf) {
       p.mesesRest = ult > 0 ? Math.ceil(p.saldo / ult) : 0;
     }
 
+    // Préstamos a colaboradores: el saldo lo bajan los descuentos de honorarios,
+    // que se capturan a mano porque no dejan rastro en el banco.
+    if (g.descuenta) {
+      var desc = manuales[r.id] || [];
+      p.abonos = desc;
+      p.abonado = _round2(desc.reduce(function (s, a) { return s + a.monto; }, 0));
+      p.saldo = _round2(Math.max(0, r.monto - p.abonado));
+      var ud = desc.length ? desc[desc.length - 1].monto : 0;
+      p.cuota = ud;
+      p.mesesRest = ud > 0 ? Math.ceil(p.saldo / ud) : 0;
+    }
+
     if (g.vence && r.vence) p.vencida = r.vence.getTime() < corte.getTime();
     return p;
   });
@@ -201,6 +243,9 @@ function getBalance(asOf) {
     bienesDepr: bienesDepr,
     bienesNeto: _round2(bienesCosto - bienesDepr),
     terreno:    suma(function (p) { return p.grupo === 'terreno' ? p.monto : 0; }),
+    // por SALDO, no por principal: lo ya descontado del honorario no se cobra dos veces
+    prestamosCol: suma(function (p) { return p.grupo === 'prestamoCol' ? p.saldo : 0; }),
+    prestadoCol:  suma(function (p) { return p.grupo === 'prestamoCol' ? p.monto : 0; }),
     garantia:   suma(function (p) { return p.grupo === 'garantia' ? p.monto : 0; }),
     porCobrar:  suma(function (p) { return p.grupo === 'porCobrar' ? p.monto : 0; }),
     prestamos:  suma(function (p) { return p.grupo === 'prestamo' ? p.saldo : 0; }),
@@ -208,7 +253,8 @@ function getBalance(asOf) {
     cxpVencida: suma(function (p) { return (p.grupo === 'cxp' && p.vencida) ? p.monto : 0; }),
     compromisos: suma(function (p) { return p.grupo === 'compromiso' ? p.monto : 0; })
   };
-  totales.otrosActivos = _round2(totales.terreno + totales.garantia + totales.porCobrar);
+  totales.otrosActivos = _round2(totales.terreno + totales.prestamosCol +
+                                 totales.garantia + totales.porCobrar);
   // Activos registrados a mano (sin efectivo ni cartera): la contrapartida en
   // el patrimonio bajo "inversión en bienes comunes".
   totales.activosPropios = _round2(totales.bienesNeto + totales.otrosActivos);
@@ -222,8 +268,24 @@ function getBalance(asOf) {
     // % del saldo con más de 90 días que se considera incobrable. Lo define
     // Opciones una sola vez; el panel lo aplica sobre el aging del tablero.
     provisionPct: _round2(cfg.provisionIncobrablesPct || 0),
-    catPrestamo: BAL_CAT_PRESTAMO
+    catPrestamo: BAL_CAT_PRESTAMO,
+    // Cuánto de los egresos del año fue DEVOLUCIÓN DE CAPITAL y no gasto de
+    // operación. En base caja el abono se registra como gasto (así lo presupuestó
+    // la Junta y así lo lee), pero quien mire el resultado merece saberlo.
+    capitalDevueltoAnio: _balCapitalAnio(corte)
   };
+}
+
+// Abonos a préstamos hechos en el año del corte, hasta la fecha de corte.
+function _balCapitalAnio(corte) {
+  var anio = corte.getFullYear(), tope = corte.getTime() + 86399999, t = 0;
+  _sheetRows(SH.GASTOS).forEach(function (g) {
+    if (String(g.categoria || '').trim() !== BAL_CAT_PRESTAMO) return;
+    var f = _balFecha(g.fecha);
+    if (!f || f.getFullYear() !== anio || f.getTime() > tope) return;
+    t = _round2(t + (Number(g.monto) || 0));
+  });
+  return t;
 }
 
 /* ─────────────── escritura ─────────────── */
@@ -296,6 +358,54 @@ function guardarPartidaBalance(p) {
   return { ok: true, id: id };
 }
 
+/**
+ * Registra un descuento contra una partida que se salda a mano (hoy, los
+ * préstamos a colaboradores).
+ *
+ * NO mueve caja ni resultado, y eso es lo correcto: el descuento no es un
+ * movimiento del banco. Al colaborador se le paga menos, y ese pago menor ya
+ * quedó en Gastos por lo que efectivamente salió. Registrarlo además como
+ * ingreso o como gasto descuadraría el efectivo contra el estado bancario.
+ */
+function registrarAbonoBalance(partidaId, abono) {
+  ensureSheets();
+  partidaId = String(partidaId || '').trim();
+  abono = abono || {};
+  var p = null, rows = _balRows();
+  for (var i = 0; i < rows.length; i++) if (rows[i].id === partidaId) p = rows[i];
+  if (!p) throw new Error('Partida no encontrada: ' + partidaId);
+  var g = _balGrupo(p.grupo) || {};
+  if (!g.descuenta) throw new Error('Esta partida no se salda con descuentos: ' + g.nombre);
+  var monto = _round2(abono.monto);
+  if (!(monto > 0)) throw new Error('Indica un monto mayor que cero.');
+  var fecha = _balFecha(abono.fecha) || new Date();
+
+  var id = 'A' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000);
+  _ss().getSheetByName(SH_BALABO).appendRow(
+    [id, partidaId, fecha, monto, String(abono.nota || '').trim(), new Date()]);
+  _reg('balance.abono', { entidad: 'balance', clave: partidaId, propietario: p.nombre,
+    monto: monto, detalle: g.nombre + ' · descuento del ' + _balISO(fecha) });
+  return { ok: true, id: id };
+}
+
+function eliminarAbonoBalance(id) {
+  ensureSheets();
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el id del descuento.');
+  var sh = _ss().getSheetByName(SH_BALABO);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iP = h.indexOf('partidaId'), iM = h.indexOf('monto');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== id) continue;
+    _reg('balance.abonoBaja', { entidad: 'balance', clave: String(vals[r][iP] || ''),
+      monto: _round2(vals[r][iM]), detalle: 'Descuento eliminado' });
+    sh.deleteRow(r + 1);
+    return { ok: true, id: id };
+  }
+  throw new Error('Descuento no encontrado: ' + id);
+}
+
 function eliminarPartidaBalance(id) {
   ensureSheets();
   id = String(id || '').trim();
@@ -310,7 +420,23 @@ function eliminarPartidaBalance(id) {
     _reg('balance.baja', { entidad: 'balance', clave: id, propietario: String(vals[r][iN] || ''),
       monto: _round2(vals[r][iM]), detalle: (g ? g.nombre : '') });
     sh.deleteRow(r + 1);
+    _balBorrarAbonosDe(id);   // sus descuentos no deben quedar huérfanos
     return { ok: true, id: id };
   }
   throw new Error('Partida no encontrada: ' + id);
+}
+
+// Borra de atrás hacia adelante: eliminar filas corriendo hacia abajo desplaza
+// las siguientes y se saltaría una.
+function _balBorrarAbonosDe(partidaId) {
+  var sh = _ss().getSheetByName(SH_BALABO);
+  if (!sh) return 0;
+  var vals = sh.getDataRange().getValues();
+  var iP = vals[0].map(function (x) { return String(x).trim(); }).indexOf('partidaId');
+  if (iP < 0) return 0;
+  var n = 0;
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][iP]).trim() === partidaId) { sh.deleteRow(r + 1); n++; }
+  }
+  return n;
 }

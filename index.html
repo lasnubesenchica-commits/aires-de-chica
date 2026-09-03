@@ -5104,12 +5104,17 @@ function _balanceVista(d){
   if(m.mora>0.009)    fA.push({k:'mora', et:'Recargos por cobrar', sub:'moras acumuladas', v:m.mora});
   if(m.provision>0.009) fA.push({k:'provision', et:'(−) Provisión para incobrables',
     sub:`${m.provPct}% del saldo con más de 90 días`, v:-m.provision, neg:true});
-  ['bienes','terreno','garantia','porCobrar'].forEach(g=>{
+  ['bienes','terreno','prestamoCol','garantia','porCobrar'].forEach(g=>{
     const lista=_balPartidas(g); if(!lista.length) return;
-    const val=g==='bienes'?_r2(b.totales.bienesNeto):_r2(lista.reduce((s,p)=>s+p.monto,0));
-    fA.push({k:g, et:_balNombreGrupo(g),
-      sub:g==='bienes'?`${lista.length} bien${lista.length===1?'':'es'} · valor neto de depreciación`
-                      :`${lista.length} partida${lista.length===1?'':'s'}`, v:val});
+    // Los préstamos a colaboradores valen su SALDO, no lo prestado: lo ya
+    // descontado del honorario no se vuelve a cobrar.
+    const val=g==='bienes'?_r2(b.totales.bienesNeto)
+            :g==='prestamoCol'?_r2(b.totales.prestamosCol)
+            :_r2(lista.reduce((s,p)=>s+p.monto,0));
+    const sub=g==='bienes'?`${lista.length} bien${lista.length===1?'':'es'} · valor neto de depreciación`
+            :g==='prestamoCol'?`${lista.length} colaborador${lista.length===1?'':'es'} · pendiente de descontar`
+            :`${lista.length} partida${lista.length===1?'':'s'}`;
+    fA.push({k:g, et:_balNombreGrupo(g), sub, v:val});
   });
 
   /* ── 3. Pasivo ── */
@@ -5147,7 +5152,7 @@ function _balanceVista(d){
       <span class="p">Activo al ${fmtDate(b.asOf)}</span></div>
     <div class="bd">
       ${tabla(fA,m.activo,'TOTAL ACTIVO')}
-      ${agregar(['bienes','terreno','garantia','porCobrar'])}
+      ${agregar(['bienes','terreno','prestamoCol','garantia','porCobrar'])}
       <div id="${BAL_ABIERTO&&fA.some(f=>f.k===BAL_ABIERTO)?'balDet':'balDetA'}">${
         fA.some(f=>f.k===BAL_ABIERTO)?_balDetalle(BAL_ABIERTO,m,b):''}</div>
     </div></div>`;
@@ -5182,13 +5187,17 @@ function _balanceVista(d){
       </div>
     </div></div>`;
 
+  const cap=_r2(b.capitalDevueltoAnio||0);
   const nota=`<div class="tb-nota" style="margin-bottom:24px">
     <b>Cómo se lee.</b> El efectivo sale de Finanzas (fondo inicial más ingresos menos egresos);
     lo que nos deben sale del tablero de cuentas; los bienes y las deudas se registran aquí.
     <br><span style="opacity:.85">Los bienes se anotan <b>al costo, sin salir del gasto</b>: lo pagado siguió
     siendo egreso del año, y el bien aparece en el balance con su contrapartida en el patrimonio. Así el balance
     no cambia ninguna cifra que los propietarios ya conocen.${m.provPct>0?'':
-    ' La <b>provisión para incobrables</b> está en 0%: se define en ⚙ Opciones.'}</span></div>`;
+    ' La <b>provisión para incobrables</b> está en 0%: se define en ⚙ Opciones.'}</span>
+    ${cap>0.009?`<br><span style="opacity:.85">De los egresos de ${m.anioCorte}, <b>${money(cap)}</b> fueron
+      <b>devolución de capital</b> del préstamo, no gasto de operación: salieron del banco, pero lo que hicieron
+      fue bajar una deuda. El resultado del año los incluye; el patrimonio no se ve afectado por ellos.</span>`:''}</div>`;
 
   return foto+activoCard+pasivoCard+patrimonioCard+nota;
 }
@@ -5243,19 +5252,24 @@ function _balDetalle(k,m,b){
   if(!lista.length) return caja(_balNombreGrupo(k),
     '<div class="muted" style="padding:12px 14px;font-size:.84rem">Sin partidas registradas.</div>');
 
-  const esPrestamo=(k==='prestamo'), esBien=(k==='bienes'), esCxp=(k==='cxp');
+  const esPrestamo=(k==='prestamo'), esBien=(k==='bienes'), esCxp=(k==='cxp'), esCol=(k==='prestamoCol');
   const cabecera=esPrestamo?['Acreedor','Principal','Abonado','Saldo']
+    :esCol?['Colaborador','Prestado','Descontado','Falta']
     :esBien?['Bien','Costo','Depreciación','Valor neto']
     :esCxp?['Proveedor','Vence','','Monto']:['Partida','','','Monto'];
   const filas=lista.map(p=>{
     const acciones=`<td class="num" style="white-space:nowrap">
       <button class="icon-btn" title="Editar" onclick="event.stopPropagation();balEditar('${p.id}')">✏️</button>
       <button class="icon-btn danger" title="Eliminar" onclick="event.stopPropagation();eliminarPartidaUI('${p.id}',this)">🗑</button></td>`;
-    if(esPrestamo) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
+    if(esPrestamo||esCol) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
         ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
       <td class="num">${money(p.monto)}</td>
-      <td class="num muted">${money(p.abonado)}${p.abonos.length?` <span class="no">(${p.abonos.length} abono${p.abonos.length===1?'':'s'})</span>`:''}</td>
-      <td class="num" style="font-weight:700">${money(p.saldo)}</td>${acciones}</tr>`;
+      <td class="num muted">${money(p.abonado)}${p.abonos.length?` <span class="no">(${p.abonos.length} ${
+        esCol?'descuento':'abono'}${p.abonos.length===1?'':'s'})</span>`:''}</td>
+      <td class="num" style="font-weight:700">${money(p.saldo)}</td>
+      ${esCol?`<td class="num" style="white-space:nowrap"><button class="link-btn" style="font-size:.74rem"
+         onclick="event.stopPropagation();balNuevoDescuento('${p.id}')">＋ descuento</button></td>`:''}
+      ${acciones}</tr>`;
     if(esBien) return `<tr><td class="lo" style="width:auto">${_esc(p.nombre)}
         ${p.detalle?`<div class="no">${_esc(p.detalle)}</div>`:''}</td>
       <td class="num">${money(p.monto)}</td>
@@ -5273,13 +5287,29 @@ function _balDetalle(k,m,b){
   const pie=esPrestamo
     ? `<span>El saldo baja solo con los gastos de categoría <b>${_esc(b.catPrestamo)}</b> a nombre del acreedor.</span>
        <button class="link-btn" onclick="balNueva('${k}')">＋ Agregar</button>`
+    : esCol
+    ? `<span>El descuento <b>no mueve el banco</b>: se le paga menos y ese pago ya está en Gastos.</span>
+       <button class="link-btn" onclick="balNueva('${k}')">＋ Agregar</button>`
     : `<span>${lista.length} partida${lista.length===1?'':'s'}</span>
        <button class="link-btn" onclick="balNueva('${k}')">＋ Agregar</button>`;
 
+  // Los descuentos se capturan a mano, así que hay que poder verlos y corregirlos.
+  const desc=esCol?lista.filter(p=>p.abonos.length).map(p=>`
+    <div style="padding:8px 14px;border-top:1px solid var(--ac-border)">
+      <div class="no" style="margin-bottom:3px">Descuentos de <b>${_esc(p.nombre)}</b></div>
+      ${p.abonos.map(a=>`<div style="display:flex;gap:9px;align-items:baseline;font-size:.8rem;padding:1px 0">
+        <span class="no" style="width:78px">${fmtDate(a.fecha)}</span>
+        <span style="font-weight:600">${money(a.monto)}</span>
+        <span class="muted" style="flex:1;font-size:.76rem">${_esc(a.detalle||'')}</span>
+        <button class="icon-btn danger" title="Eliminar este descuento"
+          onclick="eliminarAbonoUI('${a.id}',this)">🗑</button></div>`).join('')}
+    </div>`).join(''):'';
+
   return caja(_balNombreGrupo(k),
     `<table><thead><tr>${cabecera.map((c,i)=>`<th style="text-align:${i?'right':'left'};font-size:.7rem;
-      text-transform:uppercase;letter-spacing:.05em;color:var(--ac-muted);padding:6px 8px">${c}</th>`).join('')}<th></th></tr></thead>
-     <tbody>${filas}</tbody></table>`, pie);
+      text-transform:uppercase;letter-spacing:.05em;color:var(--ac-muted);padding:6px 8px">${c}</th>`).join('')}
+      ${esCol?'<th></th>':''}<th></th></tr></thead>
+     <tbody>${filas}</tbody></table>${desc}`, pie);
 }
 
 /* ── Alta y edición de partidas ── */
@@ -5340,14 +5370,18 @@ function _balFormCampos(){
   const ver=(wid,on)=>{ const e=document.getElementById(wid); if(e) e.style.display=on?'':'none'; };
   ver('bp_wvida', !!g.deprecia); ver('bp_wvence', !!g.vence); ver('bp_wamort', !!g.amortiza);
   const lf=document.getElementById('bp_lfecha');
-  if(lf) lf.textContent = g.deprecia?'Fecha de compra':(g.amortiza?'Fecha del préstamo':'Fecha');
+  if(lf) lf.textContent = g.deprecia?'Fecha de compra'
+    :(g.amortiza||g.descuenta)?'Fecha del préstamo':'Fecha';
   const lm=document.getElementById('bp_lmonto');
-  if(lm) lm.textContent = g.deprecia?'Costo (B/.) *':(g.amortiza?'Principal (B/.) *':'Monto (B/.) *');
+  if(lm) lm.textContent = g.deprecia?'Costo (B/.) *'
+    :g.amortiza?'Principal (B/.) *':g.descuenta?'Prestado (B/.) *':'Monto (B/.) *';
   const ay=document.getElementById('bp_ayuda');
   if(ay) ay.innerHTML = g.deprecia
     ? 'Se registra <b>al costo</b> y se deprecia línea recta desde la fecha de compra. El gasto ya registrado no se toca: el bien aparece en el balance con contrapartida en el patrimonio.'
     : g.amortiza
       ? `El principal se teclea una sola vez. El saldo lo bajan solos los gastos de categoría <b>${_esc((BAL_DATA&&BAL_DATA.catPrestamo)||'')}</b> a nombre del acreedor indicado.`
+      : g.descuenta
+      ? 'Registra aquí lo que se le adelantó, y después ve anotando cada descuento con <b>＋ descuento</b>. La <b>salida de plata</b> del adelanto va aparte, como gasto, igual que cualquier pago; esta ficha sólo lleva la cuenta de cuánto falta por recuperar.'
       : (g.ayuda?_esc(g.ayuda):'');
 }
 async function guardarPartidaUI(id){
@@ -5365,6 +5399,57 @@ async function guardarPartidaUI(id){
     closeModal(); await cargarBalance(); toast(id?'Partida actualizada':'Partida registrada');
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
 }
+/* ── Descuentos contra un préstamo a colaborador ──
+ * A propósito NO tocan Gastos ni Pagos: el descuento no mueve el banco. Al
+ * colaborador se le paga menos y ese pago menor ya quedó registrado como gasto
+ * por lo que efectivamente salió; anotarlo otra vez descuadraría el efectivo
+ * contra el estado bancario y ensuciaría la conciliación.
+ */
+function balNuevoDescuento(partidaId){
+  const p=((BAL_DATA&&BAL_DATA.partidas)||[]).find(x=>x.id===partidaId);
+  if(!p) return;
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">Descuento a ${_esc(p.nombre)}</div>
+    <div class="muted" style="font-size:.82rem">Le faltan ${money(p.saldo)} de los ${money(p.monto)} prestados</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha del descuento</span>
+        <input type="date" id="ba_fecha" value="${hoy}" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto descontado (B/.) *</span>
+        <input type="number" id="ba_monto" step="0.01" min="0" max="${p.saldo}" inputmode="decimal"
+          placeholder="0.00" style="width:100%;text-align:right"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Nota</span>
+        <input type="text" id="ba_nota" placeholder="Ej.: descontado de los honorarios de agosto" style="width:100%"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">Esto <b>sólo baja el saldo del préstamo</b>.
+      No mueve el banco ni el resultado, y así debe ser: al colaborador se le pagó menos, y ese pago menor
+      ya está registrado en <b>Gastos</b> por lo que realmente salió.</div>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:14px">
+      <span id="ba_msg" class="muted" style="font-size:.8rem"></span>
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" id="ba_save" onclick="guardarAbonoUI('${p.id}')">Registrar descuento</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+async function guardarAbonoUI(partidaId){
+  const v=i=>document.getElementById(i).value;
+  const abono={ fecha:v('ba_fecha'), monto:+v('ba_monto'), nota:v('ba_nota').trim() };
+  const msg=document.getElementById('ba_msg'); msg.className='muted';
+  if(!(abono.monto>0)){ msg.textContent='Indica un monto mayor que cero.'; return; }
+  const btn=document.getElementById('ba_save'); btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('registrarAbonoBalance',{partidaId, abono});
+    closeModal(); await cargarBalance(); toast('Descuento registrado');
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); }
+}
+async function eliminarAbonoUI(id,btn){
+  if(!confirm('¿Eliminar este descuento? El saldo del préstamo volverá a subir.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarAbonoBalance',{id}); await cargarBalance(); toast('Descuento eliminado'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
 async function eliminarPartidaUI(id,btn){
   if(!confirm('¿Eliminar esta partida del balance? No se puede deshacer.')) return;
   btn.disabled=true;
@@ -5401,7 +5486,10 @@ function exportarBalanceContable(btn){
     push('1101','Cuentas por cobrar — recargos por mora',m.mora);
     if(m.provision>0.009) push('1105','Provisión para cuentas incobrables',-m.provision);
     if(m.t.porCobrar>0.009) push('1104','Otras cuentas por cobrar',_r2(m.t.porCobrar));
-    total('TOTAL DE ACTIVO CORRIENTE',_r2(m.efectivo+m.cxc+m.t.porCobrar));
+    // por saldo: lo ya descontado del honorario no se vuelve a cobrar
+    _balPartidas('prestamoCol').forEach((p,i)=>push('1'+String(110+i),
+      'Préstamo a colaborador — '+p.nombre,p.saldo));
+    total('TOTAL DE ACTIVO CORRIENTE',_r2(m.efectivo+m.cxc+m.t.porCobrar+m.t.prestamosCol));
 
     if(m.t.garantia>0.009){ seccion('OTROS ACTIVOS');
       _balPartidas('garantia').forEach((p,i)=>push('3'+String(100+i),p.nombre,p.monto));

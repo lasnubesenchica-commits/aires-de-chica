@@ -80,7 +80,9 @@ var REG_ACCIONES = {
   'comunicado.recuerda':'Recordatorio de comunicado enviado',
   'balance.alta':       'Partida del balance registrada',
   'balance.edita':      'Partida del balance modificada',
-  'balance.baja':       'Partida del balance eliminada'
+  'balance.baja':       'Partida del balance eliminada',
+  'balance.abono':      'Descuento aplicado a un préstamo',
+  'balance.abonoBaja':  'Descuento de préstamo eliminado'
 };
 
 function _regSheet() {

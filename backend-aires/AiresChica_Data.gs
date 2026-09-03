@@ -56,7 +56,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v4-2026-09-balance';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v5-2026-09-balance-abonos';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -71,7 +71,7 @@ function ensureSheets(force) {
   [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
    [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP],
    [SH.REGISTRO, COL_REG], [SH_COM, COL_COM], [SH_ENVIOS, COL_ENVIOS],
-   [SH_BAL, COL_BAL]].forEach(function (pair) {
+   [SH_BAL, COL_BAL], [SH_BALABO, COL_BALABO]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }

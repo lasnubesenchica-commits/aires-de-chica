@@ -161,6 +161,8 @@ function doPost(e) {
     else if (action === 'eliminarGastoRecurrente') out = { ok: true, data: eliminarGastoRecurrente(data.id) };
     else if (action === 'guardarPartidaBalance')  out = { ok: true, data: guardarPartidaBalance(data.partida || {}) };
     else if (action === 'eliminarPartidaBalance') out = { ok: true, data: eliminarPartidaBalance(data.id) };
+    else if (action === 'registrarAbonoBalance')  out = { ok: true, data: registrarAbonoBalance(data.partidaId, data.abono || {}) };
+    else if (action === 'eliminarAbonoBalance')   out = { ok: true, data: eliminarAbonoBalance(data.id) };
     else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };
     else if (action === 'seedGastos2026')   out = { ok: true, data: seedGastos2026(!!data.force) };
