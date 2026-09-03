@@ -202,6 +202,18 @@ tr.vacia .tb-np { color:var(--ac-muted); background:#f4f7f8; border-color:#e3ebe
 .fin-vseg-b { border:0; background:none; font:inherit; font-size:.8rem; font-weight:700;
   color:var(--ac-muted); padding:5px 13px; border-radius:7px; cursor:pointer; white-space:nowrap; }
 .fin-vseg-b.on { background:var(--ac-teal-700); color:#fff; }
+/* Barra de arriba de Finanzas. Al sumarle el selector Resultado/Balance, el
+   contenido pasó del ancho de .wrap (1144px) y los dos botones de acción caían
+   a una segunda línea. Se aprieta el espaciado y se compactan los botones para
+   que la barra entre completa en un renglón. */
+.fin-bar { gap:9px 12px !important; }
+.fin-bar .btn { padding:8px 13px; font-size:.85rem; }
+/* Los filtros se estiran y, si falta ancho, envuelven ENTRE ELLOS; las acciones
+   son un bloque rígido pegado a la derecha. Así los dos botones nunca se separan
+   ni caen sueltos a una segunda línea, en ningún ancho. */
+.fin-bar .fin-filtros { display:flex; align-items:center; gap:9px 12px; flex-wrap:wrap;
+  flex:1 1 auto; min-width:0; }
+.fin-bar .fin-acc { display:flex; gap:9px; flex:0 0 auto; margin-left:auto; }
 /* La tabla del patrimonio reusa el aire de "mes a mes", pero sólo tiene dos
    columnas y conceptos largos: sin esto el monto se sale de la pantalla en móvil. */
 .fin-m2m.bal-pat td:first-child { white-space:normal; }
@@ -5495,23 +5507,23 @@ function paintFinanzas(){
       <button type="button" class="fin-vseg-b${esBal?'':' on'}" onclick="finVista('resultado')">Resultado</button>
       <button type="button" class="fin-vseg-b${esBal?' on':''}" onclick="finVista('balance')">Balance</button>
     </span>`;
-  const header=`<div class="card"><div class="bd" style="padding:14px 18px;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap">
+  const header=`<div class="card"><div class="bd fin-bar" style="padding:14px 18px;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap">
       <div style="font-weight:700;font-size:1.1rem">Finanzas</div>
       ${vseg}
-      ${esBal?`<span class="muted" style="font-size:.85rem">Foto al <b>${
+      <span class="fin-filtros">${esBal
+       ?`<span class="muted" style="font-size:.85rem">Foto al <b>${
           fmtDate((BAL_DATA&&BAL_DATA.asOf)||(DASH&&DASH.asOfStr)||new Date().toISOString().slice(0,10))}</b></span>`
        :`<label class="muted" style="font-size:.85rem;display:flex;gap:6px;align-items:center">Año ${yearSel}</label>
-      <span style="width:1px;height:20px;background:var(--ac-border)"></span>
-      <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Periodo
-        <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; FIN_ABIERTO=null; paintFinanzas()">${mopts(mi)}</select></label>
-      <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">a
-        <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; FIN_ABIERTO=null; paintFinanzas()">${mopts(mf)}</select></label>
-      ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;FIN_ABIERTO=null;paintFinanzas()">Año completo</button>`
-             :'<span class="muted" style="font-size:.78rem">(año completo)</span>'}`}
-      <span class="spacer" style="flex:1"></span>
-      ${esBal?`<button class="btn ghost" onclick="exportarBalanceContable(this)">⬇ Formato contable</button>`
+        <span style="width:1px;height:20px;background:var(--ac-border)"></span>
+        <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">Periodo
+          <select onchange="FIN_MES_INI=+this.value; if(FIN_MES_FIN<FIN_MES_INI)FIN_MES_FIN=FIN_MES_INI; FIN_ABIERTO=null; paintFinanzas()">${mopts(mi)}</select></label>
+        <label class="muted" style="font-size:.85rem;display:flex;gap:5px;align-items:center">a
+          <select onchange="FIN_MES_FIN=+this.value; if(FIN_MES_INI>FIN_MES_FIN)FIN_MES_INI=FIN_MES_FIN; FIN_ABIERTO=null; paintFinanzas()">${mopts(mf)}</select></label>
+        ${rango?`<button class="link-btn" onclick="FIN_MES_INI=1;FIN_MES_FIN=12;FIN_ABIERTO=null;paintFinanzas()">Año completo</button>`:''}`}</span>
+      <span class="fin-acc">${esBal
+       ?`<button class="btn ghost" onclick="exportarBalanceContable(this)">⬇ Formato contable</button>`
        :`<button class="btn ghost" onclick="descargarInformePL(this)">⬇ Informe PDF</button>
-      <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button>`}
+         <button class="btn" onclick="abrirEnviarInforme()">✉ Enviar a propietarios</button>`}</span>
     </div></div>`;
   body.innerHTML=header+(esBal?_balanceVista(d):_gastosResultado(d));
 }
