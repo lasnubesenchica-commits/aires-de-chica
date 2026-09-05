@@ -5799,10 +5799,17 @@ function exportarBalanceContable(btn){
     rTot.forEach(r=>{ _s(ws2,r,0,ST.total); for(let c=1;c<14;c++) _s(ws2,r,c,ST.totalMoney); });
     filasCat.forEach(r=>{ _s(ws2,r,0,ST.catNom); for(let c=1;c<14;c++) _s(ws2,r,c,ST.catMoney); });
     filasGasDet.forEach(r=>{ _s(ws2,r,0,ST.det); for(let c=1;c<14;c++) _s(ws2,r,c,ST.detMoney); });
-    // Agrupación de filas: el desglose queda plegable con el [−] del margen.
-    // Se entrega desplegado; quien quiera el resumen lo colapsa y Excel lo recuerda.
+    /* Agrupación de filas: el desglose queda plegable con el [−] del margen.
+     * Se entrega DESPLEGADO (sin `hidden`): el archivo se abre mostrando todo y
+     * quien quiera el resumen lo colapsa.
+     *
+     * `!outline.above` es imprescindible: por defecto Excel asume que la fila de
+     * resumen va DEBAJO de su grupo, y aquí la categoría va ARRIBA de su detalle.
+     * Sin esto, el botón [−] queda alineado con la categoría SIGUIENTE y la llave
+     * del margen parece agrupar lo que no es. */
     const rows=[]; filasGasDet.forEach(r=>{ rows[r]={ level:1 }; });
     ws2['!rows']=rows;
+    ws2['!outline']={ above:true };
 
     /* Fórmulas de Excel, columna por columna. El total de gastos suma las filas
      * de CATEGORÍA, no un rango corrido: entre ellas están ahora los renglones
