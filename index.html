@@ -5503,6 +5503,24 @@ async function eliminarPartidaUI(id,btn){
  * números que se ven en pantalla, para que nadie tenga que retecleármelos.
  * Todo va en POSITIVO con el renglón rotulado, no con pasivos en negativo.
  */
+/* Comentario oculto en una celda: es donde se explica de dónde sale la cifra.
+ * Se pone sobre el MONTO, que es la celda en la que el contador hace clic
+ * cuando algo no le cuadra. Mismo mecanismo que ya usa el export de cartera. */
+function _xNota(ws,r,c,t){
+  const a=XLSX.utils.encode_cell({r,c}); if(!ws[a]) return;
+  ws[a].c=[{a:'Aires de Chicá',t:String(t)}]; ws[a].c.hidden=true;
+}
+/* Fórmula de Excel real en la celda, conservando el valor calculado.
+ * El valor va igual por si el lector no recalcula; la fórmula está para que el
+ * CPA pueda seguir el cálculo y modificar el archivo sin rehacerlo. */
+function _xFormula(ws,r,c,f,v){
+  const a=XLSX.utils.encode_cell({r,c});
+  const cell=ws[a]||(ws[a]={});
+  cell.t='n'; cell.f=f; cell.v=Number(v)||0; cell.z=MONEYFMT;
+}
+const _xCol = c => XLSX.utils.encode_cell({r:0,c}).replace(/\d+$/,'');
+const _M = n => 'B/.'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
 function exportarBalanceContable(btn){
   const d=GASTOS_DATA, b=BAL_DATA;
   if(!d||!b||!DASH){ alert('Abre el balance antes de exportarlo.'); return; }
@@ -5510,62 +5528,179 @@ function exportarBalanceContable(btn){
   if(btn){ btn.disabled=true; var _t=btn.textContent; btn.textContent='Generando…'; }
   try{
     const bienes=_balPartidas('bienes'), terrenos=_balPartidas('terreno');
-    const A=[], sec=[], tot=[];
-    const push=(cod,desc,val)=>{ A.push([cod,desc,val==null?'':val]); };
-    const seccion=t=>{ sec.push(A.length); A.push(['',t,'']); };
-    const total=(t,v)=>{ tot.push(A.length); A.push(['',t,v]); };
+    const A=[], sec=[], tot=[], notas=[], formulas=[];
+    // fila 0-based -> referencia de la columna C del monto
+    const cel = r => 'C'+(r+1);
+    const suma = (a,z) => 'SUM(C'+(a+1)+':C'+(z+1)+')';
+    const push=(cod,desc,val,nota)=>{ A.push([cod,desc,val==null?'':val]);
+      if(nota) notas.push([A.length-1,nota]); return A.length-1; };
+    const seccion=t=>{ sec.push(A.length); A.push(['',t,'']); return A.length; };
+    // f: fórmula de Excel para el total (opcional); nota: qué significa
+    const total=(t,v,f,nota)=>{ tot.push(A.length); A.push(['',t,v]);
+      if(f) formulas.push([A.length-1,f,v]);
+      if(nota) notas.push([A.length-1,nota]); return A.length-1; };
 
     A.push(['BALANCE GENERAL','','']);
     A.push(['Al '+fmtDate(b.asOf),'','']);
     A.push(['Aires de Chicá · Asociación Privada de Propietarios','','']);
     A.push(['','','']);
 
-    seccion('ACTIVO CORRIENTE');
-    push('1020','Efectivo en banco y caja',m.efectivo);
-    push('1100','Cuentas por cobrar — cuotas de mantenimiento',m.cartera);
-    push('1101','Cuentas por cobrar — recargos por mora',m.mora);
-    if(m.provision>0.009) push('1105','Provisión para cuentas incobrables',-m.provision);
-    if(m.t.porCobrar>0.009) push('1104','Otras cuentas por cobrar',_r2(m.t.porCobrar));
+    const iniCorr=seccion('ACTIVO CORRIENTE');
+    push('1020','Efectivo en banco y caja',m.efectivo,
+      'EFECTIVO DISPONIBLE AL CORTE.\n\n'+
+      'Fórmula:  fondo inicial del año + ingresos acumulados − egresos acumulados\n'+
+      '= '+_M(m.fondoIni)+' + '+_M(m.ing)+' − '+_M(m.egr)+' = '+_M(m.efectivo)+'\n\n'+
+      'No se teclea: se deriva de los pagos y gastos registrados, de enero al mes de corte. '+
+      'El fondo inicial del año se define en el panel, en ⚙ Opciones.\n\n'+
+      'Ojo: si un gasto se pagó con la tarjeta o la cuenta personal de un tercero, o si un pago de '+
+      'cuota entró a una cuenta que no es la de la asociación, esta cifra no coincidirá con el saldo '+
+      'bancario por ese monto.');
+    push('1100','Cuentas por cobrar — cuotas de mantenimiento',m.cartera,
+      'CUOTAS FACTURADAS Y NO COBRADAS al corte, sumando todas las cuentas activas.\n\n'+
+      'Por cuenta:  cuotas del año hasta el mes de corte − pagos aplicados\n'+
+      'La cuota mensual de cada lote es la base más un porcentaje por cada cabaña construida.\n\n'+
+      'Sale del tab Cuentas del panel. Total al corte: '+_M(m.cartera)+
+      ' sobre '+((DASH.kpis&&DASH.kpis.cuentas)||0)+' cuentas activas.');
+    push('1101','Cuentas por cobrar — recargos por mora',m.mora,
+      'RECARGOS GENERADOS Y NO COBRADOS.\n\n'+
+      'Se genera UNA SOLA VEZ por cuota que llega vencida al cierre del mes, con el porcentaje '+
+      'definido en ⚙ Opciones. El recargo no genera recargo.\n\n'+
+      'Se cobra de último: cada pago cubre primero las cuotas vencidas, luego la del mes en curso, '+
+      'y sólo con lo que sobre se abonan los recargos. Por eso una cuenta puede estar al día en '+
+      'cuotas y conservar saldo aquí.');
+    if(m.provision>0.009) push('1105','Provisión para cuentas incobrables',-m.provision,
+      'PARTE DE LA CARTERA QUE NO SE ESPERA COBRAR. No condona nada ni cambia el estado de '+
+      'cuenta de ningún propietario: es sólo presentación.\n\n'+
+      'Fórmula:  saldo con más de 90 días × porcentaje de provisión\n'+
+      '= '+_M(m.c90)+' × '+m.provPct+'% = '+_M(m.provision)+'\n\n'+
+      'El porcentaje se define en ⚙ Opciones; el saldo de más de 90 días sale de la antigüedad '+
+      'de cartera del tab Cuentas. Va en negativo porque resta del activo.');
+    if(m.t.porCobrar>0.009) push('1104','Otras cuentas por cobrar',_r2(m.t.porCobrar),
+      'Cobros pendientes que NO vienen de la cuota de mantenimiento. Se registran a mano en el '+
+      'tab Finanzas → Balance.');
     // por saldo: lo ya descontado del honorario no se vuelve a cobrar
     _balPartidas('prestamoCol').forEach((p,i)=>push('1'+String(110+i),
-      'Préstamo a colaborador — '+p.nombre,p.saldo));
-    total('TOTAL DE ACTIVO CORRIENTE',_r2(m.efectivo+m.cxc+m.t.porCobrar+m.t.prestamosCol));
+      'Préstamo a colaborador — '+p.nombre,p.saldo,
+      'ADELANTO ENTREGADO AL COLABORADOR, por lo que falta recuperar.\n\n'+
+      'Fórmula:  prestado − descuentos aplicados\n'+
+      '= '+_M(p.monto)+' − '+_M(p.abonado)+' = '+_M(p.saldo)+
+      '  ('+p.abonos.length+' descuento'+(p.abonos.length===1?'':'s')+')\n\n'+
+      'El desembolso se registró como gasto cuando salió la plata. Los descuentos NO mueven el '+
+      'banco: al colaborador se le paga menos y ese pago menor ya está en Gastos por lo que '+
+      'efectivamente salió.'));
+    const finCorr=A.length-1;
+    const rCorr=total('TOTAL DE ACTIVO CORRIENTE',_r2(m.efectivo+m.cxc+m.t.porCobrar+m.t.prestamosCol),
+      suma(iniCorr,finCorr));
 
-    if(m.t.garantia>0.009){ seccion('OTROS ACTIVOS');
-      _balPartidas('garantia').forEach((p,i)=>push('3'+String(100+i),p.nombre,p.monto));
-      total('TOTAL OTROS ACTIVOS',_r2(m.t.garantia)); }
+    let rOtros=null;
+    if(m.t.garantia>0.009){ const ini=seccion('OTROS ACTIVOS');
+      _balPartidas('garantia').forEach((p,i)=>push('3'+String(100+i),p.nombre,p.monto,
+        'Depósito entregado a un tercero que la asociación recuperará. Se registra a mano en '+
+        'el tab Finanzas → Balance.'));
+      rOtros=total('TOTAL OTROS ACTIVOS',_r2(m.t.garantia),suma(ini,A.length-1)); }
 
+    let rFijos=null;
     if(bienes.length||terrenos.length){
-      seccion('ACTIVOS FIJOS');
-      bienes.forEach((p,i)=>{ push('2'+String(10+i*2).padStart(3,'0'),p.nombre,p.monto);
-        if(p.deprAcum>0.009) push('2'+String(11+i*2).padStart(3,'0'),'Depreciación acumulada — '+p.nombre,-p.deprAcum); });
-      terrenos.forEach((p,i)=>push('2'+String(300+i),p.nombre,p.monto));
-      total('TOTAL DE ACTIVOS FIJOS',_r2(m.t.bienesNeto+m.t.terreno));
+      const ini=seccion('ACTIVOS FIJOS');
+      bienes.forEach((p,i)=>{
+        push('2'+String(10+i*2).padStart(3,'0'),p.nombre,p.monto,
+          'COSTO DE ADQUISICIÓN'+(p.fecha?', comprado el '+fmtDate(p.fecha):'')+'.\n\n'+
+          'Criterio: la compra se contabilizó como GASTO del período en que se pagó, y así sigue '+
+          'en el estado de resultado. Este renglón la muestra además como bien, con contrapartida '+
+          'en el patrimonio, para que el balance refleje lo que la comunidad posee.\n\n'+
+          'Por eso registrar un bien no cambia ninguna cifra que los propietarios ya conocen.');
+        if(p.deprAcum>0.009) push('2'+String(11+i*2).padStart(3,'0'),
+          'Depreciación acumulada — '+p.nombre,-p.deprAcum,
+          'DEPRECIACIÓN LÍNEA RECTA desde la fecha de compra.\n\n'+
+          'Fórmula:  costo ÷ (vida útil en años × 12) × meses transcurridos, con tope el costo\n'+
+          // el desarrollo sólo se escribe si el servidor mandó los meses: media fórmula
+          // con un cero pegado confundiría más de lo que explica
+          (p.mesesDepr>0
+            ? '= '+_M(p.monto)+' ÷ ('+p.vidaUtil+' × 12) × '+p.mesesDepr+' meses = '+_M(p.deprAcum)+'\n\n'
+            : 'Costo '+_M(p.monto)+' · vida útil '+p.vidaUtil+' años.\n\n')+
+          'Valor neto del bien: '+_M(p.neto)+'. Va en negativo porque resta del activo.');
+      });
+      terrenos.forEach((p,i)=>push('2'+String(300+i),p.nombre,p.monto,
+        'Terreno o área común, al costo. NO se deprecia.'));
+      rFijos=total('TOTAL DE ACTIVOS FIJOS',_r2(m.t.bienesNeto+m.t.terreno),suma(ini,A.length-1));
     }
-    total('TOTAL DE ACTIVO',m.activo);
+    const refsAct=[rCorr,rOtros,rFijos].filter(r=>r!=null).map(cel).join('+');
+    const rActivo=total('TOTAL DE ACTIVO',m.activo,refsAct,
+      'Todo lo que la asociación tiene y le deben al corte.\n\n'+
+      'Fórmula:  '+[rCorr!=null?'activo corriente':null,rOtros!=null?'otros activos':null,
+        rFijos!=null?'activos fijos':null].filter(Boolean).join(' + ')+'\n'+
+      '= '+_M(m.activo));
 
     A.push(['','','']);
-    seccion('PASIVO');
-    _balPartidas('cxp').forEach((p,i)=>push('4'+String(200+i),'Cuenta por pagar — '+p.nombre,p.monto));
-    _balPartidas('prestamo').forEach((p,i)=>push('4'+String(210+i),'Préstamo por pagar — '+p.nombre,p.saldo));
-    _balPartidas('compromiso').forEach((p,i)=>push('4'+String(300+i),p.nombre,p.monto));
-    if(m.adelantos>0.009) push('4400','Cuotas cobradas por adelantado',m.adelantos);
-    total('TOTAL DE PASIVOS',m.pasivo);
+    const iniPas=seccion('PASIVO');
+    _balPartidas('cxp').forEach((p,i)=>push('4'+String(200+i),'Cuenta por pagar — '+p.nombre,p.monto,
+      'Factura de proveedor pendiente de pago'+(p.vence?', vence el '+fmtDate(p.vence):'')+
+      (p.vencida?'  ⚠ YA VENCIDA':'')+'.\nSe registra a mano en el tab Finanzas → Balance.'));
+    _balPartidas('prestamo').forEach((p,i)=>push('4'+String(210+i),'Préstamo por pagar — '+p.nombre,p.saldo,
+      'SALDO VIVO DEL PRÉSTAMO.\n\n'+
+      'Fórmula:  principal − abonos pagados\n'+
+      '= '+_M(p.monto)+' − '+_M(p.abonado)+' = '+_M(p.saldo)+
+      '  ('+p.abonos.length+' abono'+(p.abonos.length===1?'':'s')+')\n\n'+
+      'El principal se teclea una sola vez. El saldo lo bajan solos los gastos registrados en la '+
+      'categoría «'+b.catPrestamo+'» a nombre de este acreedor.\n\n'+
+      'Importante para leer el resultado: esos abonos figuran como GASTO del período, pero son '+
+      'devolución de capital, no gasto de operación.'));
+    _balPartidas('compromiso').forEach((p,i)=>push('4'+String(300+i),p.nombre,p.monto,
+      'Obligación ya asumida que todavía no tiene factura. Se registra a mano en el tab '+
+      'Finanzas → Balance.'));
+    if(m.adelantos>0.009) push('4400','Cuotas cobradas por adelantado',m.adelantos,
+      'PAGOS YA RECIBIDOS que corresponden a cuotas que aún no vencen.\n\n'+
+      'Hasta que se devenguen son una obligación de la asociación, no un ingreso ganado: por eso '+
+      'van del lado del pasivo aunque la plata ya esté en el banco.\n\n'+
+      'Sale del crédito a favor de las cuentas del tab Cuentas. Total: '+_M(m.adelantos));
+    const rPasivo=total('TOTAL DE PASIVOS',m.pasivo,suma(iniPas,A.length-1));
 
     A.push(['','','']);
-    seccion('PATRIMONIO');
-    push('7100','Patrimonio acumulado',_r2(m.patrimonio-m.resultado));
-    push('7200','Resultado del período',m.resultado);
-    total('TOTAL PATRIMONIO',m.patrimonio);
-    total('TOTAL PASIVO Y PATRIMONIO',_r2(m.pasivo+m.patrimonio));
+    const iniPat=seccion('PATRIMONIO');
+    push('7100','Patrimonio acumulado',_r2(m.patrimonio-m.resultado),
+      'PATRIMONIO CON EL QUE SE LLEGÓ AL PERÍODO.\n\n'+
+      'Fórmula:  patrimonio neto − resultado del período\n'+
+      '= '+_M(m.patrimonio)+' − '+_M(m.resultado)+' = '+_M(_r2(m.patrimonio-m.resultado))+'\n\n'+
+      'ADVERTENCIA: el sistema no lleva balances de cierre históricos, así que esta cifra se '+
+      'DERIVA por diferencia; no proviene de un mayor contable ni de un balance de comprobación.');
+    push('7200','Resultado del período',m.resultado,
+      'INGRESOS MENOS EGRESOS del año hasta el mes de corte, BASE CAJA.\n\n'+
+      'Fórmula:  ingresos acumulados − egresos acumulados\n'+
+      '= '+_M(m.ing)+' − '+_M(m.egr)+' = '+_M(m.resultado)+'\n\n'+
+      'Coincide con la hoja «Estado de resultado», fila «Resultado del período», columna TOTAL.'+
+      (m.t && b.capitalDevueltoAnio>0.009
+        ? '\n\nDe los egresos, '+_M(b.capitalDevueltoAnio)+' fueron devolución de capital del '+
+          'préstamo y no gasto de operación.' : ''));
+    const rPat=total('TOTAL PATRIMONIO',m.patrimonio,suma(iniPat,A.length-1),
+      'Fórmula:  TOTAL DE ACTIVO − TOTAL DE PASIVOS\n'+
+      '= '+_M(m.activo)+' − '+_M(m.pasivo)+' = '+_M(m.patrimonio));
+    total('TOTAL PASIVO Y PATRIMONIO',_r2(m.pasivo+m.patrimonio),cel(rPasivo)+'+'+cel(rPat),
+      'Debe ser igual al TOTAL DE ACTIVO ('+_M(m.activo)+').\n\n'+
+      'ADVERTENCIA: el patrimonio se obtiene como activo − pasivo, así que este cuadre es exacto '+
+      'POR CONSTRUCCIÓN. No proviene de un balance de comprobación de partida doble: el sistema '+
+      'no lleva asientos, diario ni mayor.');
     A.push(['','','']);
     A.push(['','Pasivos y patrimonio se presentan en positivo, rotulados por su naturaleza.','']);
     A.push(['','Criterio: balance de caja + patrimonio. Los bienes se registran al costo sin salir del gasto del período.','']);
+    A.push(['','Las celdas con esquina roja llevan un comentario que explica de dónde sale la cifra.','']);
 
     const ws1=_sheet(A,[2],[10,58,16]);
     _s(ws1,0,0,ST.title); _s(ws1,1,0,ST.sub); _s(ws1,2,0,ST.sub);
     sec.forEach(r=>{ _s(ws1,r,0,ST.section); _s(ws1,r,1,ST.section); _s(ws1,r,2,ST.section); });
     tot.forEach(r=>{ _s(ws1,r,0,ST.total); _s(ws1,r,1,ST.total); _s(ws1,r,2,ST.totalMoney); });
+    formulas.forEach(([r,f,v])=>_xFormula(ws1,r,2,f,v));
+    notas.forEach(([r,t])=>_xNota(ws1,r,2,t));
+    _xNota(ws1,0,0,
+      'BALANCE DE LA ASOCIACIÓN al '+fmtDate(b.asOf)+'.\n\n'+
+      'CRITERIO: balance de caja + patrimonio, no contabilidad de acumulación.\n'+
+      '· El efectivo, la cartera y los pagos adelantados se DERIVAN de los pagos y gastos '+
+      'registrados en el sistema.\n'+
+      '· Los bienes, préstamos, cuentas por pagar y compromisos se registran a mano en el panel.\n'+
+      '· Los ingresos y gastos se reconocen cuando entra o sale la plata, no cuando se factura.\n\n'+
+      'ESTE ARCHIVO NO ES UN ESTADO FINANCIERO AUDITABLE: el sistema no lleva partida doble, '+
+      'diario ni mayor, y no cierra períodos. Sirve para alimentar al contador, no para '+
+      'reemplazarlo.\n\n'+
+      'Cada cifra lleva su propio comentario con la fórmula y el origen del dato.');
 
     // ── Estado de resultado: mismo layout de columnas que usa el contador ──
     const im=d.ingresosPorMes||[], em=d.porMes||[], cm=d.cuotasPorMes||[], om=d.otrosPorMes||[];
@@ -5575,28 +5710,100 @@ function exportarBalanceContable(btn){
              ['Aires de Chicá','','','','','','','','','','','','','']  ,
              ['','','','','','','','','','','','','','']];
     R.push(['INGRESOS Y GASTOS','TOTAL',...GMESES]);
-    const rSec=[], rTot=[];
+    const rSec=[], rTot=[], rNota=[];
+    // filas de detalle, para que los totales sean SUM() de un rango real
     rSec.push(R.length); R.push(['INGRESOS','','','','','','','','','','','','','']);
+    const ingIni=R.length;
     R.push(['Cuotas de mantenimiento',sum(cm),...cm.map(x=>_r2(x))]);
+    rNota.push([R.length-1,
+      'PAGOS RECIBIDOS de propietarios registrados, ubicados en el mes de la FECHA DEL PAGO.\n\n'+
+      'Base caja: es el dinero que entró, no lo facturado. Quien pagó tres cuotas atrasadas de '+
+      'una vez aparece en un solo mes por el total del depósito.\n\n'+
+      'La cobranza medida contra lo facturado se ve en el tab Cuentas del panel, no aquí.']);
     R.push(['Otros ingresos',sum(om),...om.map(x=>_r2(x))]);
-    rTot.push(R.length); R.push(['Total INGRESOS',sum(im),...im.map(x=>_r2(x))]);
+    rNota.push([R.length-1,
+      'PAGOS RECIBIDOS cuya cuenta no corresponde a un propietario: aportes, reembolsos y '+
+      'similares. Se registran a mano desde el tab Finanzas → Resultado.']);
+    const ingFin=R.length-1;
+    const rTotIng=R.length;
+    /* Los totales se calculan sumando LAS MISMAS FILAS que suma la fórmula de
+     * Excel, no el agregado que ya trae el backend. Los dos coinciden por
+     * construcción, pero si algún día divergieran el archivo mostraría un número
+     * y la fórmula otro — y al abrirlo en Excel ganaría la fórmula, así que el
+     * contador vería algo distinto de lo que muestra el panel. */
+    const totIng = i => _r2((cm[i]||0)+(om[i]||0));
+    rTot.push(R.length);
+    R.push(['Total INGRESOS',_r2(sum(cm)+sum(om)),...GMESES.map((_,i)=>totIng(i))]);
     R.push(['','','','','','','','','','','','','','']);
     rSec.push(R.length); R.push(['GASTOS','','','','','','','','','','','','','']);
+    const gasIni=R.length;
     const cats={};
     (d.gastos||[]).forEach(g=>{ const c=String(g.categoria||'(sin categoría)').trim();
       const mm=new Date(g.fecha).getMonth();
       const a=cats[c]||(cats[c]=[0,0,0,0,0,0,0,0,0,0,0,0]); a[mm]=_r2(a[mm]+(Number(g.monto)||0)); });
-    Object.keys(cats).sort().forEach(c=>R.push([c,sum(cats[c]),...cats[c]]));
-    rTot.push(R.length); R.push(['Total GASTOS',sum(em),...em.map(x=>_r2(x))]);
-    R.push(['','','','','','','','','','','','','','']);
+    Object.keys(cats).sort().forEach(c=>{
+      R.push([c,sum(cats[c]),...cats[c]]);
+      rNota.push([R.length-1, c===b.catPrestamo
+        ? 'DEVOLUCIÓN DE CAPITAL del préstamo, no gasto de operación.\n\n'+
+          'Sale del banco, y por eso figura aquí en base caja, pero lo que hace es bajar una '+
+          'deuda. En el balance el saldo del préstamo baja por este mismo monto.\n\n'+
+          'Quien lea el resultado del año debe saber que '+_M(sum(cats[c]))+' de los egresos son '+
+          'esto y no operación.'
+        : 'Gastos registrados en la categoría «'+c+'», ubicados en el mes de la FECHA DEL GASTO.\n\n'+
+          'Se capturan en el tab Gastos del panel. El presupuesto anual de esta categoría se '+
+          'compara contra lo ejecutado en el tab Gastos → Presupuesto.']);
+    });
+    const gasFin=R.length-1;
+    const rTotGas=R.length;
+    const totGas = i => _r2(Object.keys(cats).reduce((s,c)=>s+(cats[c][i]||0),0));
+    const gasAnual = _r2(GMESES.reduce((s,_,i)=>s+totGas(i),0));
     rTot.push(R.length);
-    R.push(['Resultado del período',_r2(sum(im)-sum(em)),...im.map((x,i)=>_r2((x||0)-(em[i]||0)))]);
+    R.push(['Total GASTOS',gasAnual,...GMESES.map((_,i)=>totGas(i))]);
+    R.push(['','','','','','','','','','','','','','']);
+    const rRes=R.length;
+    rTot.push(R.length);
+    R.push(['Resultado del período',_r2(_r2(sum(cm)+sum(om))-gasAnual),
+      ...GMESES.map((_,i)=>_r2(totIng(i)-totGas(i)))]);
 
     const ws2=_sheet(R,[1,2,3,4,5,6,7,8,9,10,11,12,13],[36,13,11,11,11,11,11,11,11,11,11,11,11,11]);
     _s(ws2,0,0,ST.title); _s(ws2,1,0,ST.sub); _s(ws2,2,0,ST.sub);
     for(let c=0;c<14;c++) _s(ws2,4,c,ST.th);
     rSec.forEach(r=>{ for(let c=0;c<14;c++) _s(ws2,r,c,ST.section); });
     rTot.forEach(r=>{ _s(ws2,r,0,ST.total); for(let c=1;c<14;c++) _s(ws2,r,c,ST.totalMoney); });
+
+    /* Fórmulas de Excel, columna por columna: los totales suman el rango de
+     * detalle y la columna TOTAL suma los doce meses. Así el contador puede
+     * seguir cada cifra —y corregir un mes— sin rehacer el archivo. */
+    for(let c=1;c<14;c++){
+      const L=_xCol(c);
+      _xFormula(ws2,rTotIng,c,'SUM('+L+(ingIni+1)+':'+L+(ingFin+1)+')',R[rTotIng][c]);
+      _xFormula(ws2,rTotGas,c,'SUM('+L+(gasIni+1)+':'+L+(gasFin+1)+')',R[rTotGas][c]);
+      _xFormula(ws2,rRes,c,L+(rTotIng+1)+'-'+L+(rTotGas+1),R[rRes][c]);
+    }
+    // columna TOTAL (B) de cada fila de detalle = suma de enero a diciembre
+    const filasDet=[]; for(let r=ingIni;r<=ingFin;r++) filasDet.push(r);
+    for(let r=gasIni;r<=gasFin;r++) filasDet.push(r);
+    filasDet.forEach(r=>_xFormula(ws2,r,1,'SUM(C'+(r+1)+':N'+(r+1)+')',R[r][1]));
+
+    rNota.forEach(([r,t])=>_xNota(ws2,r,0,t));
+    _xNota(ws2,4,1,'Suma de enero a diciembre de esta misma fila.\nFórmula:  =SUMA(C:N)');
+    _xNota(ws2,rTotIng,0,'Fórmula:  cuotas de mantenimiento + otros ingresos\n'+
+      'Todo el dinero RECIBIDO en el período, sea de la cuota del mes o de meses atrasados.');
+    _xNota(ws2,rTotGas,0,'Fórmula:  suma de todas las categorías de gasto\n'+
+      'Todo el dinero PAGADO en el período. Incluye los abonos a préstamo, que son devolución '+
+      'de capital y no gasto de operación.');
+    _xNota(ws2,rRes,0,'Fórmula:  Total INGRESOS − Total GASTOS\n'+
+      '= '+_M(_r2(sum(cm)+sum(om)))+' − '+_M(gasAnual)+' = '+_M(_r2(_r2(sum(cm)+sum(om))-gasAnual))+'\n\n'+
+      'Coincide con la fila «Resultado del período» de la hoja Balance (cuenta 7200).');
+    _xNota(ws2,0,0,
+      'ESTADO DE RESULTADO de '+(d.anio||'')+', al '+fmtDate(b.asOf)+'.\n\n'+
+      'CRITERIO: BASE CAJA. Se registra el dinero efectivamente recibido y pagado en cada mes, '+
+      'no lo facturado ni lo devengado.\n\n'+
+      'Consecuencias al leerlo:\n'+
+      '· Un propietario que paga seis meses por adelantado aparece completo en un solo mes.\n'+
+      '· Una cuota facturada y no cobrada NO aparece aquí; está en el balance, como cuenta por cobrar.\n'+
+      '· Los abonos a préstamo figuran como gasto aunque sean devolución de capital.\n\n'+
+      'Los totales llevan fórmulas de Excel reales: se pueden seguir y modificar.');
 
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws1,'Balance');
