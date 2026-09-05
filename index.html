@@ -3198,7 +3198,13 @@ const ST={
   section:{font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:BR.teal700}},alignment:{vertical:'center'}},
   label:{font:{color:{rgb:BR.ink}},border:AB,alignment:{vertical:'center'}},
   valB:{font:{bold:true,color:{rgb:BR.ink}},border:AB,alignment:{horizontal:'right',vertical:'center'}},
-  valMoney:{font:{bold:true,color:{rgb:BR.ink}},border:AB,numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}}
+  valMoney:{font:{bold:true,color:{rgb:BR.ink}},border:AB,numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}},
+  /* Estado de resultado: la categoría manda y su desglose va debajo, más chico
+     y en gris, para que el ojo salte de subtotal en subtotal sin perderse. */
+  catNom:{font:{bold:true,color:{rgb:BR.ink}},alignment:{vertical:'center'}},
+  catMoney:{font:{bold:true,color:{rgb:BR.ink}},numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}},
+  det:{font:{sz:9,color:{rgb:BR.muted}},alignment:{vertical:'center',indent:2}},
+  detMoney:{font:{sz:9,color:{rgb:BR.muted}},numFmt:MONEYFMT,alignment:{horizontal:'right',vertical:'center'}}
 };
 function _s(ws,r,c,style){ const a=XLSX.utils.encode_cell({r,c}); if(!ws[a]) ws[a]={t:'s',v:''}; ws[a].s=style;
   const ref=XLSX.utils.decode_range(ws['!ref']||'A1'); if(r>ref.e.r||c>ref.e.c){ ref.e.r=Math.max(ref.e.r,r); ref.e.c=Math.max(ref.e.c,c); ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:ref.e}); } }
@@ -5737,13 +5743,21 @@ function exportarBalanceContable(btn){
     R.push(['','','','','','','','','','','','','','']);
     rSec.push(R.length); R.push(['GASTOS','','','','','','','','','','','','','']);
     const gasIni=R.length;
-    const cats={};
+    const cats={}, catDet={};
     (d.gastos||[]).forEach(g=>{ const c=String(g.categoria||'(sin categoría)').trim();
       const mm=new Date(g.fecha).getMonth();
-      const a=cats[c]||(cats[c]=[0,0,0,0,0,0,0,0,0,0,0,0]); a[mm]=_r2(a[mm]+(Number(g.monto)||0)); });
+      const a=cats[c]||(cats[c]=[0,0,0,0,0,0,0,0,0,0,0,0]); a[mm]=_r2(a[mm]+(Number(g.monto)||0));
+      (catDet[c]=catDet[c]||[]).push(g); });
+    /* Cada categoría abre su propio desglose: un renglón por gasto, con la fecha,
+     * el proveedor y el concepto, y el monto en la columna de su mes. Van con
+     * nivel de agrupación 1, así que en Excel se colapsan con el [−] del margen
+     * y el archivo se puede leer resumido o al detalle sin tocar nada. */
+    const filasCat=[], filasGasDet=[];
     Object.keys(cats).sort().forEach(c=>{
+      const lista=(catDet[c]||[]).slice().sort((x,y)=>new Date(x.fecha)-new Date(y.fecha));
+      filasCat.push(R.length);
       R.push([c,sum(cats[c]),...cats[c]]);
-      rNota.push([R.length-1, c===b.catPrestamo
+      rNota.push([R.length-1, (c===b.catPrestamo
         ? 'DEVOLUCIÓN DE CAPITAL del préstamo, no gasto de operación.\n\n'+
           'Sale del banco, y por eso figura aquí en base caja, pero lo que hace es bajar una '+
           'deuda. En el balance el saldo del préstamo baja por este mismo monto.\n\n'+
@@ -5751,7 +5765,20 @@ function exportarBalanceContable(btn){
           'esto y no operación.'
         : 'Gastos registrados en la categoría «'+c+'», ubicados en el mes de la FECHA DEL GASTO.\n\n'+
           'Se capturan en el tab Gastos del panel. El presupuesto anual de esta categoría se '+
-          'compara contra lo ejecutado en el tab Gastos → Presupuesto.']);
+          'compara contra lo ejecutado en el tab Gastos → Presupuesto.')+
+        '\n\nDEBAJO ESTÁ EL DESGLOSE: '+lista.length+' gasto'+(lista.length===1?'':'s')+
+        ' con su fecha, proveedor y concepto. Se colapsa con el [−] del margen izquierdo.\n'+
+        'Esta celda es la SUMA de esos renglones.']);
+      lista.forEach(g=>{
+        const mm=new Date(g.fecha).getMonth();
+        const fila=['','','','','','','','','','','','','',''];
+        fila[0]=_fx(g.fecha)+' · '+(String(g.proveedor||'').trim()||'—')+
+                (String(g.detalle||'').trim()?' · '+String(g.detalle).trim():'');
+        fila[1]=_r2(g.monto);
+        fila[2+mm]=_r2(g.monto);
+        filasGasDet.push(R.length);
+        R.push(fila);
+      });
     });
     const gasFin=R.length-1;
     const rTotGas=R.length;
@@ -5765,21 +5792,35 @@ function exportarBalanceContable(btn){
     R.push(['Resultado del período',_r2(_r2(sum(cm)+sum(om))-gasAnual),
       ...GMESES.map((_,i)=>_r2(totIng(i)-totGas(i)))]);
 
-    const ws2=_sheet(R,[1,2,3,4,5,6,7,8,9,10,11,12,13],[36,13,11,11,11,11,11,11,11,11,11,11,11,11]);
+    const ws2=_sheet(R,[1,2,3,4,5,6,7,8,9,10,11,12,13],[48,13,11,11,11,11,11,11,11,11,11,11,11,11]);
     _s(ws2,0,0,ST.title); _s(ws2,1,0,ST.sub); _s(ws2,2,0,ST.sub);
     for(let c=0;c<14;c++) _s(ws2,4,c,ST.th);
     rSec.forEach(r=>{ for(let c=0;c<14;c++) _s(ws2,r,c,ST.section); });
     rTot.forEach(r=>{ _s(ws2,r,0,ST.total); for(let c=1;c<14;c++) _s(ws2,r,c,ST.totalMoney); });
+    filasCat.forEach(r=>{ _s(ws2,r,0,ST.catNom); for(let c=1;c<14;c++) _s(ws2,r,c,ST.catMoney); });
+    filasGasDet.forEach(r=>{ _s(ws2,r,0,ST.det); for(let c=1;c<14;c++) _s(ws2,r,c,ST.detMoney); });
+    // Agrupación de filas: el desglose queda plegable con el [−] del margen.
+    // Se entrega desplegado; quien quiera el resumen lo colapsa y Excel lo recuerda.
+    const rows=[]; filasGasDet.forEach(r=>{ rows[r]={ level:1 }; });
+    ws2['!rows']=rows;
 
-    /* Fórmulas de Excel, columna por columna: los totales suman el rango de
-     * detalle y la columna TOTAL suma los doce meses. Así el contador puede
-     * seguir cada cifra —y corregir un mes— sin rehacer el archivo. */
+    /* Fórmulas de Excel, columna por columna. El total de gastos suma las filas
+     * de CATEGORÍA, no un rango corrido: entre ellas están ahora los renglones
+     * del desglose, y sumar el rango entero contaría cada gasto dos veces. */
+    const sumaCat = L => filasCat.map(r=>L+(r+1)).join('+');
     for(let c=1;c<14;c++){
       const L=_xCol(c);
       _xFormula(ws2,rTotIng,c,'SUM('+L+(ingIni+1)+':'+L+(ingFin+1)+')',R[rTotIng][c]);
-      _xFormula(ws2,rTotGas,c,'SUM('+L+(gasIni+1)+':'+L+(gasFin+1)+')',R[rTotGas][c]);
+      if(filasCat.length) _xFormula(ws2,rTotGas,c,sumaCat(L),R[rTotGas][c]);
       _xFormula(ws2,rRes,c,L+(rTotIng+1)+'-'+L+(rTotGas+1),R[rRes][c]);
     }
+    // cada categoría es la suma de su propio desglose
+    filasCat.forEach((r,i)=>{
+      const ini=r+1, fin=(i+1<filasCat.length?filasCat[i+1]:rTotGas)-1;
+      if(fin<ini) return;   // categoría sin desglose (no debería pasar)
+      for(let c=1;c<14;c++){ const L=_xCol(c);
+        _xFormula(ws2,r,c,'SUM('+L+(ini+1)+':'+L+(fin+1)+')',R[r][c]); }
+    });
     // columna TOTAL (B) de cada fila de detalle = suma de enero a diciembre
     const filasDet=[]; for(let r=ingIni;r<=ingFin;r++) filasDet.push(r);
     for(let r=gasIni;r<=gasFin;r++) filasDet.push(r);
@@ -5789,7 +5830,9 @@ function exportarBalanceContable(btn){
     _xNota(ws2,4,1,'Suma de enero a diciembre de esta misma fila.\nFórmula:  =SUMA(C:N)');
     _xNota(ws2,rTotIng,0,'Fórmula:  cuotas de mantenimiento + otros ingresos\n'+
       'Todo el dinero RECIBIDO en el período, sea de la cuota del mes o de meses atrasados.');
-    _xNota(ws2,rTotGas,0,'Fórmula:  suma de todas las categorías de gasto\n'+
+    _xNota(ws2,rTotGas,0,'Fórmula:  suma de las filas de CATEGORÍA (no del rango corrido)\n'+
+      'Entre las categorías van los renglones del desglose; sumar el rango entero contaría cada '+
+      'gasto dos veces.\n\n'+
       'Todo el dinero PAGADO en el período. Incluye los abonos a préstamo, que son devolución '+
       'de capital y no gasto de operación.');
     _xNota(ws2,rRes,0,'Fórmula:  Total INGRESOS − Total GASTOS\n'+
@@ -5803,6 +5846,9 @@ function exportarBalanceContable(btn){
       '· Un propietario que paga seis meses por adelantado aparece completo en un solo mes.\n'+
       '· Una cuota facturada y no cobrada NO aparece aquí; está en el balance, como cuenta por cobrar.\n'+
       '· Los abonos a préstamo figuran como gasto aunque sean devolución de capital.\n\n'+
+      'DESGLOSE: bajo cada categoría de gasto van sus renglones uno por uno, con fecha, '+
+      'proveedor y concepto. Se pliegan y despliegan con los botones [−] y [+] del margen '+
+      'izquierdo, o con el «1» y el «2» de arriba para colapsar o abrir todo de una vez.\n\n'+
       'Los totales llevan fórmulas de Excel reales: se pueden seguir y modificar.');
 
     const wb=XLSX.utils.book_new();
