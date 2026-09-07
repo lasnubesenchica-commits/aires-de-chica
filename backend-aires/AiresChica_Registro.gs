@@ -89,6 +89,7 @@ var REG_ACCIONES = {
   'cuenta.cobro':       'Cuenta de cobro cambiada',
   'cuenta.rellena':     'Cuenta asignada al histórico',
   'traspaso.alta':      'Traspaso entre cuentas',
+  'traspaso.edita':     'Traspaso corregido',
   'traspaso.baja':      'Traspaso eliminado'
 };
 
