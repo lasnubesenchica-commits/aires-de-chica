@@ -3789,6 +3789,29 @@ function _verifBadge(v){
   const m=map[v.nivel]||map.warn;
   return `<div title="${String(v.mensaje||'').replace(/"/g,'&quot;')}" style="display:inline-block;margin-top:3px;font-size:.68rem;font-weight:700;color:${m[0]};background:${m[1]};border:1px solid ${m[0]}44;border-radius:6px;padding:1px 6px">${m[2]}</div>`;
 }
+/* A qué cuenta bancaria entró este comprobante.
+ *
+ * El sistema lo DETECTA del propio aviso —Banco General manda la terminación de
+ * producto y con eso se resuelve la cuenta— pero la última palabra es de quien
+ * confirma: la detección puede quedar ambigua (dos cuentas con la misma
+ * terminación) o el banco puede numerar su producto distinto al número de cuenta.
+ * Por eso se muestran SIEMPRE las dos y se preselecciona la detectada, en vez de
+ * decidir por detrás. La etiqueta dice de dónde salió la preselección. */
+function _cbBancoSelect(c){
+  const cs=(CUENTAS_LISTA||[]).filter(x=>x.clase==='banco'||x.esCobro);
+  if(!cs.length) return '<span class="muted" style="font-size:.72rem">—</span>';
+  const det=(c.verif&&c.verif.cuentaId)||'';
+  const cobro=(cs.find(x=>x.esCobro)||{}).id||'';
+  const sel=det||cobro;
+  const nota=det
+    ? '<span style="color:var(--ac-ok)">✓ detectada del aviso</span>'
+    : '<span class="muted">sin detectar · queda la de cobro</span>';
+  return `<div style="margin-bottom:3px;font-size:.66rem">${nota}</div>
+    <select class="cBanco" style="max-width:190px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem">${
+      (CUENTAS_LISTA||[]).map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${_esc(x.nombre)}</option>`).join('')
+    }</select>`;
+}
+
 function _verifBanner(v){
   if(!v||!v.nivel) return '';
   const map={ok:['#16a34a','#ecfdf5','✓'],warn:['#b45309','#fffbeb','⚠'],bad:['#b91c1c','#fef2f2','⚠']};
@@ -3802,6 +3825,7 @@ async function renderComprob(){
   try{ [all,props]=await Promise.all([jsonp('getComprobantes',{}), COMPROB_PROPS?Promise.resolve(COMPROB_PROPS):jsonp('getPropietarios')]); }
   catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">Error: '+e+'</div>'; return; }
   COMPROB_PROPS=props;
+  await _ctaCargar();   // las cuentas bancarias, para el selector "Entró a"
   const opts=props.slice().sort((a,b)=>a.residencial.localeCompare(b.residencial)||String(a.lote).localeCompare(String(b.lote)))
     .map(p=>`<option value="${p.clave}">${p.residencial} · L${p.lote} · ${p.nombre}</option>`).join('');
   const pend=all.filter(c=>c.estado==='pendiente'), desc=all.filter(c=>c.estado==='descartado');
@@ -3809,13 +3833,14 @@ async function renderComprob(){
   const apl=aplAll.slice(0,50), rech=rechAll.slice(0,50);   // últimos 50 (getComprobantes viene ordenado por fecha desc)
   const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" class="cprev" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
   const pendHtml = !pend.length ? '<div class="muted" style="padding:16px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'
-    : `<table class="stack-table"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Cuenta</th><th></th></tr></thead><tbody>${
+    : `<table class="stack-table"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Entró a</th><th>Propietario</th><th></th></tr></thead><tbody>${
       pend.map(c=>{ const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
       return `<tr data-id="${c.id}"><td data-label="Fecha">${_fx(c.fecha)}</td>
         <td class="stack-col" data-label="Remitente"><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
         <td class="stack-col" data-label="Asunto / adjunto" style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}${c.metodoPago?`<div class="muted" style="font-size:.7rem">Método: ${String(c.metodoPago).replace(/</g,'&lt;')}</div>`:''}<div>${_verifBadge(c.verif)}</div></td>
         <td class="num" data-label="Monto"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-        <td class="stack-col" data-label="Cuenta"><div style="margin-bottom:3px"><span class="pill ${conf}" style="font-size:.62rem">${c.metodo}</span></div><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select></td>
+        <td class="stack-col" data-label="Entró a">${_cbBancoSelect(c)}</td>
+        <td class="stack-col" data-label="Propietario"><div style="margin-bottom:3px"><span class="pill ${conf}" style="font-size:.62rem">${c.metodo}</span></div><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select></td>
         <td class="acts" style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="previewComprob('${c.id}',this)">Confirmar</button>
           <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`; }).join('')
     }</tbody></table>`;
@@ -3913,7 +3938,9 @@ function _preHtml(d,id){
   return `<div style="font-size:.86rem">
     <div style="font-weight:700;margin-bottom:8px">Así se aplicará este pago</div>
     ${_verifBanner(COMPROB_VERIF[id])}
-    <div class="muted" style="margin-bottom:10px">${d.nombre} · L${d.lote} · cuota mensual ${_mny(d.cuota)} · pago capturado <b>${_mny(d.monto)}</b></div>
+    <div class="muted" style="margin-bottom:10px">${d.nombre} · L${d.lote} · cuota mensual ${_mny(d.cuota)} · pago capturado <b>${_mny(d.monto)}</b>${
+      (()=>{ const s=document.querySelector(`#comprobResult tr[data-id="${id}"] .cBanco`);
+             return s ? ' · entra a <b>'+_esc(s.options[s.selectedIndex].text)+'</b>' : ''; })()}</div>
     <div style="overflow-x:auto;margin-bottom:10px"><table style="width:auto;min-width:420px">
       <thead><tr><th>Cuota / saldo</th><th class="num">Monto</th><th class="num">Se aplica</th><th class="num">Queda</th></tr></thead>
       <tbody>${filas}</tbody></table></div>
@@ -3941,16 +3968,20 @@ async function previewComprob(id,btn){
   catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
   btn.disabled=false; btn.textContent=t;
   const det=document.createElement('tr'); det.className='cdet'; det.dataset.for=id;
-  det.innerHTML=`<td colspan="6" style="background:var(--ac-teal-50,#eef8f6);border-left:3px solid var(--ac-teal-600,#0d9488);padding:14px 16px">${_preHtml(d,id)}</td>`;
+  det.innerHTML=`<td colspan="7" style="background:var(--ac-teal-50,#eef8f6);border-left:3px solid var(--ac-teal-600,#0d9488);padding:14px 16px">${_preHtml(d,id)}</td>`;
   tr.after(det);
 }
 async function aplicarComprob(id,btn){
   const tr=document.querySelector(`#comprobResult tr[data-id="${id}"]`); if(!tr) return;
   const clave=tr.querySelector('.cCuenta').value, monto=tr.querySelector('.cMonto').value;
+  const banco=(tr.querySelector('.cBanco')||{}).value||'';
   if(!clave) return alert('Asigna una cuenta.');
   if(!(+monto>0)) return alert('Indica el monto.');
   btn.disabled=true; btn.textContent='Aplicando…';
-  try{ await post('resolverComprobante',{id,accion:'aplicar',clave,monto:+monto});
+  // banco: a qué cuenta de la asociación entró. Si el selector no cargó va vacío
+  // y el servidor usa la detectada del aviso, o la de cobro.
+  try{ await post('resolverComprobante',{id,accion:'aplicar',clave,monto:+monto,cuenta:banco});
+    BAL_DATA=null;
     const det=tr.nextElementSibling; if(det&&det.classList.contains('cdet')) det.remove();
     tr.style.opacity='.4'; tr.querySelectorAll('button,select,input').forEach(x=>x.disabled=true);
     if(typeof renderDash==='function') renderDash();

@@ -687,11 +687,25 @@ function resolverComprobante(data) {
     if (!(monto > 0)) throw new Error('Indica un monto válido.');
     var prop = _findProp(clave);
     if (!prop) throw new Error('No existe la cuenta ' + clave);
+    // A qué cuenta BANCARIA entró. Si el panel no la manda —o manda una que no
+    // existe— se usa la detectada del propio aviso, y si tampoco hay, la de cobro.
+    // Nunca se deja vacía: un pago sin cuenta no suma en ningún saldo y el
+    // efectivo por cuenta dejaría de dar el total.
+    var iMp = h.indexOf('metodoPago'), iCd = h.indexOf('cuentaDestino'), iBen = h.indexOf('beneficiario');
+    var cuentaId = String(data.cuenta || '').trim();
+    if (cuentaId && !cuentaPorId(cuentaId)) throw new Error('No existe la cuenta "' + cuentaId + '".');
+    if (!cuentaId) {
+      var _v = _verificarDestino(iMp >= 0 ? vals[r][iMp] : '', iCd >= 0 ? vals[r][iCd] : '',
+        iBen >= 0 ? vals[r][iBen] : '', _bancoDelMetodo(iMp >= 0 ? vals[r][iMp] : ''));
+      cuentaId = (_v && _v.cuentaId) || (cuentaDeCobro().id || '');
+    }
+
     var iUrl = h.indexOf('adjuntoUrl'), iRef = h.indexOf('referencia');
     var pagoId = appendPago({
       fecha: new Date(vals[r][iFe]), clave: clave, lote: prop.lote, nombre: prop.nombre, monto: monto,
       origen: 'comprobante', referencia: (iRef >= 0 ? String(vals[r][iRef] || '') : ''),
       comprobanteUrl: (iUrl >= 0 ? String(vals[r][iUrl] || '') : ''),
+      cuenta: cuentaId,
       notas: 'Comprobante email: ' + String(vals[r][iAs] || '').slice(0, 120)
     });
     sh.getRange(r + 1, iCl + 1).setValue(clave);
@@ -700,9 +714,11 @@ function resolverComprobante(data) {
     sh.getRange(r + 1, iLo + 1).setValue(prop.lote);
     var iPidA = h.indexOf('pagoId'); if (iPidA >= 0) sh.getRange(r + 1, iPidA + 1).setValue(pagoId);
     sh.getRange(r + 1, iEst + 1).setValue('aplicado');
+    var _cta = cuentaPorId(cuentaId);
     _reg('comprob.aplica', { clave: clave, propietario: prop.nombre, monto: monto, origen: 'comprobante',
       despues: _fechaCorta(new Date(vals[r][iFe])),
-      detalle: 'Comprobante ' + data.id + ' · ' + String(vals[r][iAs] || '').slice(0, 90) });
+      detalle: 'Comprobante ' + data.id + ' · entró a ' + (_cta ? _cta.nombre : cuentaId || '(sin cuenta)') +
+               ' · ' + String(vals[r][iAs] || '').slice(0, 70) });
     // Confirmación al propietario: es el compromiso de «notificar que su pago fue
     // recibido y procesado». Esta es la vía automática (comprobante llegado por correo),
     // así que la decide la configuración, no un botón. Si el correo falla, el pago ya
