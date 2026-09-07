@@ -68,7 +68,9 @@ function _informePLData(anio, mesIni, mesFin) {
     catList: catList, presupVs: presupVs, presupTotal: presupTotal,
     fondoInicial: fondoInicial, resYTD: _round2(resYTD), fondoDisponible: _round2(fondoInicial + resYTD),
     kpis: dash.kpis,
-    cuenta: { banco: cfg.banco, tipo: cfg.cuentaTipo, num: cfg.cuentaNum, nombre: cfg.cuentaNombre }
+    // "Cuenta para aportes" en el informe: la de cobro, la misma que reciben los
+    // propietarios en el instructivo. No la configuración vieja, que se quedó atrás.
+    cuenta: (function (c) { return { banco: c.banco, tipo: c.tipo, num: c.numero, nombre: c.titular }; })(cuentaDeCobro())
   };
 }
 

@@ -226,7 +226,7 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario, bancoOrigen)
   }
   var listaTxt = bancos.length
     ? bancos.map(function (c) { return c.banco + ' Nº ' + c.numero; }).join(' · ')
-    : (_cfg().banco + ' Nº ' + _cfg().cuentaNum);
+    : (function (c) { return c.banco + ' Nº ' + c.numero; })(cuentaDeCobro());
 
   // Medios que Aires de Chicá NO usa
   if (/YAPPY|NEQUI/.test(mp)) {
@@ -267,6 +267,26 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario, bancoOrigen)
   return { nivel: 'warn', mensaje: 'No se pudo verificar la cuenta ni el beneficiario de destino. Revisa el comprobante manualmente.' };
 }
 
+/**
+ * A nombre de quién está la cuenta de un banco dado. El aviso de Banco General no
+ * dice el beneficiario, así que hay que ponerlo: es el titular de LA CUENTA DE ESE
+ * BANCO, no el de la cuenta de cobro —que desde que hay dos bancos puede ser otra—
+ * ni el de la configuración vieja, que se quedó con el titular de hace dos cuentas.
+ */
+function _titularDeBanco(nombreBanco) {
+  try {
+    var bo = _normTxt(nombreBanco || '');
+    var hit = null;
+    getCuentas().forEach(function (c) {
+      if (hit || c.clase !== 'banco' || !c.titular) return;
+      var cb = _normTxt(c.banco);
+      if (cb === bo || cb.indexOf(bo) >= 0 || bo.indexOf(cb) >= 0) hit = c;
+    });
+    if (hit) return hit.titular;
+  } catch (e) {}
+  return cuentaDeCobro().titular || '';
+}
+
 // ¿Es un aviso automático de Banco General? (no trae adjunto: el correo ES el comprobante)
 //   - por remitente: mensajesyalertas@bgeneral.com (u otro @bgeneral.com), o
 //   - por contenido: la redacción fija de BG + un "Monto:" (cubre reenvíos del propietario).
@@ -294,7 +314,11 @@ function _notifBancoPdf(nb, body, fecha) {
   var html = '<html><head><meta charset="utf-8"></head>' +
     '<body style="font-family:Helvetica,Arial,sans-serif;color:#143039;padding:36px">' +
     '<div style="font-size:20px;font-weight:700;color:#0E8FB0">Aviso de pago recibido</div>' +
-    '<div style="color:#5B7883;margin:2px 0 16px">Banca en Línea · ' + _cfg().banco + ' · ' + f + '</div>' +
+    // "Banco General" fijo, no la cuenta de cobro: este PDF reproduce el aviso de
+    // Banco General, y sólo se genera para sus avisos. Leerlo de la configuración
+    // etiquetaría el aviso con el banco equivocado en cuanto la cuenta de cobro
+    // fuera otra —que es justo lo que pasó al abrir la de Global.
+    '<div style="color:#5B7883;margin:2px 0 16px">Banca en Línea · Banco General · ' + f + '</div>' +
     '<div style="font-size:34px;font-weight:800;color:#0E8FB0;margin:6px 0 18px">' + _money(nb.monto || 0) + '</div>' +
     '<table style="border-collapse:collapse;font-size:14px">' +
       _pdfRow('Pagador', esc(nb.pagador)) +
@@ -417,7 +441,7 @@ function diagnosticarComprobantes(dias) {
           fila.terminacion = nb.cuentaTerm || '(no dice)';
           fila.descripcion = String(nb.descripcion || '').slice(0, 60);
           fila.verificacion = _verificarDestino('Banca en Línea (Banco General)',
-            nb.cuentaTerm, _cfg().cuentaNombre, 'Banco General');
+            nb.cuentaTerm, _titularDeBanco('Banco General'), 'Banco General');
         }
         if (!fila.yaRegistrado && !dirigido) {
           fila.SEIGNORA = 'El destinatario no aparece en To/Cc/Delivered-To: la captura lo salta sin dejar rastro.';
@@ -548,7 +572,7 @@ function _capturarComprobantes(maxThreads) {
         if (nb.pagador) nombreMatch = nb.pagador;
         metodoPago = 'Banca en Línea (Banco General)';
         cuentaDestino = nb.cuentaTerm || '';
-        beneficiario = _cfg().cuentaNombre; // BG sólo notifica sobre la cuenta de Aires de Chicá
+        beneficiario = _titularDeBanco('Banco General'); // BG sólo notifica sobre su propia cuenta de AC
         // Guarda el aviso como PDF con formato en Drive (miniatura legible + enlace "Ver comprobante").
         try {
           var pdf = _notifBancoPdf(nb, body, msg.getDate())

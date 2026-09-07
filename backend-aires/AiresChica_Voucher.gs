@@ -149,7 +149,10 @@ function voucherPagoHTML(d) {
         (d.cuenta.tipo ? ' · ' + esc(d.cuenta.tipo) : '') +
         (d.cuenta.numero ? ' Nº ' + esc(d.cuenta.numero) : '');
   } else {
-    ctaTxt = esc(cfg.banco) + ' · ' + esc(cfg.cuentaTipo) + ' Nº ' + esc(cfg.cuentaNum);
+    // Respaldo para los pagos anteriores a que cada pago guardara su cuenta: la de
+    // cobro vigente, no la configuración vieja, que puede haberse quedado atrás.
+    var _cc = cuentaDeCobro();
+    ctaTxt = esc(_cc.banco) + ' · ' + esc(_cc.tipo) + ' Nº ' + esc(_cc.numero);
   }
 
   return '' +

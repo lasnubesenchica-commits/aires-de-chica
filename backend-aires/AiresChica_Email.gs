@@ -117,8 +117,10 @@ function estadoCuentaHTML(est) {
   // Datos de pago
   '<div style="margin-top:24px;padding:14px 16px;border:1px solid ' + B.border + ';border-radius:8px;background:#fbfeff">' +
     '<div style="font-weight:700;color:' + B.teal700 + ';margin-bottom:4px">Datos para el pago</div>' +
-    '<div class="muted">' + _cfg().banco + ' · ' + _cfg().cuentaTipo + ' Nº ' + _cfg().cuentaNum + '</div>' +
-    '<div class="muted">A nombre de ' + _cfg().cuentaNombre + '</div>' +
+    // La cuenta de cobro, no la configuración vieja: es la que el panel marca en
+    // Opciones → Cuentas, y cambiarla ahí tiene que cambiarla aquí.
+    '<div class="muted">' + _ctaCobro().banco + ' · ' + _ctaCobro().tipo + ' Nº ' + _ctaCobro().numero + '</div>' +
+    '<div class="muted">A nombre de ' + _ctaCobro().titular + '</div>' +
     '<div class="muted" style="margin-top:6px;font-size:11.5px">Nota: a partir de la cuota de ' + moraDesdeTxt + ' se aplica un recargo del ' + cfg.moraPct + '% mensual sobre el mes o meses morosos (Reglamento de copropietarios).</div>' +
   '</div>' +
 
@@ -136,19 +138,35 @@ function _totRow(label, val, color, B) {
 }
 
 /**
- * Instructivo para el propietario: cómo pagar en la Banca en Línea de Banco
- * General, con énfasis en agregar el correo de comprobantes@ para que el pago
- * se registre automáticamente. Va al final del cuerpo del correo.
+ * Los datos de la cuenta que RECIBE los pagos. Todo lo que le dice a un propietario
+ * dónde pagar sale de aquí y de ningún otro lado: el instructivo, el bloque del PDF
+ * y el párrafo del correo. Antes cada uno leía la configuración vieja
+ * (cfg.banco/cuentaNum/...), que dejó de ser la verdad el día que las cuentas pasaron
+ * a administrarse en Opciones → Cuentas: marcar Global Bank como cuenta de cobro no
+ * cambiaba los correos, que seguían mandando a la gente al Banco General.
+ *
+ * cuentaDeCobro() ya cae en esa configuración vieja si la hoja de cuentas todavía no
+ * existe, así que este cambio no puede dejar los correos sin datos de pago.
+ */
+function _ctaCobro() { return cuentaDeCobro(); }
+
+/**
+ * Instructivo para el propietario: cómo pagar por banca en línea, con énfasis en
+ * agregar el correo de comprobantes@ para que el pago se registre automáticamente.
+ * Va al final del cuerpo del correo.
+ *
+ * No nombra el banco DEL PROPIETARIO: cada uno tiene el suyo y el instructivo se le
+ * manda a todos. El único banco que aparece es el de la cuenta que recibe.
  */
 function _instructivoPago(loteTxt) {
-  var B = AC_BRAND;
+  var B = AC_BRAND, cta = _ctaCobro();
   var comp = CONFIG.COMPROBANTES_EMAIL;
   return '<div style="margin-top:22px;padding:16px 18px;border:1px solid ' + B.border + ';border-radius:10px;background:' + B.teal50 + '">' +
-    '<div style="font-weight:700;color:' + B.teal700 + ';font-size:14px;margin-bottom:10px">Cómo registrar su pago en la Banca en Línea de Banco General</div>' +
+    '<div style="font-weight:700;color:' + B.teal700 + ';font-size:14px;margin-bottom:10px">Cómo registrar su pago por banca en línea</div>' +
     '<ol style="margin:0;padding-left:18px;line-height:1.65">' +
-      '<li>Ingrese a su <b>Banca en Línea de Banco General</b> (página web o app móvil) y seleccione <b>Transferencias</b>.</li>' +
-      '<li>Elija o agregue como beneficiario la cuenta de <b>' + _cfg().cuentaNombre + '</b>:<br>' +
-        _cfg().banco + ' · ' + _cfg().cuentaTipo + ' N.º <b>' + _cfg().cuentaNum + '</b>.</li>' +
+      '<li>Ingrese a su <b>banca en línea</b> (página web o app móvil) y seleccione <b>Transferencias</b>.</li>' +
+      '<li>Elija o agregue como beneficiario la cuenta de <b>' + cta.titular + '</b>:<br>' +
+        cta.banco + ' · ' + cta.tipo + ' N.º <b>' + cta.numero + '</b>.</li>' +
       '<li>Indique el <b>monto</b> de su cuota y, en la <b>descripción / concepto</b>, escriba su número de <b>lote ' + loteTxt + '</b>.</li>' +
       '<li>En el campo de <b>correo electrónico para enviar el comprobante</b>, agregue:<br>' +
         '<span style="display:inline-block;margin-top:4px;padding:4px 10px;background:#fff;border:1px solid ' + B.teal + ';border-radius:6px;font-weight:700;color:' + B.teal700 + '">' + comp + '</span></li>' +
@@ -261,8 +279,8 @@ function _cuerpoEstado(est, contexto) {
   return _emailShell(
     entrada +
     (mostrarCuenta ?
-      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + cfg.banco + ' · ' + cfg.cuentaTipo +
-      ' Nº ' + cfg.cuentaNum + '<br>' + cfg.cuentaNombre + '</p>' : '') +
+      '<p style="margin-top:14px">Puede realizar su pago a:<br>' + _ctaCobro().banco + ' · ' + _ctaCobro().tipo +
+      ' Nº ' + _ctaCobro().numero + '<br>' + _ctaCobro().titular + '</p>' : '') +
     _instructivoPago(est.lote)
   );
 }
