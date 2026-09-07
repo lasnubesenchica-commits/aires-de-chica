@@ -426,6 +426,34 @@ function diagnosticarComprobantes(dias) {
     });
   });
   out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
+
+  // Se IMPRIME, no sólo se devuelve: al ejecutar desde el editor de Apps Script
+  // el valor de retorno no se muestra en ninguna parte, así que una función de
+  // diagnóstico que sólo retornara un objeto no diría nada.
+  console.log('DIAGNÓSTICO DE COMPROBANTES · buzón ' + buzon + ' · últimos ' + d + ' días');
+  console.log('Correos hallados: ' + out.length +
+    ' · sólo en la búsqueda amplia: ' + out.filter(function (x) { return x.encontradoPor === 'búsqueda amplia'; }).length +
+    ' · se ignorarían: ' + out.filter(function (x) { return !!x.SEIGNORA; }).length);
+  if (!out.length) console.log('(ninguno — revisa que los correos estén llegando al buzón)');
+  out.forEach(function (x, i) {
+    console.log('─────────────────────────────────────────────');
+    console.log((i + 1) + ') ' + x.fecha + '  ' + x.de);
+    console.log('   asunto: ' + x.asunto);
+    console.log('   To: ' + x.to + '   |   Delivered-To: ' + x.deliveredTo);
+    console.log('   pasa el filtro de destinatario: ' + (x.pasaFiltroDestinatario ? 'SÍ' : 'NO') +
+                '   |   aviso de banco: ' + (x.esAvisoDeBanco ? 'sí' : 'no') +
+                '   |   adjuntos: ' + x.adjuntos +
+                '   |   ya registrado: ' + (x.yaRegistrado ? 'sí' : 'no'));
+    if (x.monto !== undefined) {
+      console.log('   monto: B/.' + Number(x.monto).toFixed(2) +
+                  '   |   terminación: ' + x.terminacion);
+      console.log('   descripción: ' + x.descripcion);
+      if (x.verificacion) console.log('   verificación [' + x.verificacion.nivel + ']: ' + x.verificacion.mensaje);
+    }
+    if (x.SEIGNORA) console.log('   ⚠ ' + x.SEIGNORA);
+  });
+  console.log('─────────────────────────────────────────────');
+
   return { buzon: buzon, dias: d,
     hallados: out.length,
     soloEnBusquedaAmplia: out.filter(function (x) { return x.encontradoPor === 'búsqueda amplia'; }).length,
