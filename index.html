@@ -5249,11 +5249,22 @@ function finVista(v){
   }
   paintFinanzas();
 }
+/* Saldos por cuenta. Van en su propia llamada y NO bloquean el balance: si
+ * fallan, el efectivo sigue mostrándose como un total —que es como se mostró
+ * siempre— y sólo se pierde el desglose. */
+let SALDOS_DATA=null;
 async function cargarBalance(){
   BAL_ERROR='';
   try{ BAL_DATA=await jsonp('getBalance'); }
   catch(e){ if(onAuthError(e))return; BAL_ERROR=String(e); }
   if(FIN_VISTA==='balance') paintFinanzas();
+  // Los saldos por cuenta se piden DESPUÉS de pintar y sin esperarlos: son un
+  // desglose del efectivo, no el efectivo. Encadenarlos al await de arriba haría
+  // que una llamada lenta —o que nunca responde— dejara el balance entero en
+  // blanco, cuando lo único que se pierde es saber en qué cuenta está el dinero.
+  jsonp('getSaldosCuentas',{asOf:(BAL_DATA&&BAL_DATA.asOf)||''})
+    .then(s=>{ SALDOS_DATA=s; if(FIN_VISTA==='balance') paintFinanzas(); })
+    .catch(()=>{ SALDOS_DATA=null; });
 }
 function balAbrir(k){
   BAL_ABIERTO=(BAL_ABIERTO===k)?null:k; paintFinanzas();
@@ -5293,6 +5304,73 @@ function _balCalc(d,bal,dash){
            // construcción; se muestra igual porque es lo que un contador busca
            cuadre:_r2(activo-_r2(pasivo+patrimonio)) };
 }
+
+/* ───────── Traspasos entre cuentas ─────────
+ * Ni ingreso ni egreso: la misma plata cambiando de bolsillo. Por eso no pasa por
+ * Pagos ni por Gastos —registrarlo ahí movería el resultado del año por un dinero
+ * que nunca entró ni salió— sino por su propia hoja, con origen y destino. Suma en
+ * una cuenta lo que resta en la otra, así que el efectivo total no cambia. */
+function balTraspasoModal(){
+  const cs=((SALDOS_DATA&&SALDOS_DATA.cuentas)||[]).filter(c=>c.id!=='(sin asignar)');
+  if(cs.length<2){ alert('Hacen falta al menos dos cuentas para traspasar.'); return; }
+  const hoy=new Date().toISOString().slice(0,10);
+  const opts=(sel)=>cs.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${_esc(c.nombre)} · ${money(c.saldo)}</option>`).join('');
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">Traspaso entre cuentas</div>
+    <div class="muted" style="font-size:.82rem">Mover fondos de una cuenta de la asociación a otra</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px">
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha</span>
+        <input type="date" id="tp_fecha" value="${hoy}" style="width:100%"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span>
+        <input type="number" id="tp_monto" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" style="width:100%;text-align:right"></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Sale de</span>
+        <select id="tp_de" style="width:100%">${opts(cs[0].id)}</select></label>
+      <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Entra a</span>
+        <select id="tp_a" style="width:100%">${opts(cs[1].id)}</select></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Referencia <span style="font-weight:400">(opcional)</span></span>
+        <input type="text" id="tp_ref" placeholder="Nº de transacción / concepto del banco" style="width:100%"></label>
+    </div>
+    <div class="muted" style="font-size:.78rem;margin-top:11px;padding:10px 12px;border:1px dashed var(--ac-border);border-radius:9px">
+      Un traspaso <b>no es un ingreso ni un gasto</b>: no cambia el resultado del año ni el efectivo total,
+      sólo dónde está el dinero. Ojo: en los estados de cuenta aparece <b>dos veces</b> —débito en una,
+      crédito en la otra— y basta registrarlo una.</div>
+    <div id="tp_msg" class="muted" style="font-size:.8rem;min-height:18px;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" id="tp_save" onclick="guardarTraspasoUI(this)">Registrar traspaso</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+async function guardarTraspasoUI(btn){
+  const msg=document.getElementById('tp_msg');
+  const t={ fecha:document.getElementById('tp_fecha').value,
+            monto:+document.getElementById('tp_monto').value,
+            de:document.getElementById('tp_de').value,
+            a:document.getElementById('tp_a').value,
+            referencia:document.getElementById('tp_ref').value.trim() };
+  if(!(t.monto>0)){ msg.innerHTML='<span style="color:var(--ac-danger)">Indica un monto mayor que cero.</span>'; return; }
+  if(!t.fecha){ msg.innerHTML='<span style="color:var(--ac-danger)">Indica la fecha.</span>'; return; }
+  if(t.de===t.a){ msg.innerHTML='<span style="color:var(--ac-danger)">El origen y el destino son la misma cuenta.</span>'; return; }
+  btn.disabled=true; msg.textContent='Guardando…';
+  try{
+    // mediodía, por lo mismo que los pagos: una fecha pelada se lee en UTC y en
+    // Panamá caería el día anterior
+    await post('registrarTraspaso',{traspaso:{...t, fecha:t.fecha+'T12:00:00'}});
+    closeModal(); await cargarBalance(); toast('✓ Traspaso registrado');
+  }catch(e){ btn.disabled=false; if(!onAuthError(e)) msg.innerHTML='<span style="color:var(--ac-danger)">'+_esc(String(e))+'</span>'; }
+}
+async function eliminarTraspasoUI(id,btn){
+  if(!confirm('¿Eliminar este traspaso?\n\nLos saldos de las dos cuentas vuelven a como estaban. El efectivo total no cambia.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarTraspaso',{id}); await cargarBalance(); toast('Traspaso eliminado'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
+/* Qué se puede abrir bajo el bloque de activo. Son sus renglones, más
+ * 'traspasos', que no es un renglón del balance —un traspaso no es un activo—
+ * pero se consulta desde el efectivo y es donde el lector lo va a buscar. */
+function _balEnActivo(fA,k){ return !!k && (k==='traspasos' || fA.some(f=>f.k===k)); }
 
 function _balPartidas(grupo){
   return ((BAL_DATA&&BAL_DATA.partidas)||[]).filter(p=>p.grupo===grupo&&p.activo);
@@ -5342,7 +5420,9 @@ function _balanceVista(d){
 
   /* ── 2. Activo ── */
   const fA=[];
-  fA.push({k:'efectivo', et:'Efectivo disponible', sub:'en banco y caja', v:m.efectivo});
+  const _nCtas=((SALDOS_DATA&&SALDOS_DATA.cuentas)||[]).length;
+  fA.push({k:'efectivo', et:'Efectivo disponible',
+    sub:_nCtas>1?`repartido en ${_nCtas} cuentas`:'en banco y caja', v:m.efectivo});
   if(m.cartera>0.009) fA.push({k:'cartera', et:'Cuentas por cobrar a propietarios', sub:'cuotas vencidas', v:m.cartera});
   if(m.mora>0.009)    fA.push({k:'mora', et:'Recargos por cobrar', sub:'moras acumuladas', v:m.mora});
   if(m.provision>0.009) fA.push({k:'provision', et:'(−) Provisión para incobrables',
@@ -5396,8 +5476,8 @@ function _balanceVista(d){
     <div class="bd">
       ${tabla(fA,m.activo,'TOTAL ACTIVO')}
       ${agregar(['bienes','terreno','prestamoCol','garantia','porCobrar'])}
-      <div id="${BAL_ABIERTO&&fA.some(f=>f.k===BAL_ABIERTO)?'balDet':'balDetA'}">${
-        fA.some(f=>f.k===BAL_ABIERTO)?_balDetalle(BAL_ABIERTO,m,b):''}</div>
+      <div id="${BAL_ABIERTO&&_balEnActivo(fA,BAL_ABIERTO)?'balDet':'balDetA'}">${
+        _balEnActivo(fA,BAL_ABIERTO)?_balDetalle(BAL_ABIERTO,m,b):''}</div>
     </div></div>`;
 
   const pasivoCard=`<div class="tb-desg">
@@ -5454,14 +5534,49 @@ function _balDetalle(k,m,b){
     ${pie?`<div class="df">${pie}</div>`:''}</div>`;
   const tr=(a,c,d)=>`<tr><td class="lo" style="width:auto">${a}</td><td>${c||''}</td><td class="num">${d}</td></tr>`;
 
-  if(k==='efectivo') return caja('Efectivo disponible',
-    `<table><tbody>
-      ${tr('Fondo inicial del año','con lo que arrancó '+(m.anioCorte),money(m.fondoIni))}
+  if(k==='efectivo'){
+    const s=SALDOS_DATA, cs=(s&&s.cuentas)||[];
+    // El desglose por cuenta y el total del balance salen de dos caminos
+    // distintos (uno suma movimiento a movimiento por cuenta, el otro acumula
+    // ingresos menos egresos del año). Coinciden por construcción, pero si algún
+    // día no lo hicieran hay que decirlo, no elegir un número y callar el otro.
+    const dif=cs.length?_r2(s.total-m.efectivo):0;
+    const porCuenta=cs.length?`<table><tbody>${cs.map(c=>`<tr>
+        <td class="lo" style="width:auto">${_esc(c.nombre)}${c.esCobro?' <span class="pill ok" style="font-size:.62rem">cobro</span>':''}</td>
+        <td class="muted" style="font-size:.76rem">${c.id==='(sin asignar)'
+          ? 'movimientos sin cuenta — revísalos'
+          : _esc([c.banco,c.numero&&('Nº '+c.numero)].filter(Boolean).join(' · '))||'en manos de la administración'}</td>
+        <td class="num"${c.saldo<-0.009?' style="color:var(--ac-danger)"':''}>${money(c.saldo)}</td></tr>`).join('')}
+      </tbody></table>`:'';
+    const comoSale=`<table><tbody>
+      ${tr('Fondo inicial','con lo que arrancó cada cuenta',money(m.fondoIni))}
       ${tr('+ Ingresos acumulados','cuotas y otros ingresos',money(m.ing))}
       ${tr('− Egresos acumulados','todos los gastos registrados',money(m.egr))}
-    </tbody></table>`,
-    `<span>Efectivo al corte <b>${money(m.efectivo)}</b></span>
-     <span>Se calcula, no se teclea: cámbialo registrando pagos y gastos.</span>`);
+    </tbody></table>`;
+    return caja('Efectivo disponible',
+      (porCuenta?`<div class="muted" style="padding:9px 14px 2px;font-size:.78rem">Dónde está el dinero</div>${porCuenta}
+        ${Math.abs(dif)>0.009?`<div class="notice" style="margin:10px 14px">⚠ El desglose por cuenta suma ${money(s.total)} y el efectivo del balance da ${money(m.efectivo)} — hay ${money(Math.abs(dif))} de diferencia. Revisa los movimientos sin cuenta asignada.</div>`:''}
+        <div class="muted" style="padding:12px 14px 2px;font-size:.78rem;border-top:1px dashed var(--ac-border)">Cómo sale el total</div>`:'')
+      + comoSale,
+      `<span>Efectivo al corte <b>${money(m.efectivo)}</b></span>
+       <span>${cs.length>1?`<button class="link-btn" onclick="balTraspasoModal()">Traspasar entre cuentas</button> ·
+         <button class="link-btn" onclick="balAbrir('traspasos')">ver traspasos${(SALDOS_DATA&&SALDOS_DATA.traspasos&&SALDOS_DATA.traspasos.length)?' ('+SALDOS_DATA.traspasos.length+')':''}</button> · `:''}Se calcula, no se teclea: cámbialo registrando pagos y gastos.</span>`);
+  }
+
+  if(k==='traspasos'){
+    const ts=(SALDOS_DATA&&SALDOS_DATA.traspasos)||[];
+    const nom=id=>{ const c=((SALDOS_DATA&&SALDOS_DATA.cuentas)||[]).find(x=>x.id===id); return c?c.nombre:id; };
+    const cuerpo=ts.length?`<table><tbody>${ts.map(t=>`<tr>
+        <td class="lo" style="width:auto">${fmtDate(t.fecha)}</td>
+        <td>${_esc(nom(t.de))} → <b>${_esc(nom(t.a))}</b>${t.referencia?' <span class="muted" style="font-size:.76rem">· '+_esc(t.referencia)+'</span>':''}</td>
+        <td class="num">${money(t.monto)}</td>
+        <td class="num"><button class="link-btn" style="color:var(--ac-danger)" title="Eliminar este traspaso" onclick="eliminarTraspasoUI('${t.id}',this)">Eliminar</button></td></tr>`).join('')}
+      </tbody></table>`
+      : '<div class="muted" style="padding:12px 14px;font-size:.84rem">Todavía no hay traspasos entre cuentas.</div>';
+    return caja('Traspasos entre cuentas', cuerpo,
+      `<span><button class="link-btn" onclick="balTraspasoModal()">Registrar un traspaso</button></span>
+       <span>Un traspaso no es ingreso ni egreso: la misma plata cambia de cuenta, así que <b>no mueve el resultado del año</b> ni el efectivo total.</span>`);
+  }
 
   if(k==='cartera'||k==='mora'){
     const top=(DASH&&DASH.topMorosos)||[];

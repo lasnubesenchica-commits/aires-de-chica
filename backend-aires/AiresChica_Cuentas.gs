@@ -490,6 +490,10 @@ function saldosPorCuenta(hasta) {
   return {
     asOf: corte ? _balISO(corte) : '',
     cuentas: lista,
+    // los traspasos viajan con los saldos: el panel los lista sin otra llamada
+    traspasos: getTraspasos().filter(function (t) { return dentro(t.fecha); })
+      .map(function (t) { return { id: t.id, fecha: _balISO(t.fecha), de: t.de, a: t.a,
+        monto: t.monto, referencia: t.referencia, notas: t.notas }; }),
     total: _round2(lista.reduce(function (s, c) { return s + c.saldo; }, 0)),
     sinAsignar: !!acc[SIN]
   };
