@@ -1928,7 +1928,8 @@ function _renderEstado(e, opts){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px 12px;align-items:end">
         <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Fecha del pago</span><input type="date" id="pgFecha" value="${today}" max="${today}" style="width:100%"></label>
         <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Monto (B/.)</span><input type="number" id="pgMonto" step="0.01" min="0" placeholder="0.00" inputmode="decimal" oninput="previewPagoManual('${e.clave}')" style="width:100%;text-align:right"></label>
-        <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Referencia <span style="font-weight:400">(opcional)</span></span><input type="text" id="pgRef" placeholder="Nº de transacción / ACH" style="width:100%"></label>
+        <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">¿A qué cuenta entró?</span><select id="pgCuenta" style="width:100%"><option value="">Cargando…</option></select></label>
+        <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Referencia <span style="font-weight:400">(opcional)</span></span><input type="text" id="pgRef" placeholder="Nº de transacción / ACH" style="width:100%"></label>
       </div>
       <div id="pgPrev"></div>
       <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px">
@@ -1980,10 +1981,39 @@ async function condonarMora(clave, mes, condonar, ev){
     if(typeof renderDash==='function') renderDash();  // refresca KPIs (cache del dashboard)
   }catch(err){ if(!onAuthError(err)) alert('Error: '+err); }
 }
+/* ───────── Cuentas disponibles para los selectores ─────────
+ * Se piden una vez por sesión del panel: la lista cambia poco y el selector
+ * aparece en varios sitios (pago manual, lista de pagos, formulario de gasto).
+ * Si la petición falla, el selector queda vacío y el pago se guarda igual — el
+ * servidor le asigna la cuenta de cobro, que es lo correcto por defecto. */
+let CUENTAS_LISTA=null;
+async function _ctaCargar(){
+  if(CUENTAS_LISTA) return CUENTAS_LISTA;
+  try{ const d=await jsonp('getCuentasData'); CUENTAS_LISTA=(d.cuentas||[]).filter(c=>c.activa); }
+  catch(e){ CUENTAS_LISTA=[]; }
+  return CUENTAS_LISTA;
+}
+function _ctaOpciones(sel){
+  const cs=CUENTAS_LISTA||[];
+  if(!cs.length) return '<option value="">—</option>';
+  const hay=cs.some(c=>c.id===sel);
+  return (hay?'':'<option value="">(sin asignar)</option>')+
+    cs.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${_esc(c.nombre)}${c.esCobro?' · cobro':''}</option>`).join('');
+}
+function _ctaNombre(id){ const c=(CUENTAS_LISTA||[]).find(x=>x.id===id); return c?c.nombre:''; }
+
 function togglePagoManual(clave){
   const f=document.getElementById('pgForm'); if(!f) return;
   const show = f.style.display==='none'; f.style.display = show?'block':'none';
-  if(show){ const m=document.getElementById('pgMonto'); if(m) setTimeout(()=>m.focus(),30); loadPagoList(clave); }
+  if(show){
+    const m=document.getElementById('pgMonto'); if(m) setTimeout(()=>m.focus(),30);
+    _ctaCargar().then(cs=>{
+      const s=document.getElementById('pgCuenta'); if(!s) return;
+      const cobro=cs.find(c=>c.esCobro);
+      s.innerHTML=_ctaOpciones(cobro?cobro.id:'');   // la de cobro viene preseleccionada
+    });
+    loadPagoList(clave);
+  }
 }
 async function loadPagoList(clave){
   const box=document.getElementById('pgList'); if(!box) return;
@@ -1991,6 +2021,7 @@ async function loadPagoList(clave){
   let pagos;
   try{ pagos=await jsonp('getPagos'); }
   catch(e){ if(onAuthError(e))return; box.innerHTML='<span class="muted" style="font-size:.78rem">No se pudieron cargar los pagos.</span>'; return; }
+  await _ctaCargar();
   const list=(pagos||[]).filter(p=>String(p.clave)===String(clave)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   const oLbl={comprobante:'comprobante',manual:'manual','carga-inicial':'histórico',conciliacion:'conciliación',banco:'banco'};
   const head=`<div style="border-top:1px dashed var(--ac-border);margin-top:12px;padding-top:10px"><div style="font-weight:600;font-size:.82rem;margin-bottom:6px">Pagos registrados (${list.length})</div>`;
@@ -2000,7 +2031,7 @@ async function loadPagoList(clave){
   const tipMonto = p => p.origen==='comprobante'
     ? 'Monto aplicado. Ojo: el comprobante original conserva su cifra; corrígelo sólo si el sistema leyó mal el voucher.'
     : 'Monto del pago. Cambiarlo recalcula qué cuotas cubre.';
-  box.innerHTML=head+`<div class="muted" style="font-size:.72rem;margin:-2px 0 6px">Fecha y monto se editan aquí mismo: la fecha decide en qué mes entra el pago y el monto cuánto cubre, así que ambos recalculan la mora.</div>
+  box.innerHTML=head+`<div class="muted" style="font-size:.72rem;margin:-2px 0 6px">Fecha, monto y cuenta se editan aquí mismo. La fecha decide en qué mes entra el pago y el monto cuánto cubre, así que ambos recalculan la mora; la <b>cuenta</b> sólo cambia de qué saldo forma parte y no toca lo que el propietario debe.</div>
   <table class="stack-table pgTable" style="width:100%;font-size:.8rem"><tbody>${list.map(p=>`<tr>
     <td data-label="Fecha" style="white-space:nowrap">${p.id
       ? `<input type="date" value="${_fISO(p.fecha)}" title="Fecha con la que se aplica el pago" onchange="cambiarPagoCampo('${p.id}','${clave}',this,'fecha')">`
@@ -2008,6 +2039,9 @@ async function loadPagoList(clave){
     <td data-label="Monto" style="text-align:right">${p.id
       ? `<span class="pgMonto"><span class="pgSim">B/.</span><input type="number" inputmode="decimal" step="0.01" min="0.01" value="${(Number(p.monto)||0).toFixed(2)}" title="${_esc(tipMonto(p))}" onchange="cambiarPagoCampo('${p.id}','${clave}',this,'monto')"></span>`
       : `<b>${money(p.monto)}</b>`}</td>
+    <td data-label="Cuenta" style="padding-left:8px">${p.id
+      ? `<select style="font-size:.76rem;max-width:150px" title="A qué cuenta entró este pago. No cambia lo que el propietario debe." onchange="cambiarPagoCampo('${p.id}','${clave}',this,'cuenta')">${_ctaOpciones(String(p.cuenta||''))}</select>`
+      : `<span class="muted" style="font-size:.72rem">${_esc(_ctaNombre(String(p.cuenta||'')))||'—'}</span>`}</td>
     <td data-label="Origen" class="muted" style="font-size:.72rem;padding-left:8px">${oLbl[p.origen]||p.origen||'—'}${p.referencia?' · '+String(p.referencia).replace(/</g,'&lt;'):''}</td>
     <td class="acts" style="text-align:right"><button class="link-btn" style="color:var(--ac-danger)" onclick="eliminarPagoManual('${p.id}','${clave}',this)">Eliminar</button></td>
   </tr>`).join('')}</tbody></table></div>`;
@@ -2026,6 +2060,14 @@ async function cambiarPagoCampo(id, clave, input, campo){
   input.disabled=true;
   try{
     await post('actualizarPago',{id, datos:{[campo]:valor}});
+    // La cuenta no mueve saldos del propietario: repintar su estado sería trabajo
+    // (y una llamada) para nada. Sólo se refresca la lista y se invalida el balance.
+    if(campo==='cuenta'){
+      BAL_DATA=null; input.disabled=false;
+      loadPagoList(clave);
+      toast('Pago asignado a '+_ctaNombre(valor));
+      return;
+    }
     const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
     const f=document.getElementById('pgForm'); if(f) f.style.display='block';
     loadPagoList(clave);
@@ -2085,6 +2127,7 @@ async function guardarPagoManual(clave){
   const fecha=document.getElementById('pgFecha').value;
   const monto=+document.getElementById('pgMonto').value;
   const ref=document.getElementById('pgRef').value.trim();
+  const cta=(document.getElementById('pgCuenta')||{}).value||'';
   const msg=document.getElementById('pgMsg'); if(msg){ msg.className='muted'; msg.textContent=''; }
   if(!(monto>0)){ if(msg) msg.textContent='Indica un monto válido.'; return; }
   if(!fecha){ if(msg) msg.textContent='Indica la fecha del pago.'; return; }
@@ -2093,8 +2136,11 @@ async function guardarPagoManual(clave){
     // fecha a mediodía para que ninguna zona horaria la corra al día anterior
     // generarVoucher: el pago manual emite su constancia igual que el de Conciliación.
     // Si Drive falla, el pago queda registrado igual y la constancia se reintenta.
+    // cuenta: a cuál entró. Si el selector no cargó va vacía y el servidor pone la
+    // de cobro, que es a donde llega el dinero salvo excepción.
     const res=await post('registrarPago',{pago:{clave, monto, fecha:fecha+'T12:00:00', referencia:ref,
-      origen:'manual', notas:'Registro manual (banca en línea)', generarVoucher:true}});
+      origen:'manual', cuenta:cta, notas:'Registro manual (banca en línea)', generarVoucher:true}});
+    BAL_DATA=null;
     PG_ULTIMO = { clave, monto, fecha, pagoId:(res&&res.id)||'',
       voucher:(res&&res.voucherUrl) ? {url:res.voucherUrl, numero:res.voucherNumero||''} : null };
     const e=await jsonp('getEstadoCuenta',{clave}); _renderEstado(e);
@@ -2882,16 +2928,8 @@ async function renderOpts(){
           <div class="in"><input type="number" id="o_provinc" step="1" min="0" max="100" value="${c.provisionIncobrablesPct||0}"><span class="unit">% del saldo con más de 90 días</span></div>
           <div class="help">Sólo afecta al <b>Balance</b>: descuenta esa parte de «lo que nos deben» para no mostrar como cobrable lo que probablemente no entre. <b>No condona nada</b> ni cambia el estado de cuenta de nadie. En 0% la cartera se muestra íntegra.</div></div>
       </div></div>
-    <div class="card" style="margin-top:16px"><div class="hd"><h2>Cuenta de cobro (Aires de Chicá)</h2></div>
-      <div class="bd" style="padding:18px">
-        <div class="muted" style="font-size:.82rem;margin-bottom:12px">Estos datos aparecen en los estados de cuenta, el instructivo de pago y se usan para <b>verificar a qué cuenta llegó cada comprobante</b>. Al editarlos aquí, se aplican en todo el sistema.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px">
-          <div class="field" style="margin:0"><label>Banco</label><input type="text" id="o_banco" value="${(d.banco.banco||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
-          <div class="field" style="margin:0"><label>Tipo de cuenta</label><input type="text" id="o_ctipo" value="${(d.banco.tipo||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
-          <div class="field" style="margin:0"><label>Número de cuenta</label><input type="text" id="o_cnum" value="${(d.banco.numero||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
-          <div class="field" style="margin:0"><label>A nombre de</label><input type="text" id="o_cnom" value="${(d.banco.nombre||'').replace(/"/g,'&quot;')}" style="width:100%"></div>
-        </div>
-      </div></div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>🏦 Cuentas de la asociación</h2></div>
+      <div class="bd" style="padding:18px" id="optsCuentas"><div class="muted">Cargando…</div></div></div>
     <div class="card" style="margin-top:16px"><div class="hd"><h2>👤 Quién usa el panel</h2></div>
       <div class="bd" style="padding:18px" id="optsUsuarios"><div class="muted">Cargando…</div></div></div>
     <div class="card" style="margin-top:16px"><div class="hd"><h2>🔒 Seguridad · Contraseña de acceso</h2></div>
@@ -2917,9 +2955,158 @@ async function renderOpts(){
       <button class="btn green" onclick="guardarOpts()">Guardar cambios</button>
     </div>`;
   renderOptsUsuarios();
+  renderOptsCuentas();
   renderRecor();
   _optsVigilarCambios();
 }
+
+/* ───────── Cuentas de la asociación ─────────
+ * Reemplaza los cuatro campos sueltos de "Cuenta de cobro". La diferencia no es
+ * cosmética: aquella tarjeta respondía UNA pregunta (dónde depositan), y con dos
+ * bancos abiertos hay tres —dónde depositan, a dónde llegó cada pago, y qué
+ * cuentas destino son válidas—. Aquí se responde la primera; las otras dos las
+ * responden la cuenta de cada movimiento y la verificación de comprobantes.
+ *
+ * Se pinta y se guarda APARTE del resto de Opciones (no entra en guardarOpts):
+ * cada cuenta se graba sola, para que marcar la cuenta de cobro no arrastre
+ * cambios a medias de los otros campos de la pantalla.
+ */
+let CUENTAS_DATA=null;
+async function renderOptsCuentas(){
+  const box=document.getElementById('optsCuentas'); if(!box) return;
+  let d; try{ d=await jsonp('getCuentasData'); }
+  catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">No se pudo leer: '+_esc(String(e))+'</div>'; return; }
+  CUENTAS_DATA=d;
+  const cs=d.cuentas||[];
+  const cobro=cs.find(c=>c.esCobro);
+  box.innerHTML=`
+    <div class="muted" style="font-size:.82rem;margin-bottom:14px">
+      La cuenta marcada como <b>cuenta de cobro</b> es la que sale en el instructivo de pago, en los
+      correos a propietarios y en la verificación de comprobantes. Cambiarla aquí la cambia en todo
+      el sistema. Las demás siguen recibiendo y pagando con normalidad — cada pago y cada gasto
+      guarda a qué cuenta entró o de cuál salió.</div>
+    ${cobro?'':'<div class="notice" style="margin-bottom:12px">⚠ Ninguna cuenta está marcada como cuenta de cobro. Los correos usarán la primera cuenta bancaria.</div>'}
+    <div id="ctaLista">${cs.map(_ctaFila).join('')||'<div class="muted">Todavía no hay cuentas.</div>'}</div>
+    <div style="margin-top:14px"><button class="btn" onclick="ctaNueva()">+ Agregar cuenta</button></div>
+    <div class="muted" style="font-size:.76rem;margin-top:12px;padding-top:10px;border-top:1px dashed var(--ac-border)">
+      El <b>fondo inicial</b> es con lo que arrancó cada cuenta el 1 de enero. Se suma a sus movimientos
+      para calcular su saldo, y la suma de todos es el fondo inicial que ves en Finanzas.</div>`;
+}
+function _ctaFila(c){
+  const esRendir=c.clase==='porRendir';
+  const u=c.usos||{total:0};
+  return `<div class="usu-row${c.esCobro?' mio':''}" style="align-items:flex-start">
+    <div style="flex:1;min-width:0">
+      <label style="display:flex;gap:8px;align-items:center;cursor:${esRendir||!c.activa?'not-allowed':'pointer'};margin:0">
+        <input type="radio" name="ctaCobro" ${c.esCobro?'checked':''} ${esRendir||!c.activa?'disabled':''}
+               onchange="ctaMarcarCobro('${c.id}')" title="${esRendir?'Una cuenta por rendir no puede recibir los pagos de los propietarios':'Marcar como cuenta de cobro'}">
+        <b>${_esc(c.nombre)}</b>
+        ${c.esCobro?'<span class="pill ok">Cuenta de cobro</span>':''}
+        ${esRendir&&!/por\s*rendir/i.test(c.nombre)?'<span class="pill">Por rendir</span>':''}
+        ${c.activa?'':'<span class="pill">Inactiva</span>'}
+      </label>
+      <span class="muted" style="display:block;font-size:.74rem;margin-top:3px">
+        ${esRendir?'Dinero de la asociación en manos de la administración':
+          _esc([c.banco,c.tipo,c.numero?'Nº '+c.numero:''].filter(Boolean).join(' · '))||'—'}
+        ${c.titular?'<br>'+_esc(c.titular):''}
+      </span>
+      <span class="muted" style="display:block;font-size:.72rem;margin-top:3px">
+        Fondo inicial ${money(c.fondoInicial)} · ${u.pagos||0} pago(s), ${u.gastos||0} gasto(s), ${u.traspasos||0} traspaso(s)</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button class="link-btn" onclick="ctaEditar('${c.id}')">Editar</button>
+      ${c.borrable?`<button class="link-btn" style="color:var(--ac-danger)" onclick="ctaEliminar('${c.id}',this)">Eliminar</button>`:''}
+    </div></div>`;
+}
+function ctaNueva(){ _ctaFormModal(null); }
+function ctaEditar(id){ _ctaFormModal((CUENTAS_DATA.cuentas||[]).find(c=>c.id===id)||null); }
+function _ctaFormModal(c){
+  const n=!c;
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${n?'Nueva cuenta':'Editar '+_esc(c.nombre)}</div>
+    <div class="muted" style="font-size:.82rem">Dónde entra y de dónde sale el dinero de la asociación</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="field"><label>Nombre corto</label>
+      <input type="text" id="ct_nombre" value="${_esc(c?c.nombre:'')}" placeholder="Global Bank" style="width:100%"></div>
+    <div class="field"><label>Tipo de cuenta</label>
+      <select id="ct_clase" style="width:100%" onchange="_ctaClaseCambia()">
+        <option value="banco" ${!c||c.clase==='banco'?'selected':''}>Cuenta bancaria de la asociación</option>
+        <option value="porRendir" ${c&&c.clase==='porRendir'?'selected':''}>Por rendir — dinero en manos de una persona</option>
+      </select>
+      <div class="help" id="ct_claseAyuda"></div></div>
+    <div id="ct_banco">
+      <div class="field"><label>Banco</label>
+        <input type="text" id="ct_bancoNom" value="${_esc(c?c.banco:'')}" style="width:100%"></div>
+      <div class="field"><label>Tipo</label>
+        <input type="text" id="ct_tipo" value="${_esc(c?c.tipo:'')}" placeholder="Ahorros / Corriente" style="width:100%"></div>
+      <div class="field"><label>Número de cuenta</label>
+        <input type="text" id="ct_numero" value="${_esc(c?c.numero:'')}" style="width:100%">
+        <div class="help">Con este número el sistema reconoce a cuál de tus cuentas llegó cada comprobante.</div></div>
+      <div class="field"><label>A nombre de</label>
+        <input type="text" id="ct_titular" value="${_esc(c?c.titular:'')}" style="width:100%"></div>
+    </div>
+    <div class="field"><label>Fondo inicial</label>
+      <div class="in"><span class="unit">B/.</span><input type="number" id="ct_fondo" step="0.01" min="0" value="${c?c.fondoInicial:0}"></div>
+      <div class="help">Con cuánto arrancó esta cuenta el 1 de enero. Se suma a sus movimientos para dar su saldo.</div></div>
+    <div class="field"><label style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" id="ct_activa" ${!c||c.activa?'checked':''}> Activa</label>
+      <div class="help">Una cuenta inactiva desaparece de los selectores pero conserva su historia y su saldo.</div></div>
+    <div class="field"><label>Notas</label>
+      <input type="text" id="ct_notas" value="${_esc(c?c.notas:'')}" style="width:100%"></div>
+    <div id="ct_msg" class="muted" style="min-height:18px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" onclick="ctaGuardar('${c?c.id:''}',this)">${n?'Crear cuenta':'Guardar cambios'}</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  _ctaClaseCambia();
+}
+function _ctaClaseCambia(){
+  const esRendir=document.getElementById('ct_clase').value==='porRendir';
+  document.getElementById('ct_banco').style.display=esRendir?'none':'';
+  document.getElementById('ct_claseAyuda').innerHTML=esRendir
+    ? 'Cuotas depositadas en una cuenta personal, o gastos pagados con tarjeta propia. Es plata de la asociación que alguien tiene que entregar; cuando se deposita, se registra como un traspaso.'
+    : 'Una cuenta a nombre de la asociación. Sólo una cuenta bancaria puede ser la cuenta de cobro.';
+}
+async function ctaGuardar(id,btn){
+  const msg=document.getElementById('ct_msg');
+  const cuenta={ id:id||'',
+    nombre:document.getElementById('ct_nombre').value.trim(),
+    clase:document.getElementById('ct_clase').value,
+    banco:document.getElementById('ct_bancoNom').value.trim(),
+    tipo:document.getElementById('ct_tipo').value.trim(),
+    numero:document.getElementById('ct_numero').value.trim(),
+    titular:document.getElementById('ct_titular').value.trim(),
+    fondoInicial:Number(document.getElementById('ct_fondo').value)||0,
+    activa:document.getElementById('ct_activa').checked,
+    notas:document.getElementById('ct_notas').value.trim() };
+  if(!cuenta.nombre){ msg.innerHTML='<span style="color:var(--ac-danger)">Ponle un nombre a la cuenta.</span>'; return; }
+  // La cuenta de cobro NO se toca aquí: se cambia con el radio de la lista, para
+  // que guardar un dato cualquiera no la mueva sin querer.
+  if(id){ const prev=(CUENTAS_DATA.cuentas||[]).find(c=>c.id===id); if(prev) cuenta.esCobro=prev.esCobro; }
+  btn.disabled=true; msg.textContent='Guardando…';
+  try{ await post('guardarCuenta',{cuenta}); closeModal(); await renderOptsCuentas();
+       BAL_DATA=null; toast('✓ Cuenta guardada'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) msg.innerHTML='<span style="color:var(--ac-danger)">'+_esc(String(e))+'</span>'; }
+}
+async function ctaMarcarCobro(id){
+  const c=(CUENTAS_DATA.cuentas||[]).find(x=>x.id===id);
+  if(!c) return;
+  if(!confirm('¿Los propietarios pasan a depositar en '+c.nombre+
+     (c.numero?' (Nº '+c.numero+')':'')+'?\n\nCambia el instructivo de pago, los correos y las constancias.')){
+    renderOptsCuentas(); return;   // devolver el radio a su sitio
+  }
+  try{ await post('marcarCuentaCobro',{id}); await renderOptsCuentas(); toast('✓ Cuenta de cobro: '+c.nombre); }
+  catch(e){ if(!onAuthError(e)) alert('No se pudo cambiar: '+e); renderOptsCuentas(); }
+}
+async function ctaEliminar(id,btn){
+  const c=(CUENTAS_DATA.cuentas||[]).find(x=>x.id===id);
+  if(!confirm('¿Eliminar la cuenta "'+(c?c.nombre:id)+'"?')) return;
+  btn.disabled=true;
+  try{ await post('eliminarCuenta',{id}); await renderOptsCuentas(); toast('✓ Cuenta eliminada'); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert(String(e)); }
+}
+
 async function renderOptsUsuarios(){
   const box=document.getElementById('optsUsuarios'); if(!box) return;
   let d; try{ d=await jsonp('getAutores',{dispositivo:DISPOSITIVO}); }
@@ -3109,12 +3296,16 @@ async function guardarOpts(){
     notifInformeMensual:document.getElementById('o_infmes').checked,
     informeMensualDia:+document.getElementById('o_infmesdia').value,
     capturaComprobantes:document.getElementById('o_captura').checked,
-    banco:document.getElementById('o_banco').value.trim(),
-    cuentaTipo:document.getElementById('o_ctipo').value.trim(),
-    cuentaNum:document.getElementById('o_cnum').value.trim(),
-    cuentaNombre:document.getElementById('o_cnom').value.trim(),
-    // Se edita en Finanzas, pero viaja igual: el servidor rellena con el valor por
-    // defecto (0) todo lo que no reciba, y guardar Opciones lo borraría.
+    // La cuenta de cobro ya no vive aquí: es una fila de la hoja `Cuentas` y se
+    // marca con el radio de esa sección, que graba sola. Estos cuatro campos
+    // viajan sin cambios para no borrarlos del config — siguen siendo el respaldo
+    // de `cuentaDeCobro()` si la hoja de cuentas fallara.
+    banco:(OPTS&&OPTS.config?OPTS.config.banco||'':''),
+    cuentaTipo:(OPTS&&OPTS.config?OPTS.config.cuentaTipo||'':''),
+    cuentaNum:(OPTS&&OPTS.config?OPTS.config.cuentaNum||'':''),
+    cuentaNombre:(OPTS&&OPTS.config?OPTS.config.cuentaNombre||'':''),
+    // Ídem: el fondo inicial pasó a ser por cuenta. Este escalar queda como
+    // semilla de la primera cuenta y no se vuelve a editar desde el panel.
     fondoInicial:(OPTS&&OPTS.config?Number(OPTS.config.fondoInicial)||0:0)
   };
   try{
@@ -3926,22 +4117,17 @@ function finAbrir(k){
   if(FIN_ABIERTO) setTimeout(()=>{ const e=document.querySelector('#finDet .tb-det');
     if(e) e.scrollIntoView({block:'nearest',behavior:'smooth'}); },40);
 }
-/* El fondo inicial del año vivía en Opciones, dentro de la tarjeta de la cuenta de
- * cobro, sólo porque cupo ahí. Es un dato del informe financiero: se edita donde se ve
- * lo que produce. Relee la configuración antes de guardar para no pisar nada más. */
-async function editarFondoInicial(actual){
-  const v=prompt('Fondo disponible al 1 de enero de '+(GASTOS_ANIO||'este año')+' (B/.)\n\n'+
-    'Es con lo que arrancó la asociación. Se suma al resultado del año para calcular el fondo\n'+
-    'disponible, aquí y en el Informe Financiero.', String(actual||0));
-  if(v===null) return;
-  const n=Number(String(v).replace(',','.'));
-  if(!isFinite(n)||n<0) return alert('Escribe un monto válido.');
-  try{
-    const d=await jsonp('getConfig');
-    await post('guardarConfig',{config:{...d.config, fondoInicial:n}});
-    GASTOS_DATA=null; await renderFinanzas();
-    toast('✓ Fondo inicial: '+money(n));
-  }catch(e){ if(!onAuthError(e)) alert('No se pudo guardar: '+e); }
+/* El fondo inicial se editaba aquí, como un solo número guardado en la
+ * configuración. Desde que hay varias cuentas es uno POR CUENTA: dejar los dos
+ * editores desincronizaría en silencio —el total cambiaría sin que ninguna cuenta
+ * lo reflejara, y el saldo por cuenta dejaría de sumar el total—. Así que aquí se
+ * sigue viendo, porque es donde tiene sentido mirarlo, pero se cambia en un solo
+ * lugar: ⚙ Opciones → Cuentas de la asociación. */
+function editarFondoInicial(){
+  alert('El fondo inicial ahora es de cada cuenta.\n\n' +
+        'Lo que ves aquí es la suma de los fondos iniciales de todas las cuentas. ' +
+        'Para cambiarlo, entra a ⚙ Opciones → Cuentas de la asociación y edita la cuenta ' +
+        'que corresponda.\n\nAsí el saldo de cada cuenta y el total siempre cuadran.');
 }
 function irATabGastos(){ const b=document.querySelector('#tabs [data-tab="gastos"]'); if(b) b.click(); }
 
@@ -4569,10 +4755,10 @@ function _gastosResultado(d){
             · ingresos menos egresos</div>
         </div>
         <div class="tb-chips">
-          <button class="tb-chip ok" onclick="editarFondoInicial(${fondoIni})" style="cursor:pointer;font:inherit;text-align:left"
-            title="Con lo que arrancó ${d.anio}. Haz clic para corregirlo.">
+          <button class="tb-chip ok" onclick="editarFondoInicial()" style="cursor:pointer;font:inherit;text-align:left"
+            title="Con lo que arrancó ${d.anio}, sumando todas las cuentas. Se edita en ⚙ Opciones → Cuentas.">
             <div class="n" style="font-size:1.15rem">${money(fondoIni)}</div>
-            <div class="l">Fondo inicial del año <span style="color:var(--ac-teal-600)">✏️</span></div></button>
+            <div class="l">Fondo inicial del año <span class="muted" style="font-size:.9em">· suma de las cuentas</span></div></button>
           ${chip('','+ Ingresos acumulados',ingYTD,'Todo el dinero recibido de enero a '+GMESES[mf-1]+': cuotas de mantenimiento y otros ingresos.')}
           ${chip('r','− Egresos acumulados',egrYTD,'Todos los gastos registrados de enero a '+GMESES[mf-1]+'.')}
         </div>
@@ -4820,6 +5006,8 @@ function _gastoFormModal(g){
       <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Detalle</span><input type="text" id="ga_det" value="${esc(g.detalle)}" placeholder="Concepto / Nº de factura" style="width:100%"></label>
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Tipo</span><select id="ga_tipo" style="width:100%"><option value="puntual" ${g.tipo!=='recurrente'?'selected':''}>Puntual (una vez)</option><option value="recurrente" ${g.tipo==='recurrente'?'selected':''}>Recurrente (fijo mensual)</option></select></label>
       <label style="min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Método de pago</span><input type="text" id="ga_met" value="${esc(g.metodoPago)}" placeholder="Transferencia, ACH…" style="width:100%"></label>
+      <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">¿De qué cuenta salió?</span><select id="ga_cuenta" style="width:100%"><option value="">Cargando…</option></select>
+        <span class="muted" style="font-size:.72rem;display:block;margin-top:3px">Si lo pagó alguien con su tarjeta y hay que reembolsarlo, elige la cuenta <b>por rendir</b>: no salió del banco.</span></label>
       <label style="grid-column:1/-1;min-width:0"><span class="muted" style="font-size:.76rem;display:block;margin-bottom:4px">Grupo del informe <span style="font-weight:400">(esquema de 5 columnas de la junta)</span></span><select id="ga_grupo" onchange="this.dataset.touched='1'" ${g.grupoInforme?'data-touched="1"':''} style="width:100%">${['Serv. Prof. / Contratistas','Alq. Equipo Pesado','Acueducto','Legales, Imp., Munic., CxP','Otros'].map(x=>`<option ${g.grupoInforme===x?'selected':''}>${x}</option>`).join('')}</select></label>
     </div>
     ${g.id?'':`<label style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;
@@ -4834,6 +5022,11 @@ function _gastoFormModal(g){
       <button class="btn green" id="ga_save" onclick="guardarGastoUI('${g.id||''}')">${g.id?'Guardar cambios':'Registrar gasto'}</button>
     </div>`;
   document.getElementById('modal').classList.add('show');
+  _ctaCargar().then(cs=>{
+    const s=document.getElementById('ga_cuenta'); if(!s) return;
+    const cobro=cs.find(c=>c.esCobro);
+    s.innerHTML=_ctaOpciones(g.cuenta||(g.id?'':(cobro?cobro.id:'')));
+  });
 }
 function _grupoDeCat(cat){
   if(cat==='Acueducto') return 'Acueducto';
@@ -4854,6 +5047,10 @@ async function guardarGastoUI(id){
     metodoPago:document.getElementById('ga_met').value.trim(),
     grupoInforme:document.getElementById('ga_grupo').value
   };
+  // Sólo viaja si el selector cargó y trae valor: mandar '' en una edición
+  // borraría la cuenta que el gasto ya tiene.
+  const _gc=(document.getElementById('ga_cuenta')||{}).value||'';
+  if(_gc) gasto.cuenta=_gc;
   const msg=document.getElementById('ga_msg'); msg.className='muted';
   if(!(gasto.monto>0)){ msg.textContent='Indica un monto válido.'; return; }
   if(!gasto.categoria){ msg.textContent='Selecciona una categoría.'; return; }

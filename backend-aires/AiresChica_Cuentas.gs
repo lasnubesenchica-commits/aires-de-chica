@@ -148,6 +148,20 @@ function cuentaDeCobro() {
     esCobro: true, fondoInicial: 0, orden: 0, notas: '' };
 }
 
+/**
+ * Fondo inicial de TODAS las cuentas. Es el número que Finanzas y el Informe
+ * Financiero llamaban "fondo inicial del año" cuando había una sola cuenta y
+ * vivía en la configuración. Ahora es la suma, para que el total y el saldo por
+ * cuenta no puedan discrepar: hay un solo lugar donde se edita cada sumando.
+ */
+function fondoInicialTotal() {
+  try {
+    return _round2(getCuentas(true).reduce(function (s, c) { return s + c.fondoInicial; }, 0));
+  } catch (e) {
+    return _round2(Number(_cfg().fondoInicial) || 0);
+  }
+}
+
 /** Una cuenta por id. Devuelve null si no existe. */
 function cuentaPorId(id) {
   id = String(id || '').trim();

@@ -219,7 +219,7 @@ function getGastosData(anio) {
     // Fondo con el que arrancó el año. El Informe PDF lo usa para el "fondo
     // disponible"; se manda también aquí para que Finanzas muestre la misma cifra
     // sin depender de que Opciones se haya abierto antes.
-    fondoInicial: _round2(_cfg().fondoInicial || 0),
+    fondoInicial: fondoInicialTotal(),   // suma de las cuentas, no el escalar viejo del config
     aniosDisponibles: anios
   };
 }
@@ -283,8 +283,16 @@ function actualizarGasto(id, data) {
       if (data.metodoPago !== undefined) set('metodoPago', data.metodoPago);
       if (data.notas !== undefined) set('notas', data.notas);
       if (data.grupoInforme !== undefined) set('grupoInforme', String(data.grupoInforme).trim());
+      // De qué cuenta salió. Se valida contra la hoja de cuentas: un id inventado
+      // dejaría el gasto fuera del saldo de todas y el efectivo por cuenta ya no
+      // sumaría el total.
+      if (data.cuenta !== undefined) {
+        var _c = cuentaPorId(String(data.cuenta).trim());
+        if (!_c) throw new Error('No existe la cuenta "' + data.cuenta + '".');
+        set('cuenta', _c.id);
+      }
       var _an = [];
-      ['fecha','categoria','proveedor','detalle','monto','tipo','metodoPago','notas','grupoInforme'].forEach(function (c) {
+      ['fecha','categoria','proveedor','detalle','monto','tipo','metodoPago','notas','grupoInforme','cuenta'].forEach(function (c) {
         if (data[c] === undefined) return;
         var ci = h.indexOf(c); if (ci < 0) return;
         var antes = vals[r][ci], desp = (c === 'monto') ? _round2(data[c]) : data[c];

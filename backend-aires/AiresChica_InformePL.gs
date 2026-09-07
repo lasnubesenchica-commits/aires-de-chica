@@ -57,7 +57,7 @@ function _informePLData(anio, mesIni, mesFin) {
   var cfg = _cfg();
   var resYTD = 0;
   for (var mm2 = 1; mm2 <= mesFin; mm2++) resYTD = _round2(resYTD + (g.ingresosPorMes[mm2 - 1] || 0) - (g.porMes[mm2 - 1] || 0));
-  var fondoInicial = _round2(cfg.fondoInicial || 0);
+  var fondoInicial = fondoInicialTotal();   // suma de las cuentas, no el escalar viejo del config
 
   var dash = buildDashboard(null);
 

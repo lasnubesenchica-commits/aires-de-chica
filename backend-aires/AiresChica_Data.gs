@@ -729,8 +729,14 @@ function eliminarPago(id) {
  * Clave, propietario y origen no se tocan aquí — para eso está eliminar y volver a
  * registrar.
  *
+ * La CUENTA sí se puede cambiar, y hace falta: el reparto histórico asignó 428
+ * movimientos al Banco General sobre el supuesto de que hasta el 18/08 no había
+ * otra. Es cierto para casi todos, pero ya conocemos excepciones y puede haber
+ * más. Sin poder corregir uno, un error de ese reparto sería permanente. No
+ * mueve ni la fecha ni el monto: sólo de qué bolsillo salió o entró.
+ *
  * @param {string} id      id del pago (columna 'id' de la hoja de pagos)
- * @param {Object} datos   { fecha: 'AAAA-MM-DD', monto: number } — al menos uno
+ * @param {Object} datos   { fecha: 'AAAA-MM-DD', monto: number, cuenta: id } — al menos uno
  */
 function actualizarPago(id, datos) {
   ensureSheets();
@@ -738,23 +744,29 @@ function actualizarPago(id, datos) {
   if (!id) throw new Error('Falta el id del pago.');
   datos = datos || {};
 
-  var nuevaFecha = null, nuevoMonto = null;
+  var nuevaFecha = null, nuevoMonto = null, nuevaCuenta = null;
   if (datos.fecha !== undefined && datos.fecha !== null && datos.fecha !== '') {
     nuevaFecha = _fechaPagoDesdeISO(datos.fecha);
     if (!nuevaFecha) throw new Error('Fecha inválida. Se espera el formato AAAA-MM-DD.');
+  }
+  if (datos.cuenta !== undefined && datos.cuenta !== null && datos.cuenta !== '') {
+    nuevaCuenta = cuentaPorId(String(datos.cuenta).trim());
+    if (!nuevaCuenta) throw new Error('No existe la cuenta "' + datos.cuenta + '".');
   }
   if (datos.monto !== undefined && datos.monto !== null && datos.monto !== '') {
     nuevoMonto = _round2(Number(datos.monto));
     if (!(nuevoMonto > 0)) throw new Error('El monto debe ser mayor que cero.');
     if (nuevoMonto > 100000) throw new Error('Monto fuera de rango: ' + nuevoMonto);
   }
-  if (nuevaFecha === null && nuevoMonto === null) throw new Error('Nada que actualizar: envía fecha y/o monto.');
+  if (nuevaFecha === null && nuevoMonto === null && nuevaCuenta === null) {
+    throw new Error('Nada que actualizar: envía fecha, monto y/o cuenta.');
+  }
 
   var sh = _ss().getSheetByName(SH.PAGOS);
   if (!sh) throw new Error('No existe la hoja de pagos.');
   var vals = sh.getDataRange().getValues(), h = vals[0].map(function (x) { return String(x).trim(); });
   var iId = h.indexOf('id'), iFe = h.indexOf('fecha'), iMo = h.indexOf('monto'),
-      iMes = h.indexOf('mesAplicado'), iNo = h.indexOf('notas');
+      iMes = h.indexOf('mesAplicado'), iNo = h.indexOf('notas'), iCta = h.indexOf('cuenta');
   if (iId < 0 || iFe < 0 || iMo < 0) throw new Error('La hoja de pagos no tiene las columnas id/fecha/monto.');
 
   for (var r = vals.length - 1; r >= 1; r--) {
@@ -777,6 +789,12 @@ function actualizarPago(id, datos) {
       sh.getRange(r + 1, iMo + 1).setValue(nuevoMonto);
       trazas.push('monto ' + mAntes.toFixed(2) + ' → ' + nuevoMonto.toFixed(2));
     }
+    // La cuenta NO mueve la mora ni el estado del propietario —el pago sigue
+    // siendo el mismo por el mismo monto y en la misma fecha—, sólo cambia de qué
+    // saldo forma parte. Por eso no entra en la traza de notas, que existe para
+    // avisar de cambios que alteran lo que alguien debe; sí queda en la bitácora.
+    var ctaAntes = iCta >= 0 ? String(vals[r][iCta] || '') : '';
+    if (nuevaCuenta !== null && iCta >= 0) sh.getRange(r + 1, iCta + 1).setValue(nuevaCuenta.id);
 
     // Rastro en notas: fecha y monto mueven la mora, así que el cambio queda escrito.
     if (iNo >= 0 && trazas.length) {
@@ -794,6 +812,13 @@ function actualizarPago(id, datos) {
       monto: (nuevoMonto === null ? mAntes : nuevoMonto) }, _com));
     if (nuevoMonto !== null) _an.push(Object.assign({ accion: 'pago.edita', campo: 'monto',
       antes: mAntes.toFixed(2), despues: nuevoMonto.toFixed(2), monto: nuevoMonto }, _com));
+    if (nuevaCuenta !== null && ctaAntes !== nuevaCuenta.id) {
+      var _nomAntes = cuentaPorId(ctaAntes);
+      _an.push(Object.assign({ accion: 'pago.edita', campo: 'cuenta',
+        antes: (_nomAntes ? _nomAntes.nombre : (ctaAntes || '(sin cuenta)')),
+        despues: nuevaCuenta.nombre,
+        monto: (nuevoMonto === null ? mAntes : nuevoMonto) }, _com));
+    }
     _regBatch(_an);
     return {
       ok: true, id: id,
