@@ -182,15 +182,23 @@ function cuentaPorId(id) {
 function cuentaPorNumero(numero) {
   var n = String(numero || '').replace(/\D/g, '');
   if (!n) return null;
-  var hits = getCuentas().filter(function (c) {
-    var a = String(c.numero || '').replace(/\D/g, '');
-    if (!a) return false;
-    return (n === a) ||
-           (n.length >= 5 && a.indexOf(n) >= 0) ||
-           (a.length >= 5 && n.indexOf(a) >= 0) ||
-           (n.length >= 3 && n.length <= 4 && a.slice(-n.length) === n);
-  });
+  var hits = getCuentas().filter(function (c) { return _numeroCasa(n, c.numero); });
   return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * ¿El número leído de un comprobante corresponde al de esta cuenta? Tolera las
+ * tres formas en que los bancos lo escriben: completo, contenido en el otro (con
+ * o sin guiones), o sólo la terminación de 3-4 dígitos.
+ */
+function _numeroCasa(leido, deLaCuenta) {
+  var n = String(leido || '').replace(/\D/g, '');
+  var a = String(deLaCuenta || '').replace(/\D/g, '');
+  if (!n || !a) return false;
+  return (n === a) ||
+         (n.length >= 5 && a.indexOf(n) >= 0) ||
+         (a.length >= 5 && n.indexOf(a) >= 0) ||
+         (n.length >= 3 && n.length <= 4 && a.slice(-n.length) === n);
 }
 
 /* ─────────────── escritura ─────────────── */

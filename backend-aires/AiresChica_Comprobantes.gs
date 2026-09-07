@@ -143,7 +143,14 @@ function _extraerMonto(t) {
 }
 
 function _extraerLote(t) {
-  var m = String(t || '').match(/lote[s]?\s*([LQH])?\s*([0-9]+\s*[A-Za-z]?)/i);
+  // La letra final identifica los sublotes (4A, 18A, 42B) y hay que aceptarla de
+  // las dos formas en que la escriben: pegada ("6Ay 6B") o separada ("18 A").
+  // Pero separada sólo si es una letra suelta: "Lote 17 Marc Brotbeckrot" daba
+  // "17M", que no casa con ningún lote y dejaba el pago sin propietario. Por eso
+  // la variante con espacio va primero y exige que no siga otra letra; si no
+  // cuadra, se cae a la pegada.
+  var m = String(t || '').match(
+    /lote[s]?\s*([LQH])?\s*([0-9]+\s+[A-Za-z](?![A-Za-z])|[0-9]+[A-Za-z]?)/i);
   if (!m) return { num: '', resPref: '', raw: '' };
   var pref = m[1] ? m[1].toUpperCase() : '';
   var num = m[2].replace(/\s/g, '').toUpperCase();
@@ -190,7 +197,7 @@ function _esPago(texto) {
 //   nivel: 'ok' (coincide) | 'bad' (no coincide / medio no válido) | 'warn' (no se pudo verificar)
 //   cuentaId: la cuenta detectada, para preseleccionarla al aplicar el pago.
 // Aires de Chicá recibe SOLO por sus cuentas bancarias; no tiene Yappy/Nequi.
-function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
+function _verificarDestino(metodoPago, cuentaDestino, beneficiario, bancoOrigen) {
   var mp = _normTxt(metodoPago || '');
   var cd = String(cuentaDestino || '').replace(/\D/g, '');
   var ben = _normTxt(beneficiario || '');
@@ -201,6 +208,22 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
   // sospechoso todo depósito hecho a la cuenta nueva.
   var bancos = [];
   try { bancos = getCuentas().filter(function (c) { return c.clase === 'banco' && c.numero; }); } catch (e) {}
+
+  // Si sabemos QUÉ BANCO manda el aviso, sólo sus propias cuentas son candidatas.
+  // Sin esto, una "terminación de producto" de 4 dígitos puede casar con la
+  // cuenta del otro banco por pura coincidencia y el pago quedaría asignado a una
+  // cuenta donde el dinero no está. Pasa de verdad: los avisos de Banco General
+  // traen terminación 1422, que son los últimos cuatro dígitos de la cuenta de
+  // Global Bank (56333001422) y no de la del Banco General (…2903).
+  var soloDe = null;
+  if (bancoOrigen) {
+    var bo = _normTxt(bancoOrigen);
+    var mismos = bancos.filter(function (c) {
+      var cb = _normTxt(c.banco);
+      return cb === bo || cb.indexOf(bo) >= 0 || bo.indexOf(cb) >= 0;
+    });
+    if (mismos.length) { soloDe = bancoOrigen; bancos = mismos; }
+  }
   var listaTxt = bancos.length
     ? bancos.map(function (c) { return c.banco + ' Nº ' + c.numero; }).join(' · ')
     : (_cfg().banco + ' Nº ' + _cfg().cuentaNum);
@@ -211,23 +234,28 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
       mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Sólo recibe en sus cuentas (' + listaTxt + '). Verifica a dónde se envió.' };
   }
 
-  // Comparación por número de cuenta destino
+  // Comparación por número de cuenta destino, SÓLO contra las candidatas.
   if (cd && bancos.length) {
-    var hit = cuentaPorNumero(cd);
-    if (hit) return { nivel: 'ok', cuentaId: hit.id,
-      mensaje: 'Transferencia a la cuenta de ' + hit.banco + ' de Aires de Chicá (' + hit.numero + ').' };
-    // `cuentaPorNumero` devuelve null a propósito cuando casa con más de una: dos
-    // cuentas cuya terminación coincide no se pueden distinguir, y adivinar sería
-    // peor que preguntar.
-    var ambiguas = bancos.filter(function (c) {
-      var a = String(c.numero).replace(/\D/g, '');
-      return cd.length >= 3 && cd.length <= 4 && a.slice(-cd.length) === cd;
-    });
-    if (ambiguas.length > 1) {
+    var hits = bancos.filter(function (c) { return _numeroCasa(cd, c.numero); });
+    if (hits.length === 1) return { nivel: 'ok', cuentaId: hits[0].id,
+      mensaje: 'Transferencia a la cuenta de ' + hits[0].banco + ' de Aires de Chicá (' + hits[0].numero + ').' };
+    // Dos cuentas cuya terminación coincide no se pueden distinguir: adivinar
+    // sería peor que preguntar.
+    if (hits.length > 1) {
       return { nivel: 'warn',
         mensaje: 'La terminación ' + cuentaDestino + ' coincide con más de una cuenta (' +
-                 ambiguas.map(function (c) { return c.banco; }).join(' y ') +
+                 hits.map(function (c) { return c.banco; }).join(' y ') +
                  '). Elige a mano a cuál entró.' };
+    }
+    // Si el aviso lo manda un banco concreto y la terminación no casa con NINGUNA
+    // de sus cuentas, no es necesariamente un pago ajeno: los bancos numeran sus
+    // "productos" con un identificador propio que no siempre son los últimos
+    // dígitos del número de cuenta. Es un aviso para revisar, no una acusación.
+    if (soloDe) {
+      return { nivel: 'warn', cuentaBanco: soloDe,
+        mensaje: 'El aviso viene de ' + soloDe + ' pero su terminación (' + cuentaDestino +
+                 ') no coincide con ' + listaTxt + '. Puede ser que el banco numere el producto ' +
+                 'distinto al número de cuenta. Confirma a cuál entró antes de aplicar.' };
     }
     return { nivel: 'bad',
       mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con ninguna cuenta de Aires de Chicá (' + listaTxt + '). Verifica antes de aplicar.' };
@@ -246,7 +274,10 @@ function _esNotifBanco(from, subject, body) {
   var f = String(from || '').toLowerCase();
   if (f.indexOf('bgeneral.com') >= 0) return true;
   var t = _normTxt(String(subject || '') + ' \n ' + String(body || ''));
-  return /TE\s+(TRANSFIRIO|ENVIO)/.test(t) &&
+  // Sin la O final: cuando el acento llega roto, "TRANSFIRIÓ" queda en
+  // "TRANSFIRI" y la coincidencia exacta fallaba. Esta rama es la que atrapa los
+  // reenvíos del propietario, donde el remitente ya no es el banco.
+  return /TE\s+(TRANSFIRI|ENVI)/.test(t) &&
          /(SIGUIENTE TRANSACCION|BANCA EN LINEA)/.test(t) &&
          /MONTO/.test(t);
 }
@@ -275,23 +306,131 @@ function _notifBancoPdf(nb, body, fecha) {
   return HtmlService.createHtmlOutput(html).getAs('application/pdf');
 }
 
-// Extrae los datos de un aviso de Banco General (texto plano, formato fijo).
+/**
+ * Extrae los datos de un aviso de Banco General (texto plano, formato fijo).
+ *
+ * OJO CON LOS ACENTOS: estos correos llegan SIN cabecera Content-Type, así que
+ * Gmail no sabe en qué juego de caracteres vienen y sustituye cada byte acentuado
+ * por el carácter de reemplazo. "Terminación" llega como "Terminaci?n". Por eso
+ * cada acento se busca con un comodín de un carácter en vez de con la letra: con
+ * `[oó]` el aviso se leía a medias —monto sí, terminación y descripción no— y el
+ * lote, que viaja en la descripción, se perdía.
+ *
+ * Lo mismo para el separador de líneas: el cuerpo llega con "\n" literales, no
+ * con saltos reales, así que ningún patrón puede anclarse a principio de línea.
+ */
 function _parseNotifBanco(subject, body) {
   var out = { monto: 0, descripcion: '', pagador: '', cuentaTerm: '', tipoCuenta: '' };
   var b = String(body || '');
   var mMonto = b.match(/Monto:\s*(?:US\$|USD|B\/\.?|\$)?\s*([0-9][0-9.,]*)/i);
   if (mMonto) out.monto = _round2(parseFloat(mMonto[1].replace(/,/g, '')) || 0);
-  var mTerm = b.match(/Terminaci[oó]n de producto:\s*([0-9]+)/i);
+  var mTerm = b.match(/Terminaci.n de producto:\s*([0-9]+)/i);
   if (mTerm) out.cuentaTerm = mTerm[1];
   var mTipo = b.match(/A tu:?\s*(.+)/i);
-  if (mTipo) out.tipoCuenta = mTipo[1].trim();
-  var mDesc = b.match(/Descripci[oó]n:\s*(.+)/i);
-  if (mDesc) out.descripcion = mDesc[1].trim();
+  if (mTipo) out.tipoCuenta = mTipo[1].split('\\n')[0].trim();
+  var mDesc = b.match(/Descripci.n:\s*(.+)/i);
+  if (mDesc) out.descripcion = mDesc[1].split('\\n')[0].trim();
   // pagador: "<NOMBRE> te transfirió..." (asunto) o "<NOMBRE> te envió..." (cuerpo)
   var mPag = String(subject || '').match(/^\s*(.+?)\s+te\s+(?:transfiri|envi)/i) ||
              b.match(/([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ .]{3,})\s+te\s+(?:envi|transfiri)/i);
   if (mPag) out.pagador = mPag[1].replace(/\s+/g, ' ').trim();
   return out;
+}
+
+/**
+ * ¿Este mensaje venía dirigido al buzón de comprobantes?
+ *
+ * `To` y `Cc` son lo normal, pero un correo puede llegar legítimamente sin
+ * ninguno de los dos: es el caso de los avisos de Banco General, que Mailgun
+ * entrega poniendo el destinatario sólo en el sobre SMTP. Gmail conserva ese
+ * dato en `Delivered-To` (y algunos servidores en `X-Original-To`), así que se
+ * consultan antes de descartar.
+ *
+ * `getHeader` puede no existir en runtimes viejos: si falla, se cae de vuelta a
+ * To/Cc, que es exactamente el comportamiento anterior.
+ */
+function _dirigidoAlBuzon(msg, buzon) {
+  buzon = String(buzon || '').toLowerCase();
+  var campos = String(msg.getTo() || '') + ' ' + String(msg.getCc() || '');
+  ['Delivered-To', 'X-Original-To', 'X-Forwarded-To', 'Envelope-To'].forEach(function (h) {
+    try { campos += ' ' + String(msg.getHeader(h) || ''); } catch (e) {}
+  });
+  return campos.toLowerCase().indexOf(buzon) !== -1;
+}
+
+/**
+ * Saca el nombre del banco de un método de pago como "Banca en Línea (Banco
+ * General)". Devuelve '' si no viene entre paréntesis: entonces no se restringe
+ * nada y se comparan todas las cuentas, como antes.
+ */
+function _bancoDelMetodo(metodoPago) {
+  var m = String(metodoPago || '').match(/\(([^)]+)\)\s*$/);
+  return m ? m[1].trim() : '';
+}
+
+/**
+ * DIAGNÓSTICO (ejecutar en el editor): dice qué pasa con cada correo reciente
+ * del buzón y por qué. Existe porque un correo que el filtro descarta antes de
+ * procesarlo no deja rastro en ninguna hoja: simplemente no aparece, y desde el
+ * panel no hay forma de saber si nunca llegó o si llegó y se ignoró.
+ *
+ * @param {number} dias  cuántos días hacia atrás mirar (por defecto 7)
+ */
+function diagnosticarComprobantes(dias) {
+  ensureSheets();
+  var d = Math.max(1, Math.floor(Number(dias) || 7));
+  var buzon = (CONFIG.COMPROBANTES_EMAIL || 'comprobantes@airesdechica.org').toLowerCase();
+  var seen = {};
+  _sheetRows(SH.COMPROB).forEach(function (r) { if (r.msgId) seen[String(r.msgId)] = true; });
+
+  // Dos búsquedas: la que usa la captura, y una más amplia por si el propio
+  // operador `to:` de Gmail es el que no encuentra el mensaje.
+  var conTo = GmailApp.search('to:' + buzon + ' newer_than:' + d + 'd', 0, 60);
+  var amplia = GmailApp.search('newer_than:' + d + 'd (to:' + buzon + ' OR deliveredto:' + buzon + ')', 0, 60);
+  var vistos = {}, out = [];
+
+  [['búsqueda de la captura', conTo], ['búsqueda amplia', amplia]].forEach(function (par) {
+    par[1].forEach(function (th) {
+      th.getMessages().forEach(function (msg) {
+        var id = msg.getId();
+        if (vistos[id]) return;
+        vistos[id] = true;
+        var from = msg.getFrom() || '', subject = msg.getSubject() || '';
+        var body = (msg.getPlainBody() || '').slice(0, 4000);
+        var dirigido = _dirigidoAlBuzon(msg, buzon);
+        var esBanco = _esNotifBanco(from, subject, body);
+        var nb = esBanco ? _parseNotifBanco(subject, body) : null;
+        var fila = {
+          fecha: Utilities.formatDate(msg.getDate(), CONFIG.TZ, 'yyyy-MM-dd HH:mm'),
+          de: from, asunto: subject.slice(0, 70),
+          encontradoPor: par[0],
+          yaRegistrado: !!seen[id],
+          to: String(msg.getTo() || '(vacío)'),
+          deliveredTo: (function () { try { return String(msg.getHeader('Delivered-To') || '(vacío)'); } catch (e) { return '(no disponible)'; } })(),
+          pasaFiltroDestinatario: dirigido,
+          esAvisoDeBanco: esBanco,
+          adjuntos: (msg.getAttachments() || []).length
+        };
+        if (nb) {
+          fila.monto = nb.monto;
+          fila.terminacion = nb.cuentaTerm || '(no dice)';
+          fila.descripcion = String(nb.descripcion || '').slice(0, 60);
+          fila.verificacion = _verificarDestino('Banca en Línea (Banco General)',
+            nb.cuentaTerm, _cfg().cuentaNombre, 'Banco General');
+        }
+        if (!fila.yaRegistrado && !dirigido) {
+          fila.SEIGNORA = 'El destinatario no aparece en To/Cc/Delivered-To: la captura lo salta sin dejar rastro.';
+        }
+        out.push(fila);
+      });
+    });
+  });
+  out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
+  return { buzon: buzon, dias: d,
+    hallados: out.length,
+    soloEnBusquedaAmplia: out.filter(function (x) { return x.encontradoPor === 'búsqueda amplia'; }).length,
+    seIgnorarian: out.filter(function (x) { return !!x.SEIGNORA; }).length,
+    correos: out };
 }
 
 // adjuntos válidos: imagen o PDF, con contenido.
@@ -346,8 +485,13 @@ function _capturarComprobantes(maxThreads) {
     th.getMessages().forEach(function (msg) {
       var id = msg.getId();
       if (seen[id]) return;
-      var to = (msg.getTo() + ' ' + msg.getCc()).toLowerCase();
-      if (to.indexOf(buzon) === -1) return; // sólo los realmente dirigidos al buzón
+      // Sólo los realmente dirigidos al buzón. OJO: no basta con To y Cc.
+      // Los avisos automáticos de Banco General llegan SIN cabecera `To:` —el
+      // destinatario viaja en el sobre SMTP y en `Delivered-To`—, así que este
+      // filtro los descartaba en silencio: ni siquiera quedaban como
+      // "descartado", desaparecían. Por eso se miran también las cabeceras de
+      // entrega antes de rechazar un mensaje.
+      if (!_dirigidoAlBuzon(msg, buzon)) return;
       seen[id] = true;
 
       var from = msg.getFrom(), fromEmail = _emailDe(from);
@@ -459,7 +603,10 @@ function getComprobantes(estado) {
   return _sheetRows(SH.COMPROB).map(function (r) {
     r.monto = Number(r.monto) || 0;
     r.fecha = r.fecha instanceof Date ? r.fecha : new Date(r.fecha);
-    r.verif = _verificarDestino(r.metodoPago, r.cuentaDestino, r.beneficiario);
+    // El método de pago dice de qué banco vino el aviso ("Banca en Línea (Banco
+    // General)"). Con eso, la verificación sólo considera las cuentas de ESE banco
+    // y una terminación de cuatro dígitos no puede casar con la del otro.
+    r.verif = _verificarDestino(r.metodoPago, r.cuentaDestino, r.beneficiario, _bancoDelMetodo(r.metodoPago));
     return r;
   }).filter(function (r) { return !estado || String(r.estado) === estado; })
     .sort(function (a, b) { return new Date(b.fecha) - new Date(a.fecha); });
