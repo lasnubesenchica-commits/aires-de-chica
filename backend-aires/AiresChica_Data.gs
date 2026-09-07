@@ -25,14 +25,14 @@ var SH = {
 var COL_PROP  = ['clave','residencial','lote','loteNum','nombre','email','celular',
                  'lotes','cabanas','cuota','saldo2025','activo','notas','airbnb','cuotaMensual','inicioCobro','moraCondon'];
 var COL_PAGOS = ['id','fecha','clave','lote','nombre','monto','referencia','origen',
-                 'mesAplicado','notas','creado','comprobanteUrl'];
+                 'mesAplicado','notas','creado','comprobanteUrl','cuenta'];
 var COL_LOG   = ['fecha','archivo','filas','nuevos','duplicados','montoNuevo','usuario'];
 var COL_COMPROB = ['id','fecha','remitente','asunto','clave','nombre','lote','monto',
                    'referencia','estado','adjuntoUrl','msgId','metodo','capturado','motivo',
                    'metodoPago','cuentaDestino','beneficiario','pagoId'];
 // Gastos (egresos) — registro diario por categoría
 var COL_GASTOS = ['id','fecha','mes','categoria','proveedor','detalle','monto','tipo',
-                  'metodoPago','comprobanteUrl','notas','creado','grupoInforme'];
+                  'metodoPago','comprobanteUrl','notas','creado','grupoInforme','cuenta'];
 // Plantillas de gastos recurrentes (fijos mensuales)
 var COL_GRECUR = ['id','categoria','proveedor','detalle','monto','activo','notas'];
 // Presupuesto anual por categoría
@@ -56,7 +56,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v5-2026-09-balance-abonos';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v6-2026-09-cuentas';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -71,7 +71,8 @@ function ensureSheets(force) {
   [[SH.PROP, COL_PROP], [SH.PAGOS, COL_PAGOS], [SH.LOG, COL_LOG], [SH.COMPROB, COL_COMPROB],
    [SH.GASTOS, COL_GASTOS], [SH.GRECUR, COL_GRECUR], [SH.PRESUP, COL_PRESUP],
    [SH.REGISTRO, COL_REG], [SH_COM, COL_COM], [SH_ENVIOS, COL_ENVIOS],
-   [SH_BAL, COL_BAL], [SH_BALABO, COL_BALABO]].forEach(function (pair) {
+   [SH_BAL, COL_BAL], [SH_BALABO, COL_BALABO],
+   [SH_CUENTAS, COL_CUENTAS], [SH_TRASPASOS, COL_TRASPASOS]].forEach(function (pair) {
     var name = pair[0], cols = pair[1];
     var sh = ss.getSheetByName(name);
     if (!sh) { sh = ss.insertSheet(name); created.push(name); }
@@ -98,6 +99,10 @@ function ensureSheets(force) {
   _ensureColumn(ss.getSheetByName(SH.COMPROB), 'pagoId');
   _ensureColumn(ss.getSheetByName(SH.PAGOS), 'comprobanteUrl');
   _ensureColumn(ss.getSheetByName(SH.GASTOS), 'grupoInforme');
+  // De qué cuenta entró o salió cada movimiento. Se agrega vacía; el relleno
+  // histórico lo hace `rellenarCuentaHistorica()` una sola vez, no esta función.
+  _ensureColumn(ss.getSheetByName(SH.PAGOS), 'cuenta');
+  _ensureColumn(ss.getSheetByName(SH.GASTOS), 'cuenta');
   // Forzar formato TEXTO en columnas de lote/clave/inicio: evita que Sheets
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
@@ -594,7 +599,11 @@ function appendPago(pago) {
     pago.mesAplicado || '',
     pago.notas || '',
     new Date(),
-    pago.comprobanteUrl || ''
+    pago.comprobanteUrl || '',
+    // A qué cuenta entró. Si quien llama no la dice, se asume la cuenta de cobro:
+    // es donde llega el dinero salvo excepción, y dejarla vacía sacaría el pago
+    // del saldo de todas las cuentas —el efectivo total dejaría de cuadrar—.
+    String(pago.cuenta || '').trim() || (cuentaDeCobro().id || '')
   ]);
   return id;
 }

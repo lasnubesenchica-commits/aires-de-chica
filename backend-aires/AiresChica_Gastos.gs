@@ -234,7 +234,12 @@ function _appendGasto(g) {
   sh.appendRow([
     id, fecha, _gastoMes(fecha), String(g.categoria || '').trim(), g.proveedor || '', g.detalle || '',
     _round2(g.monto), (g.tipo === 'recurrente' ? 'recurrente' : 'puntual'),
-    g.metodoPago || '', g.comprobanteUrl || '', g.notas || '', new Date(), grupo
+    g.metodoPago || '', g.comprobanteUrl || '', g.notas || '', new Date(), grupo,
+    // De qué cuenta salió. Sin dato se asume la de cobro, por lo mismo que en los
+    // pagos: un gasto sin cuenta no restaría de ninguna y el efectivo por cuenta
+    // dejaría de sumar el total. Los pagados con tarjeta personal van a la cuenta
+    // "por rendir", que es de donde salieron de verdad.
+    String(g.cuenta || '').trim() || (cuentaDeCobro().id || '')
   ]);
   return id;
 }

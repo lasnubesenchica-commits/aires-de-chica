@@ -186,31 +186,51 @@ function _esPago(texto) {
   return kw.test(t) && _extraerMonto(texto) > 0;
 }
 
-// Verifica si el pago fue hecho a la cuenta de Aires de Chicá.
+// Verifica si el pago fue hecho a alguna cuenta de Aires de Chicá, y a CUÁL.
 //   nivel: 'ok' (coincide) | 'bad' (no coincide / medio no válido) | 'warn' (no se pudo verificar)
-// Aires de Chicá SOLO recibe por su cuenta de Banco General; no tiene Yappy/Nequi.
+//   cuentaId: la cuenta detectada, para preseleccionarla al aplicar el pago.
+// Aires de Chicá recibe SOLO por sus cuentas bancarias; no tiene Yappy/Nequi.
 function _verificarDestino(metodoPago, cuentaDestino, beneficiario) {
-  var acct = String(_cfg().cuentaNum || '').replace(/\D/g, '');
   var mp = _normTxt(metodoPago || '');
   var cd = String(cuentaDestino || '').replace(/\D/g, '');
   var ben = _normTxt(beneficiario || '');
   var esAC = /AIRES\s*DE\s*CHIC/.test(ben);
 
+  // Contra TODAS las cuentas bancarias vigentes, no sólo la de cobro: desde que
+  // hay dos bancos abiertos a la vez, comparar contra una sola marcaba como
+  // sospechoso todo depósito hecho a la cuenta nueva.
+  var bancos = [];
+  try { bancos = getCuentas().filter(function (c) { return c.clase === 'banco' && c.numero; }); } catch (e) {}
+  var listaTxt = bancos.length
+    ? bancos.map(function (c) { return c.banco + ' Nº ' + c.numero; }).join(' · ')
+    : (_cfg().banco + ' Nº ' + _cfg().cuentaNum);
+
   // Medios que Aires de Chicá NO usa
   if (/YAPPY|NEQUI/.test(mp)) {
     return { nivel: 'bad', metodo: metodoPago,
-      mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Solo recibe por su cuenta de ' + _cfg().banco + '. Verifica a dónde se envió.' };
+      mensaje: 'Pago por ' + (metodoPago || 'Yappy/Nequi') + ': Aires de Chicá NO tiene Yappy/Nequi. Sólo recibe en sus cuentas (' + listaTxt + '). Verifica a dónde se envió.' };
   }
 
   // Comparación por número de cuenta destino
-  if (cd && acct) {
-    var coincide = (cd === acct) ||
-      (cd.length >= 5 && acct.indexOf(cd) >= 0) ||
-      (acct.length >= 5 && cd.indexOf(acct) >= 0) ||
-      (cd.length >= 3 && cd.length <= 4 && acct.slice(-cd.length) === cd); // "terminación de producto" (últimos dígitos)
-    if (coincide) return { nivel: 'ok', mensaje: 'Transferencia a la cuenta de Aires de Chicá (' + _cfg().cuentaNum + ').' };
+  if (cd && bancos.length) {
+    var hit = cuentaPorNumero(cd);
+    if (hit) return { nivel: 'ok', cuentaId: hit.id,
+      mensaje: 'Transferencia a la cuenta de ' + hit.banco + ' de Aires de Chicá (' + hit.numero + ').' };
+    // `cuentaPorNumero` devuelve null a propósito cuando casa con más de una: dos
+    // cuentas cuya terminación coincide no se pueden distinguir, y adivinar sería
+    // peor que preguntar.
+    var ambiguas = bancos.filter(function (c) {
+      var a = String(c.numero).replace(/\D/g, '');
+      return cd.length >= 3 && cd.length <= 4 && a.slice(-cd.length) === cd;
+    });
+    if (ambiguas.length > 1) {
+      return { nivel: 'warn',
+        mensaje: 'La terminación ' + cuentaDestino + ' coincide con más de una cuenta (' +
+                 ambiguas.map(function (c) { return c.banco; }).join(' y ') +
+                 '). Elige a mano a cuál entró.' };
+    }
     return { nivel: 'bad',
-      mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con la de Aires de Chicá (' + _cfg().cuentaNum + '). Verifica antes de aplicar.' };
+      mensaje: 'La cuenta destino (' + cuentaDestino + ') NO coincide con ninguna cuenta de Aires de Chicá (' + listaTxt + '). Verifica antes de aplicar.' };
   }
 
   // Sin número de cuenta: apóyate en el beneficiario

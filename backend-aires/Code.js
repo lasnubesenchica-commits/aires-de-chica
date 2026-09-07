@@ -84,6 +84,9 @@ function doGet(e) {
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
     else if (action === 'getBalance')      { requireAuth(p.token); out = { ok: true, data: getBalance(p.asOf || null) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
+    else if (action === 'getCuentasData')  { requireAuth(p.token); out = { ok: true, data: getCuentasData() }; }
+    else if (action === 'getSaldosCuentas'){ requireAuth(p.token); out = { ok: true, data: saldosPorCuenta(p.asOf || null) }; }
+    else if (action === 'getTraspasos')    { requireAuth(p.token); out = { ok: true, data: getTraspasos() }; }
     else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
         desde: p.desde, hasta: p.hasta, autor: p.autor, accion: p.accionFiltro, q: p.q, limite: p.limite }) }; }
     else if (action === 'getAutores')      { requireAuth(p.token); out = { ok: true, data: getAutores(p.dispositivo) }; }
@@ -163,6 +166,11 @@ function doPost(e) {
     else if (action === 'eliminarPartidaBalance') out = { ok: true, data: eliminarPartidaBalance(data.id) };
     else if (action === 'registrarAbonoBalance')  out = { ok: true, data: registrarAbonoBalance(data.partidaId, data.abono || {}) };
     else if (action === 'eliminarAbonoBalance')   out = { ok: true, data: eliminarAbonoBalance(data.id) };
+    else if (action === 'guardarCuenta')      out = { ok: true, data: guardarCuenta(data.cuenta || {}) };
+    else if (action === 'eliminarCuenta')     out = { ok: true, data: eliminarCuenta(data.id) };
+    else if (action === 'marcarCuentaCobro')  out = { ok: true, data: marcarCuentaCobro(data.id) };
+    else if (action === 'registrarTraspaso')  out = { ok: true, data: registrarTraspaso(data.traspaso || {}) };
+    else if (action === 'eliminarTraspaso')   out = { ok: true, data: eliminarTraspaso(data.id) };
     else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };
     else if (action === 'seedGastos2026')   out = { ok: true, data: seedGastos2026(!!data.force) };

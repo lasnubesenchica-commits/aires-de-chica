@@ -82,7 +82,14 @@ var REG_ACCIONES = {
   'balance.edita':      'Partida del balance modificada',
   'balance.baja':       'Partida del balance eliminada',
   'balance.abono':      'Descuento aplicado a un préstamo',
-  'balance.abonoBaja':  'Descuento de préstamo eliminado'
+  'balance.abonoBaja':  'Descuento de préstamo eliminado',
+  'cuenta.alta':        'Cuenta agregada',
+  'cuenta.edita':       'Cuenta modificada',
+  'cuenta.baja':        'Cuenta eliminada',
+  'cuenta.cobro':       'Cuenta de cobro cambiada',
+  'cuenta.rellena':     'Cuenta asignada al histórico',
+  'traspaso.alta':      'Traspaso entre cuentas',
+  'traspaso.baja':      'Traspaso eliminado'
 };
 
 function _regSheet() {

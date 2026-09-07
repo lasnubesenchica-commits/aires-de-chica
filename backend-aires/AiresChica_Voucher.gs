@@ -136,6 +136,22 @@ function voucherPagoHTML(d) {
   var colSaldo = alDia ? B.ok : B.red;
   var origenTxt = AC_ORIGEN_TXT[String(d.origen || '').toLowerCase()] || (d.origen || 'Registro manual');
 
+  // A dónde llegó ESTE pago, no dónde se cobra hoy. Antes esta línea leía la
+  // cuenta configurada, lo que era correcto mientras hubo una sola: con dos
+  // bancos abiertos —y con pagos que entran a una cuenta por rendir— imprimir la
+  // cuenta de cobro le entregaría al propietario una constancia que afirma que su
+  // dinero se acreditó donde no está.
+  var ctaTxt;
+  if (d.cuenta && d.cuenta.nombre) {
+    ctaTxt = d.cuenta.clase === 'porRendir'
+      ? esc(d.cuenta.nombre) + ' — recibido por la administración, fuera de las cuentas bancarias de la asociación'
+      : esc(d.cuenta.banco || d.cuenta.nombre) +
+        (d.cuenta.tipo ? ' · ' + esc(d.cuenta.tipo) : '') +
+        (d.cuenta.numero ? ' Nº ' + esc(d.cuenta.numero) : '');
+  } else {
+    ctaTxt = esc(cfg.banco) + ' · ' + esc(cfg.cuentaTipo) + ' Nº ' + esc(cfg.cuentaNum);
+  }
+
   return '' +
   '<!doctype html><html><head><meta charset="utf-8"><style>' +
   '@page{margin:0}' +
@@ -179,7 +195,7 @@ function voucherPagoHTML(d) {
     _vRow('Forma de pago', esc(origenTxt)) +
     (d.referencia ? _vRow('Referencia', esc(d.referencia)) : '') +
     (d.banco ? _vRow('Detalle bancario', '<span style="font-weight:400" class="muted">' + esc(d.banco) + '</span>') : '') +
-    _vRow('Cuenta de destino', esc(cfg.banco) + ' · ' + esc(cfg.cuentaTipo) + ' Nº ' + esc(cfg.cuentaNum)) +
+    _vRow('Cuenta de destino', ctaTxt) +
     _vRow('Registro en el sistema', esc(d.pagoId)) +
   '</table>' +
 
@@ -271,6 +287,7 @@ function generarVoucherPago(pagoId, opts) {
     origen: String(pago.origen || 'manual'),
     referencia: String(pago.referencia || ''),
     banco: String(pago.notas || ''),
+    cuenta: cuentaPorId(pago.cuenta) || null,
     pagoId: pagoId,
     saldoDespues: saldoDespues,
     autor: (typeof _autor === 'function' ? _autor() : 'Sistema')
