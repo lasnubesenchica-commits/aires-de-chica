@@ -56,7 +56,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v6-2026-09-cuentas';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v7-2026-09-cuentas-numtexto';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -107,9 +107,41 @@ function ensureSheets(force) {
   // convierta "6/7", "2026-05", etc. en fechas.
   _forceText(ss.getSheetByName(SH.PROP), ['clave', 'lote', 'loteNum', 'inicioCobro'], COL_PROP);
   _forceText(ss.getSheetByName(SH.PAGOS), ['clave', 'lote'], COL_PAGOS);
+  // El número de cuenta es una CADENA, no una cantidad. Sin esto, Sheets convierte
+  // en número los que no llevan guiones (56333001422) y se pierden los ceros a la
+  // izquierda; con números largos llega a pasarlos a notación científica. En
+  // cualquiera de los dos casos el instructivo de pago diría un número equivocado
+  // y la detección de comprobantes dejaría de casar.
+  _forceText(ss.getSheetByName(SH_CUENTAS), ['numero'], COL_CUENTAS);
+  // Fijar el formato no arregla lo ya guardado: el valor sigue siendo numérico.
+  // Se reescribe como texto una vez.
+  _cuentasNumeroATexto(ss.getSheetByName(SH_CUENTAS));
   _props.setProperty('AC_SCHEMA', AC_SCHEMA_V);   // no repetirlo en cada lectura
   _ensuredEnEstaEjecucion = true;
   return { created: created, esquema: AC_SCHEMA_V, sheets: ss.getSheets().map(function (s) { return s.getName(); }) };
+}
+
+/**
+ * Reescribe como texto los números de cuenta que Sheets guardó como cantidad.
+ * Sólo toca los que de verdad vienen numéricos, para no reescribir mil celdas
+ * en cada migración.
+ */
+function _cuentasNumeroATexto(sh) {
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var vals = sh.getDataRange().getValues();
+  var i = vals[0].map(function (x) { return String(x).trim(); }).indexOf('numero');
+  if (i < 0) return 0;
+  var n = 0;
+  for (var r = 1; r < vals.length; r++) {
+    var v = vals[r][i];
+    if (typeof v !== 'number') continue;
+    // Math.round quita el .0 con el que Sheets devuelve los enteros. Los ceros a
+    // la izquierda que ya se hubieran perdido no se pueden recuperar aquí: para
+    // eso está el formato de texto, que evita que vuelva a pasar.
+    sh.getRange(r + 1, i + 1).setValue(String(Math.round(v)));
+    n++;
+  }
+  return n;
 }
 
 function _forceText(sh, names, cols) {
