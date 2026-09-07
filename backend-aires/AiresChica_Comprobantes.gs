@@ -383,13 +383,14 @@ function diagnosticarComprobantes(dias) {
   var seen = {};
   _sheetRows(SH.COMPROB).forEach(function (r) { if (r.msgId) seen[String(r.msgId)] = true; });
 
-  // Dos búsquedas: la que usa la captura, y una más amplia por si el propio
-  // operador `to:` de Gmail es el que no encuentra el mensaje.
+  // Dos búsquedas: sólo por `to:`, y la amplia que usa la captura. Se comparan
+  // para ver cuáles mensajes sólo aparecen por las cabeceras de entrega: son
+  // justamente los avisos automáticos de banco, que llegan sin cabecera To.
   var conTo = GmailApp.search('to:' + buzon + ' newer_than:' + d + 'd', 0, 60);
   var amplia = GmailApp.search('newer_than:' + d + 'd (to:' + buzon + ' OR deliveredto:' + buzon + ')', 0, 60);
   var vistos = {}, out = [];
 
-  [['búsqueda de la captura', conTo], ['búsqueda amplia', amplia]].forEach(function (par) {
+  [['sólo por to:', conTo], ['búsqueda de la captura (amplia)', amplia]].forEach(function (par) {
     par[1].forEach(function (th) {
       th.getMessages().forEach(function (msg) {
         var id = msg.getId();
@@ -506,7 +507,12 @@ function _capturarComprobantes(maxThreads) {
 
   var folder = _carpetaComprobantes();
   var label = GmailApp.getUserLabelByName(GMAIL_LABEL_COMPROB) || GmailApp.createLabel(GMAIL_LABEL_COMPROB);
-  var threads = GmailApp.search('to:' + buzon + ' newer_than:120d', 0, lim);
+  // La búsqueda tiene que ser tan amplia como el filtro de abajo. El operador
+  // `to:` de Gmail mira la cabecera To, y los avisos de Banco General llegan sin
+  // ella: por más que `_dirigidoAlBuzon` sepa leer Delivered-To, si el mensaje no
+  // vuelve en la búsqueda nunca llega a ese filtro. Es el mismo query que la
+  // "búsqueda amplia" del diagnóstico, que sí encontraba estos avisos.
+  var threads = GmailApp.search('newer_than:120d (to:' + buzon + ' OR deliveredto:' + buzon + ')', 0, lim);
   var nuevos = 0, descartados = 0, filas = [];
 
   threads.forEach(function (th) {
