@@ -260,10 +260,14 @@ function consolidarPagos(pagosSel, enviarCorreos) {
   // Igual que en registrarPago: manda la configuración (notifOnPago), y la casilla del
   // panel sólo sirve para forzar el envío cuando ese interruptor está apagado.
   if (enviarCorreos || _cfg().notifOnPago) {
+    // sinCopia: una conciliación puede aplicar decenas de pagos de un mismo estado de
+    // cuenta bancario. La administración recibe UN resumen al final, no una copia por pago.
     Object.keys(clavesTocadas).forEach(function (clave) {
-      try { correos.push(enviarEstadoCuenta(clave, 'pago')); Utilities.sleep(400); }
+      try { correos.push(enviarEstadoCuenta(clave, 'pago', { sinCopia: true })); Utilities.sleep(400); }
       catch (e) { correos.push({ clave: clave, enviado: false, error: String(e) }); }
     });
+    var _ok = correos.filter(function (c) { return c.enviado; });
+    if (_ok.length) _copiaAdminResumen('Pagos aplicados desde la conciliación', _ok, []);
   }
   return { insertados: insertados, claves: Object.keys(clavesTocadas), omitidos: omitidos.length, correos: correos };
 }

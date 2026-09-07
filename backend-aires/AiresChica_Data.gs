@@ -921,7 +921,7 @@ function registrarPago(pago) {
   // compromiso de «notificar que su pago fue recibido y procesado»; la casilla del
   // formulario sólo sirve para forzarla cuando ese interruptor está apagado.
   if ((_cfg().notifOnPago || pago.enviarCorreo) && prop && prop.email) {
-    try { resultado.correo = enviarEstadoCuenta(pago.clave, 'pago'); }
+    try { resultado.correo = enviarEstadoCuenta(pago.clave, 'pago', { monto: pago.monto }); }
     catch (e) { resultado.correoError = String(e); }
   }
   return resultado;

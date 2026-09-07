@@ -311,7 +311,88 @@ function enviarPruebaEstado(email, tipo, clave) {
   return { enviado: true, email: email, muestra: est.nombre, lote: est.lote, tipo: tipo };
 }
 
-function enviarEstadoCuenta(clave, contexto) {
+/**
+ * Aviso a la administración de que un estado de cuenta salió.
+ *
+ * Va como correo APARTE y no como copia oculta del que recibe el propietario: es un
+ * mensaje distinto —dice qué se envió, a quién y con qué resultado—, y así el
+ * propietario tampoco ve que hay terceros en su correo. Lleva el MISMO adjunto que
+ * recibió él, no uno regenerado: si mañana el saldo cambia, la copia sigue siendo
+ * prueba de lo que se mandó ese día.
+ *
+ * Nunca interrumpe el envío al propietario: si esto falla, el correo importante ya
+ * salió y el fallo se reporta en el resultado.
+ */
+function _copiaAdminEstado(est, contexto, pdf, envio, monto) {
+  var cfg = _cfg();
+  var lista = _listaCorreos(cfg.copiaAdmin);
+  if (!lista.length) return { enviada: false, motivo: 'Sin copia configurada' };
+  var B = AC_BRAND;
+  var prueba = !!envio.prueba;
+  var cuando = Utilities.formatDate(new Date(), CONFIG.TZ, "d 'de' MMMM 'de' yyyy, h:mm a");
+  // En modo prueba al propietario NO le llegó nada. Decir "se envió a X" sería falso
+  // justamente en el correo que existe para dejar constancia de lo enviado.
+  var titular = prueba
+    ? '<p style="padding:12px 14px;background:#E8F6FA;border-left:4px solid ' + B.teal + ';border-radius:6px">' +
+        '<b>🧪 Modo prueba — al propietario no le llegó nada.</b><br>' +
+        'Este estado de cuenta se redirigió a <b>' + envio.email + '</b>. ' +
+        'Con el modo prueba apagado habría salido a <b>' + (est.email || '(sin correo)') + '</b>.</p>'
+    : '<p style="padding:12px 14px;background:#EAF7EF;border-left:4px solid ' + B.ok + ';border-radius:6px">' +
+        (contexto === 'pago'
+          ? 'Se registró un pago' + (monto > 0.009 ? ' de <b>' + _money(monto) + '</b>' : '') +
+            ' y se envió al propietario su <b>estado de cuenta actualizado</b>.'
+          : 'Se envió al propietario su <b>estado de cuenta</b>.') +
+        '</p>';
+
+  var filas = [
+    ['Propietario', est.nombre],
+    ['Lote', est.lote + ' · ' + est.residencial],
+    ['Enviado a', envio.email],
+    ['Fecha y hora', cuando],
+    ['Motivo del envío', _motivoEnvio(contexto)],
+    ['Saldo tras el envío', _money(est.saldoConMora) + (est.mora > 0.009 ? ' (incluye ' + _money(est.mora) + ' de mora)' : '')]
+  ];
+  var tabla = '<table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:13px">' +
+    filas.map(function (f) {
+      return '<tr><td style="padding:7px 0;color:' + B.muted + ';border-bottom:1px solid ' + B.border + '">' + f[0] + '</td>' +
+             '<td style="padding:7px 0;text-align:right;font-weight:600;border-bottom:1px solid ' + B.border + '">' + f[1] + '</td></tr>';
+    }).join('') + '</table>';
+
+  var asunto = (prueba ? '[PRUEBA] ' : '') + 'Copia · Estado de cuenta enviado a ' + est.nombre + ' — Lote ' + est.lote;
+  try {
+    GmailApp.sendEmail(lista.join(','), asunto,
+      'Copia para la administración: se envió el estado de cuenta de ' + est.nombre + ' (Lote ' + est.lote + ').', {
+        name: CONFIG.NEGOCIO,
+        replyTo: CONFIG.REPLY_TO,
+        htmlBody: _emailShell(titular + tabla +
+          '<p style="margin-top:16px;color:' + B.muted + ';font-size:12px">' +
+          'Se adjunta el mismo PDF que recibió el propietario. Este aviso es sólo para la ' +
+          'administración; el propietario no sabe que se envió.</p>'),
+        attachments: [pdf]
+      });
+    return { enviada: true, a: lista };
+  } catch (e) {
+    return { enviada: false, a: lista, error: String(e && e.message || e) };
+  }
+}
+
+function _motivoEnvio(contexto) {
+  if (contexto === 'pago')     return 'Pago registrado';
+  if (contexto === 'preaviso') return 'Aviso antes de que venza la cuota';
+  if (contexto === 'mora')     return 'Aviso de cuotas vencidas';
+  if (contexto === 'estado')   return 'Estado de cuenta mensual';
+  return 'Envío manual desde el panel';
+}
+
+/**
+ * @param {string} clave     lote del propietario
+ * @param {string} contexto  'pago' | 'estado' | 'preaviso' | 'mora' | ''
+ * @param {Object} [opts]    { sinCopia: no avisar a la administración (los envíos
+ *                             masivos mandan UN resumen en vez de una copia por
+ *                             propietario), monto: el pago que originó el envío }
+ */
+function enviarEstadoCuenta(clave, contexto, opts) {
+  opts = opts || {};
   var cfg = _cfg();
   if (!cfg.enviosActivos) return { enviado: false, motivo: 'Envíos pausados (interruptor maestro apagado).', clave: clave };
   var est = getEstadoCuentaByKey(clave);
@@ -330,7 +411,50 @@ function enviarEstadoCuenta(clave, contexto) {
     htmlBody: cuerpo,
     attachments: [pdf]
   });
-  return { enviado: true, clave: clave, lote: est.lote, email: destino, prueba: prueba, destinatarioReal: est.email, saldo: est.saldoConMora };
+  var res = { enviado: true, clave: clave, lote: est.lote, email: destino, prueba: prueba, destinatarioReal: est.email, saldo: est.saldoConMora };
+  // La copia va DESPUÉS y aparte: el envío al propietario ya está hecho y no puede
+  // deshacerse porque el aviso interno falle.
+  if (!opts.sinCopia) res.copia = _copiaAdminEstado(est, contexto, pdf, res, Number(opts.monto) || 0);
+  return res;
+}
+
+/**
+ * Un solo resumen a la administración tras un envío masivo, en vez de una copia por
+ * propietario. Sesenta estados de cuenta son sesenta correos con PDF: llenarían el
+ * buzón y consumirían la cuota diaria de Gmail sin decir nada que no diga esta lista.
+ */
+function _copiaAdminResumen(titulo, enviados, sinCorreo) {
+  var lista = _listaCorreos(_cfg().copiaAdmin);
+  if (!lista.length) return { enviada: false, motivo: 'Sin copia configurada' };
+  var B = AC_BRAND;
+  var cuando = Utilities.formatDate(new Date(), CONFIG.TZ, "d 'de' MMMM 'de' yyyy, h:mm a");
+  var prueba = enviados.length && enviados[0].prueba;
+  var filas = enviados.map(function (e) {
+    return '<tr><td style="padding:6px 0;border-bottom:1px solid ' + B.border + '">Lote ' + e.lote + '</td>' +
+           '<td style="padding:6px 0;border-bottom:1px solid ' + B.border + ';color:' + B.muted + ';font-size:12px">' + e.email + '</td>' +
+           '<td style="padding:6px 0;text-align:right;border-bottom:1px solid ' + B.border + '">' + _money(e.saldo || 0) + '</td></tr>';
+  }).join('');
+  try {
+    GmailApp.sendEmail(lista.join(','), (prueba ? '[PRUEBA] ' : '') + 'Copia · ' + titulo + ' — ' + enviados.length + ' propietarios',
+      titulo + ': ' + enviados.length + ' enviados.', {
+        name: CONFIG.NEGOCIO,
+        replyTo: CONFIG.REPLY_TO,
+        htmlBody: _emailShell(
+          '<p><b>' + titulo + '</b><br><span style="color:' + B.muted + '">' + cuando + '</span></p>' +
+          (prueba ? '<p style="padding:10px 12px;background:#E8F6FA;border-left:4px solid ' + B.teal +
+                    ';border-radius:6px"><b>🧪 Modo prueba — a los propietarios no les llegó nada.</b></p>' : '') +
+          '<p>Se enviaron <b>' + enviados.length + '</b> estados de cuenta.</p>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px">' + filas + '</table>' +
+          (sinCorreo && sinCorreo.length
+            ? '<p style="margin-top:14px;color:' + B.coral + '"><b>Sin enviar (' + sinCorreo.length + '):</b> ' +
+              sinCorreo.join(', ') + '</p>' : '') +
+          '<p style="margin-top:16px;color:' + B.muted + ';font-size:12px">Los envíos masivos no llevan adjunto en la copia: ' +
+          'cada estado de cuenta está en el panel, en la ficha del propietario.</p>')
+      });
+    return { enviada: true, a: lista, total: enviados.length };
+  } catch (e) {
+    return { enviada: false, a: lista, error: String(e && e.message || e) };
+  }
 }
 
 /**
@@ -364,12 +488,14 @@ function enviarRecordatorios(tipo, lotes) {
   objetivo.forEach(function (c) {
     if (!c.email) { sinCorreo.push(c.lote); return; }
     try {
-      var res = enviarEstadoCuenta(c.clave, tipo);
+      // sinCopia: un envío masivo manda UN resumen al final, no una copia por cabeza.
+      var res = enviarEstadoCuenta(c.clave, tipo, { sinCopia: true });
       enviados.push(res);
       Utilities.sleep(400); // respeta cuota de envío
     } catch (e) { sinCorreo.push(c.clave + ' (' + e + ')'); }
   });
   var res = { tipo: tipo, objetivo: objetivo.length, enviados: enviados.length, sinCorreo: sinCorreo, detalle: enviados };
+  if (enviados.length) res.copia = _copiaAdminResumen(_motivoEnvio(tipo), enviados, sinCorreo);
   // Los envíos masivos automáticos dejan constancia: si un mes no salieron, se ve aquí.
   if (!lotes) {
     _reg('correo.envia', { entidad: 'correo', campo: tipo,

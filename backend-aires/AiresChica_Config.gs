@@ -44,6 +44,10 @@ function _cfgDefaults() {
     enviosActivos:     false,                 // INTERRUPTOR MAESTRO. Apagado = no sale ningún correo por ninguna vía.
     modoPrueba:        false,                 // Si está activo, TODO correo se redirige a `correoPrueba` (para probar sin avisar a nadie).
     correoPrueba:      '',                     // dirección única a la que llegan los correos en modo prueba.
+    // Copia a la administración: cada vez que sale un estado de cuenta a un
+    // propietario, estas direcciones reciben un aviso aparte -no una copia oculta-
+    // con el mismo adjunto, diciendo qué se envió y a quién. Varias, separadas por coma.
+    copiaAdmin:        '',
     // ── Notificaciones automáticas ──────────────────────────────────────────
     // Cada una tiene su interruptor y su día. Todas pasan además por el interruptor
     // maestro (enviosActivos) y por el modo prueba.
@@ -68,6 +72,23 @@ function _cfgDefaults() {
     cuentaNum:         CONFIG.CUENTA_NUM,
     cuentaNombre:      CONFIG.CUENTA_NOMBRE
   };
+}
+
+/**
+ * Direcciones válidas de una lista escrita a mano ("a@x.com, b@y.com; c@z.com").
+ * Acepta coma o punto y coma porque quien la escribe no tiene por qué saber cuál
+ * espera el sistema. Descarta lo que no sea una dirección y quita repetidas.
+ */
+function _listaCorreos(txt) {
+  var out = [], visto = {};
+  String(txt || '').split(/[,;]/).forEach(function (t) {
+    var e = String(t).trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return;
+    var k = e.toLowerCase();
+    if (visto[k]) return;
+    visto[k] = true; out.push(e);
+  });
+  return out;
 }
 
 function _cfg() {
@@ -145,6 +166,10 @@ function guardarConfig(nueva) {
   clean.modoPrueba = !!clean.modoPrueba;
   clean.correoPrueba = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(clean.correoPrueba || '').trim())
     ? String(clean.correoPrueba).trim() : '';
+  // Se guardan sólo las direcciones bien formadas y sin repetir. Una dirección con
+  // una errata no se guarda a medias: se descarta, y el panel muestra lo que quedó,
+  // que es la única forma de que se note el dedazo antes de contar con esas copias.
+  clean.copiaAdmin = _listaCorreos(clean.copiaAdmin).join(', ');
   clean.notifOnPago = !!clean.notifOnPago;
   clean.notifMora = !!clean.notifMora;
   clean.capturaComprobantes = !!clean.capturaComprobantes;

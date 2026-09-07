@@ -2154,7 +2154,14 @@ async function mailEstado(clave,btn){
   const t = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
   try{ const r=await post('enviarEstado',{clave});
-    alert(r.enviado?(r.prueba?'🧪 Modo prueba: enviado a '+r.email+' (en real iría a '+(r.destinatarioReal||'—')+')':'✓ Enviado a '+r.email):'No enviado: '+(r.motivo||''));
+    // La copia a la administración se reporta aparte: es un segundo correo y puede
+    // fallar por su cuenta sin que eso signifique que el propietario no recibió el suyo.
+    let cop='';
+    if(r.enviado&&r.copia){
+      if(r.copia.enviada) cop='\n📩 Copia enviada a '+(r.copia.a||[]).join(', ');
+      else if(r.copia.error) cop='\n⚠ El propietario SÍ recibió el suyo, pero la copia a '+(r.copia.a||[]).join(', ')+' falló: '+r.copia.error;
+    }
+    alert((r.enviado?(r.prueba?'🧪 Modo prueba: enviado a '+r.email+' (en real iría a '+(r.destinatarioReal||'—')+')':'✓ Enviado a '+r.email):'No enviado: '+(r.motivo||''))+cop);
   }catch(e){ if(!onAuthError(e))alert('Error: '+e); }
   finally{ if(btn){ btn.disabled=false; btn.textContent=t; } }
 }
@@ -2848,6 +2855,11 @@ async function renderOpts(){
           <div class="field" style="margin-top:10px"><label>Correo de prueba</label>
             <div class="in"><input type="email" id="o_correoprueba" placeholder="tu-correo@ejemplo.com" value="${c.correoPrueba||''}" style="width:100%"></div></div>
         </div>
+        <div style="padding:11px 13px;border-radius:10px;margin-bottom:12px;background:#f7fbfc;border:1px solid var(--ac-border)">
+          <div class="field" style="margin:0"><label>📩 Copia a la administración <span style="font-weight:400">(opcional)</span></label>
+            <input type="text" id="o_copiaadmin" placeholder="socia@ejemplo.com" value="${_esc(c.copiaAdmin||'')}" style="width:100%">
+            <div class="help">Cada vez que sale un estado de cuenta a un propietario, estas direcciones reciben un <b>aviso aparte</b> —con el mismo PDF adjunto— diciendo qué se envió y a quién. No es copia oculta: el propietario no ve estas direcciones. Varias, separadas por coma. Los <b>envíos masivos</b> mandan un solo resumen, no un correo por propietario.</div></div>
+        </div>
         <div class="toggle"><input type="checkbox" id="o_onpago" ${c.notifOnPago?'checked':''}>
           <div class="t-body"><b>1 · Confirmación de pago recibido</b>
             <div class="t-sub">En cuanto el pago se registra —a mano, desde la conciliación o desde un comprobante llegado por correo— el propietario recibe la confirmación con su estado de cuenta actualizado. <b>Compromiso del contrato.</b></div></div></div>
@@ -3289,6 +3301,7 @@ async function guardarOpts(){
     enviosActivos:document.getElementById('o_maestro').checked,
     modoPrueba:document.getElementById('o_prueba').checked,
     correoPrueba:document.getElementById('o_correoprueba').value.trim(),
+    copiaAdmin:document.getElementById('o_copiaadmin').value.trim(),
     notifOnPago:document.getElementById('o_onpago').checked,
     notifEstadoMensual:document.getElementById('o_estmes').checked,
     estadoMensualDia:+document.getElementById('o_estmesdia').value,

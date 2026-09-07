@@ -731,7 +731,7 @@ function resolverComprobante(data) {
     // quedó registrado: se reporta y se sigue.
     var _conf = null;
     if (_cfg().notifOnPago) {
-      try { _conf = enviarEstadoCuenta(clave, 'pago'); }
+      try { _conf = enviarEstadoCuenta(clave, 'pago', { monto: monto }); }
       catch (e) { _conf = { enviado: false, error: String(e && e.message || e) }; }
     }
     return { ok: true, estado: 'aplicado', clave: clave, monto: monto, cuota: prop.cuota, correo: _conf };
