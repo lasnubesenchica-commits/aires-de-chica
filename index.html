@@ -3042,6 +3042,9 @@ function _ctaFormModal(c){
       <div class="field"><label>Número de cuenta</label>
         <input type="text" id="ct_numero" value="${_esc(c?c.numero:'')}" style="width:100%">
         <div class="help">Con este número el sistema reconoce a cuál de tus cuentas llegó cada comprobante.</div></div>
+      <div class="field"><label>Otros identificadores <span style="font-weight:400">(opcional)</span></label>
+        <input type="text" id="ct_alias" value="${_esc(c?(c.alias||[]).join(', '):'')}" placeholder="1422" style="width:100%">
+        <div class="help">Separados por coma. Algunos bancos avisan con una <b>terminación de producto</b> que no son los últimos dígitos del número de cuenta; ponla aquí para que sus avisos se reconozcan solos.</div></div>
       <div class="field"><label>A nombre de</label>
         <input type="text" id="ct_titular" value="${_esc(c?c.titular:'')}" style="width:100%"></div>
     </div>
@@ -3076,6 +3079,7 @@ async function ctaGuardar(id,btn){
     banco:document.getElementById('ct_bancoNom').value.trim(),
     tipo:document.getElementById('ct_tipo').value.trim(),
     numero:document.getElementById('ct_numero').value.trim(),
+    alias:document.getElementById('ct_alias').value.trim(),
     titular:document.getElementById('ct_titular').value.trim(),
     fondoInicial:Number(document.getElementById('ct_fondo').value)||0,
     activa:document.getElementById('ct_activa').checked,

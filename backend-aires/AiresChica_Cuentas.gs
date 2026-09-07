@@ -32,7 +32,7 @@
 
 var SH_CUENTAS  = 'Cuentas';
 var COL_CUENTAS = ['id', 'nombre', 'banco', 'tipo', 'numero', 'titular', 'clase',
-                   'activa', 'esCobro', 'fondoInicial', 'orden', 'notas', 'creado'];
+                   'activa', 'esCobro', 'fondoInicial', 'orden', 'notas', 'creado', 'alias'];
 
 var CUENTA_CLASES = ['banco', 'porRendir'];
 
@@ -78,7 +78,14 @@ function _cuentaFila(r) {
     esCobro: (r.esCobro === true || String(r.esCobro).toLowerCase() === 'si'),
     fondoInicial: _round2(Number(r.fondoInicial) || 0),
     orden: Number(r.orden) || 0,
-    notas: String(r.notas || '')
+    notas: String(r.notas || ''),
+    // Otros identificadores con los que el banco nombra esta misma cuenta. Banco
+    // General, por ejemplo, avisa con una "terminación de producto" (1422) que no
+    // son los últimos dígitos del número de cuenta (…2903). Sin esto, sus avisos
+    // no casan con ninguna cuenta —o peor, casan con la del otro banco—.
+    alias: String(r.alias || '').split(/[,;]/)
+             .map(function (x) { return String(x).trim(); })
+             .filter(function (x) { return !!x; })
   };
 }
 
@@ -182,8 +189,17 @@ function cuentaPorId(id) {
 function cuentaPorNumero(numero) {
   var n = String(numero || '').replace(/\D/g, '');
   if (!n) return null;
-  var hits = getCuentas().filter(function (c) { return _numeroCasa(n, c.numero); });
+  var hits = getCuentas().filter(function (c) { return cuentaCasaNumero(c, n); });
   return hits.length === 1 ? hits[0] : null;
+}
+
+/** ¿Este número identifica a esta cuenta, por su número o por alguno de sus alias? */
+function cuentaCasaNumero(cuenta, leido) {
+  if (!cuenta) return false;
+  if (_numeroCasa(leido, cuenta.numero)) return true;
+  var al = cuenta.alias || [];
+  for (var i = 0; i < al.length; i++) if (_numeroCasa(leido, al[i])) return true;
+  return false;
 }
 
 /**
@@ -248,7 +264,8 @@ function guardarCuenta(data) {
     String(data.numero || '').trim(), String(data.titular || '').trim(),
     clase, (activa ? 'si' : 'no'), (esCobro ? 'si' : ''),
     _round2(Number(data.fondoInicial) || 0), Number(data.orden) || 0,
-    String(data.notas || ''), new Date()
+    String(data.notas || ''), new Date(),
+    String(data.alias || '').trim()
   ];
 
   var row = -1;

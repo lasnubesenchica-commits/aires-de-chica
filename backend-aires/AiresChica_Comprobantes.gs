@@ -236,7 +236,7 @@ function _verificarDestino(metodoPago, cuentaDestino, beneficiario, bancoOrigen)
 
   // Comparación por número de cuenta destino, SÓLO contra las candidatas.
   if (cd && bancos.length) {
-    var hits = bancos.filter(function (c) { return _numeroCasa(cd, c.numero); });
+    var hits = bancos.filter(function (c) { return cuentaCasaNumero(c, cd); });
     if (hits.length === 1) return { nivel: 'ok', cuentaId: hits[0].id,
       mensaje: 'Transferencia a la cuenta de ' + hits[0].banco + ' de Aires de Chicá (' + hits[0].numero + ').' };
     // Dos cuentas cuya terminación coincide no se pueden distinguir: adivinar

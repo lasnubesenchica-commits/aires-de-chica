@@ -56,7 +56,7 @@ var COL_PRESUP = ['anio','categoria','monto'];
  * con AC_SCHEMA_V, se omite. `ensureSheets(true)` la fuerza (lo usa el botón de
  * mantenimiento y conviene tras tocar el Sheet a mano).
  */
-var AC_SCHEMA_V = 'v7-2026-09-cuentas-numtexto';   // subir si cambian hojas o columnas
+var AC_SCHEMA_V = 'v8-2026-09-cuentas-alias';   // subir si cambian hojas o columnas
 var _ensuredEnEstaEjecucion = false;
 
 function ensureSheets(force) {
@@ -112,7 +112,8 @@ function ensureSheets(force) {
   // izquierda; con números largos llega a pasarlos a notación científica. En
   // cualquiera de los dos casos el instructivo de pago diría un número equivocado
   // y la detección de comprobantes dejaría de casar.
-  _forceText(ss.getSheetByName(SH_CUENTAS), ['numero'], COL_CUENTAS);
+  _ensureColumn(ss.getSheetByName(SH_CUENTAS), 'alias');
+  _forceText(ss.getSheetByName(SH_CUENTAS), ['numero', 'alias'], COL_CUENTAS);
   // Fijar el formato no arregla lo ya guardado: el valor sigue siendo numérico.
   // Se reescribe como texto una vez.
   _cuentasNumeroATexto(ss.getSheetByName(SH_CUENTAS));
