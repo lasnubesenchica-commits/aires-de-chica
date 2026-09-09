@@ -114,6 +114,9 @@ function estadoCuentaHTML(est) {
     '</td>' +
   '</tr></table>' +
 
+  // Cierre del mes pasado vs. mes en curso
+  _bloqueCorte(est, B) +
+
   // Datos de pago
   '<div style="margin-top:24px;padding:14px 16px;border:1px solid ' + B.border + ';border-radius:8px;background:#fbfeff">' +
     '<div style="font-weight:700;color:' + B.teal700 + ';margin-bottom:4px">Datos para el pago</div>' +
@@ -129,6 +132,60 @@ function estadoCuentaHTML(est) {
   '</div>' +
 
   '</div></body></html>';
+}
+
+/**
+ * Separa las dos cosas que el documento dice a la vez: el CIERRE del mes pasado
+ * —el dato del contrato, el que se reporta dentro de los 10 primeros días— y la
+ * cuota que corre ESTE mes, que todavía no vence.
+ *
+ * Existe porque el correo se anunciaba "al cierre de agosto" mientras la tabla
+ * llegaba hasta septiembre. Cortar la tabla en agosto habría cuadrado el título a
+ * costa de esconder la cuota en curso: el propietario leería "al día" y llegaría al
+ * día 1 con un recargo del 10% por una cuota que nadie le anunció. Se dicen las dos.
+ *
+ * El saldo al cierre sale de la fila del mes cerrado, cuya columna «Saldo total» ya
+ * es el acumulado al terminar ese mes, así que no se recalcula nada aquí.
+ */
+function _corteMensual(est) {
+  var asOf = (est.asOf instanceof Date) ? est.asOf : new Date(est.asOf);
+  var iCer = (asOf.getMonth() + 11) % 12;                                  // 0-11
+  var yCer = (asOf.getMonth() === 0) ? asOf.getFullYear() - 1 : asOf.getFullYear();
+  var key = _ymKey(yCer, iCer + 1);
+  var fila = null;
+  (est.mensual || []).forEach(function (r) { if (r.ym === key) fila = r; });
+  return {
+    // En enero el mes cerrado es de otro año y no está en esta tabla; tampoco hay
+    // fila si el propietario entró este mismo mes. En ambos casos se omite esa mitad.
+    hay: !!fila,
+    cerrado: AC_MESES_LARGO[iCer],
+    saldoCierre: fila ? (Number(fila.saldo) || 0) : 0,
+    enCurso: AC_MESES_LARGO[asOf.getMonth()],
+    cuotaMes: Number(est.cuotaMes) || 0,
+    pendienteMes: Number(est.pendienteMes) || 0,
+    ultimoDia: new Date(asOf.getFullYear(), asOf.getMonth() + 1, 0).getDate()
+  };
+}
+
+function _bloqueCorte(est, B) {
+  var c = _corteMensual(est);
+  if (!c.hay && c.cuotaMes <= 0.009) return '';
+  return '<div style="margin-top:18px;padding:13px 15px;border:1px solid ' + B.border + ';border-radius:8px">' +
+    '<div style="font-weight:700;color:' + B.teal700 + ';margin-bottom:6px">Cierre de ' + c.cerrado + ' y mes en curso</div>' +
+    (c.hay
+      ? '<div style="display:flex;justify-content:space-between;padding:3px 0">' +
+          '<span>Saldo al cierre de ' + c.cerrado + '</span>' +
+          '<span style="font-weight:700;color:' + (c.saldoCierre > 0.009 ? B.red : B.ok) + '">' + _money(c.saldoCierre) + '</span></div>'
+      : '') +
+    (c.cuotaMes > 0.009
+      ? '<div style="display:flex;justify-content:space-between;padding:3px 0">' +
+          '<span>Cuota de ' + c.enCurso + ' · vence el ' + c.ultimoDia + ' de ' + c.enCurso + '</span>' +
+          '<span style="font-weight:700;color:' + (c.pendienteMes > 0.009 ? B.coral : B.ok) + '">' +
+            (c.pendienteMes > 0.009 ? _money(c.pendienteMes) + ' pendiente' : 'cubierta') + '</span></div>'
+      : '') +
+    '<div class="muted" style="margin-top:8px;font-size:11px">Refleja los pagos <b>registrados</b> hasta la fecha de emisión. ' +
+    'Si realizó un pago después, aparecerá en su próximo estado de cuenta.</div>' +
+  '</div>';
 }
 
 function _totRow(label, val, color, B) {
@@ -265,8 +322,10 @@ function _cuerpoEstado(est, contexto) {
   } else if (contexto === 'estado') {
     entrada =
       '<p>Estimado(a) <b>' + est.nombre + '</b>,</p>' +
-      '<p>Adjuntamos su <b>estado de cuenta de mantenimiento</b> al cierre de <b>' + mesCerrado + '</b> ' +
-        '(Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
+      // "al cierre de X" a secas contradecía al adjunto, que llega hasta el mes en
+      // curso. El documento dice las dos cosas, y esta frase también.
+      '<p>Adjuntamos su <b>estado de cuenta de mantenimiento</b> al cierre de <b>' + mesCerrado + '</b>, ' +
+        'con el detalle actualizado a hoy (Lote ' + est.lote + ', ' + est.residencial + ').</p>' +
       '<p>' + saldoTxt + '</p>';
   } else {
     entrada =
