@@ -468,6 +468,78 @@ function _motivoEnvio(contexto) {
  *                             masivos mandan UN resumen en vez de una copia por
  *                             propietario), monto: el pago que originó el envío }
  */
+/**
+ * Qué tiene de malo una dirección de correo, en español.
+ *
+ * Existe porque Gmail rechaza con «Argumento no válido: : Invalid To header» y no
+ * dice cuál es el problema ni qué había escrito: en un envío a 70 propietarios eso
+ * deja un lote fuera sin ninguna pista de qué corregir.
+ *
+ * `visible` sustituye lo que no se ve —espacios de más, saltos de línea, espacios
+ * duros pegados al copiar de un PDF o de WhatsApp— por su código, que es justo lo
+ * que no se puede diagnosticar mirando la celda.
+ */
+function _diagnosticarCorreo(raw) {
+  var s = String(raw == null ? '' : raw);
+  var visible = s.replace(/[^\x20-\x7E]/g, function (ch) {
+    return '‹U+' + ('000' + ch.charCodeAt(0).toString(16).toUpperCase()).slice(-4) + '›';
+  }).replace(/^( +)|( +)$/g, function (m) { return '␣'.repeat(m.length); });
+  var t = s.trim();
+  var por = '';
+  if (!t) por = 'está vacío';
+  else if (/[,;]/.test(t)) por = 'trae más de una dirección (hay una coma o un punto y coma)';
+  else if (/[\/]| y /i.test(t)) por = 'parece traer dos direcciones separadas por «/» o «y»';
+  else if (/[^\x20-\x7E]/.test(t)) por = 'tiene un carácter invisible o acentuado';
+  else if (/\s/.test(t)) por = 'tiene un espacio en medio';
+  else if (t.indexOf('@') === -1) por = 'no tiene @';
+  else if (t.split('@').length > 2) por = 'tiene más de un @';
+  else if (t.split('@')[1].indexOf('.') === -1) por = 'al dominio le falta el punto (.com, .net…)';
+  else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(t)) por = 'no tiene forma de dirección';
+  return { valido: !por, por: por, limpio: t, visible: visible, largo: s.length };
+}
+
+/**
+ * DIAGNÓSTICO — ejecuta esto en el editor de Apps Script.
+ *
+ * Revisa el correo de TODOS los propietarios y dice cuáles no se pueden enviar y por
+ * qué, antes de que un envío masivo los deje fuera. Escribe el reporte en el log
+ * porque el editor no muestra el valor de retorno.
+ */
+function revisarCorreosPropietarios() {
+  var props = getPropietarios();
+  var malos = [], sin = [], bien = 0;
+  props.forEach(function (p) {
+    var d = _diagnosticarCorreo(p.email);
+    if (d.valido) { bien++; return; }
+    (d.limpio ? malos : sin).push({ p: p, d: d });
+  });
+
+  console.log('════ CORREOS DE PROPIETARIOS ════');
+  console.log('Revisados: %s · correctos: %s · mal escritos: %s · sin correo: %s',
+    props.length, bien, malos.length, sin.length);
+
+  if (malos.length) {
+    console.log('\n──── MAL ESCRITOS (a estos les falla el envío) ────');
+    malos.forEach(function (m) {
+      console.log('\n%s · %s · Lote %s', m.p.clave, m.p.nombre, m.p.lote);
+      console.log('   guardado : «%s»   (%s caracteres)', m.d.visible, m.d.largo);
+      console.log('   problema : %s', m.d.por);
+    });
+    console.log('\nCorrígelos en Propietarios → ficha del propietario → Correo.');
+    console.log('Los ‹U+00A0› son espacios duros: salen al copiar de PDF o WhatsApp y no se ven.');
+  }
+  if (sin.length) {
+    console.log('\n──── SIN CORREO (no reciben nada) ────');
+    sin.forEach(function (m) { console.log('   %s · %s · Lote %s', m.p.clave, m.p.nombre, m.p.lote); });
+  }
+  if (!malos.length && !sin.length) console.log('\nTodos los propietarios tienen un correo bien escrito.');
+
+  return { total: props.length, bien: bien,
+    malos: malos.map(function (m) { return { clave: m.p.clave, nombre: m.p.nombre,
+      guardado: m.d.visible, problema: m.d.por }; }),
+    sinCorreo: sin.map(function (m) { return m.p.clave; }) };
+}
+
 function enviarEstadoCuenta(clave, contexto, opts) {
   opts = opts || {};
   var cfg = _cfg();
@@ -477,6 +549,16 @@ function enviarEstadoCuenta(clave, contexto, opts) {
   var prueba = !!(cfg.modoPrueba && cfg.correoPrueba);
   var destino = prueba ? cfg.correoPrueba : est.email;
   if (!destino) return { enviado: false, motivo: 'Propietario sin correo', clave: clave, lote: est.lote };
+  // Se valida ANTES de generar el PDF y de llamar a Gmail. Si no, Gmail responde
+  // «Invalid To header» —sin decir cuál era el valor ni qué tenía de malo— y en un
+  // envío masivo ese lote queda fuera con un mensaje que no se puede accionar.
+  var _d = _diagnosticarCorreo(destino);
+  if (!_d.valido) {
+    return { enviado: false, clave: clave, lote: est.lote, correoInvalido: true,
+      motivo: 'Correo mal escrito («' + _d.visible + '»): ' + _d.por +
+              '. Corrígelo en la ficha del propietario.' };
+  }
+  destino = _d.limpio;
   var pdf = estadoCuentaPDF(est);
   var asunto = (prueba ? '[PRUEBA→' + est.email + '] ' : '') + _asuntoEstado(est, contexto);
   var cuerpo = _cuerpoEstado(est, contexto);
@@ -567,8 +649,11 @@ function enviarRecordatorios(tipo, lotes) {
     try {
       // sinCopia: un envío masivo manda UN resumen al final, no una copia por cabeza.
       var res = enviarEstadoCuenta(c.clave, tipo, { sinCopia: true });
-      enviados.push(res);
-      Utilities.sleep(400); // respeta cuota de envío
+      // Un correo mal escrito ya no revienta: devuelve enviado:false con el motivo.
+      // Hay que mirarlo, o contaría como enviado e iría en el resumen con su saldo,
+      // que es exactamente creerse que salió un correo que no salió.
+      if (!res.enviado) { sinCorreo.push(c.clave + ' — ' + (res.motivo || 'no enviado')); }
+      else { enviados.push(res); Utilities.sleep(400); } // respeta cuota de envío
     } catch (e) { sinCorreo.push(c.clave + ' (' + e + ')'); }
   });
   var res = { tipo: tipo, objetivo: objetivo.length, enviados: enviados.length, sinCorreo: sinCorreo, detalle: enviados };
