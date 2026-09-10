@@ -111,8 +111,7 @@ function _waProcesar(msg, metadata) {
   if (!id || _waYaVisto(id)) return;
   var de = String(msg.from || '');
   var tipo = String(msg.type || '');
-  var texto = (msg.text && msg.text.body) ? String(msg.text.body) :
-              (msg.interactive ? JSON.stringify(msg.interactive).slice(0, 300) : '');
+  var texto = _waTextoDe(msg);
 
   var quien = identificarPorCelular(de);
   var clave = quien.prop ? quien.prop.clave : '';
@@ -127,10 +126,40 @@ function _waProcesar(msg, metadata) {
   Logger.log('WhatsApp ← %s (%s) %s: %s', quien.e164 || de,
     clave || quien.motivo || 'desconocido', tipo, texto.slice(0, 80));
 
-  // Mientras el bot no conteste, la promesa de «responda a este mensaje» la cumple una
-  // persona. El aviso va DESPUÉS de anotar: si falla, el mensaje ya está guardado.
-  try { _waAvisarAdmin(info); }
-  catch (err) { Logger.log('WhatsApp aviso admin ERROR: ' + (err && err.message || err)); }
+  // El bot contesta lo que sabe; lo que no, se avisa a una persona. Quién avisa lo
+  // decide aquí y no el bot, para que un fallo del bot NO deje el mensaje sin atender:
+  // si revienta, se avisa igual.
+  var atendido = null;
+  try {
+    if (typeof _botAtender === 'function') atendido = _botAtender(info, msg);
+  } catch (err) {
+    Logger.log('Bot ERROR: ' + (err && err.message || err));
+  }
+  if (!atendido || atendido.avisar !== false) {
+    try { _waAvisarAdmin(info, atendido); }
+    catch (err) { Logger.log('WhatsApp aviso admin ERROR: ' + (err && err.message || err)); }
+  }
+}
+
+/**
+ * Qué escribió, en algo legible.
+ *
+ * Un botón llegaba como el JSON crudo de Meta, que en la hoja y en el aviso a la
+ * administración no se lee. Un archivo no traía nada, y «(vacío)» en la bitácora
+ * parece un fallo cuando en realidad alguien mandó una foto.
+ */
+function _waTextoDe(msg) {
+  if (msg.text && msg.text.body) return String(msg.text.body);
+  var i = msg.interactive || {};
+  var b = i.button_reply || i.list_reply;
+  if (b) return '[botón] ' + (b.title || b.id || '');
+  if (msg.button && msg.button.text) return '[botón] ' + msg.button.text;
+  if (msg.image) return '[imagen]' + (msg.image.caption ? ' ' + msg.image.caption : '');
+  if (msg.document) return '[archivo] ' + (msg.document.filename || '');
+  if (msg.audio || msg.voice) return '[nota de voz]';
+  if (msg.location) return '[ubicación]';
+  if (msg.sticker) return '[sticker]';
+  return msg.type ? '[' + msg.type + ']' : '';
 }
 
 /* ─────────────── aviso a la administración ─────────────── */
@@ -187,7 +216,7 @@ function _waAdminsDetalle() {
  * números de META_ADMIN_WHATSAPP, nunca a un propietario, y su razón de ser es que
  * alguien lea lo que llega mientras el bot todavía no contesta.
  */
-function _waAvisarAdmin(info) {
+function _waAvisarAdmin(info, atendido) {
   var admins = _waAdmins();
   if (!admins.length) return { avisados: 0, motivo: 'sin META_ADMIN_WHATSAPP' };
   var quien = info.telefono || '';
@@ -209,10 +238,16 @@ function _waAvisarAdmin(info) {
     var texto = String(info.texto || '').slice(0, 300);
     var enlace = 'https://wa.me/' + quien.replace(/\D/g, '');
 
+    // Un comprobante que llega por WhatsApp no se puede ver desde ningún buzón: el
+    // número vive en la API, no en la app. El enlace de Drive es la única forma de
+    // que quien administra vea la foto que mandaron.
+    var adjunto = (atendido && atendido.adjunto && atendido.adjunto.ok)
+      ? '\nComprobante recibido: ' + atendido.adjunto.url : '';
+
     var r = enviarWhatsAppTexto(adm,
       'Consulta pendiente en el WhatsApp de la Asociación.\n\n' +
       'Lote ' + lote + ' · ' + nombre + '\n' +
-      'Escribió: ' + texto + '\n\n' +
+      'Escribió: ' + texto + adjunto + '\n\n' +
       'Para contestarle directamente: ' + enlace);
 
     // 131047 es exactamente «se cerró la ventana de 24 horas». Ahí sí toca plantilla.
