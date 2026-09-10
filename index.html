@@ -339,9 +339,16 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 /* Lista de avisos de Opciones: nombre y botones en una fila que sabe partirse.
    `justify-content:space-between` los separa cuando caben; al no caber, el bloque
    de botones baja entero en vez de desbordar la tarjeta. */
-.mailCtx { display:flex; flex-direction:column; gap:3px; margin-right:auto; }
-.mailCtx select { padding:7px 9px; border:1px solid var(--ac-border); border-radius:8px;
-                  font:inherit; font-size:.82rem; background:#fff; }
+/* El «cómo» modifica al «enviar», así que van pegados y viajan juntos: sueltos en la
+   fila se leían como un cuarto control y, al no caber, dejaban el botón en otra
+   línea. El selector dice el modo y el botón dice la acción; no hace falta rótulo. */
+.mailGroup { display:flex; align-items:stretch; border:1px solid var(--ac-teal);
+             border-radius:9px; overflow:hidden; }
+.mailGroup select { border:0; border-right:1px solid var(--ac-border); background:#fff;
+                    color:var(--ac-ink); font:inherit; font-size:.82rem; padding:0 10px;
+                    max-width:200px; cursor:pointer; }
+.mailGroup .btn { border-radius:0; }
+.mailGroup:has(.btn:disabled) { border-color:var(--ac-border); }
 
 .avisoList { display:flex; flex-direction:column; }
 .avisoRow { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center;
@@ -446,6 +453,9 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   /* Acciones del modal apiladas a lo ancho en móvil */
   .modal-actions { flex-direction:column; }
   .modal-actions .btn { width:100%; }
+  .modal-actions .mailGroup { width:100%; }
+  .modal-actions .mailGroup select { flex:1 1 auto; max-width:none; padding:10px; }
+  .modal-actions .mailGroup .btn { width:auto; flex:0 0 auto; }
 }
 input[type=search], input[type=password], input[type=text], input[type=number], input[type=email], input[type=tel], input[type=date], input[type=month], select, textarea {
   font:inherit; font-size:16px; padding:8px 12px; border:1px solid var(--ac-border); border-radius:9px; background:#fff; color:var(--ac-ink); }
@@ -1944,13 +1954,13 @@ function _renderEstado(e, opts){
     ${opts.sim?'':`<div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
       <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar pago</button>
-      <label class="mailCtx" title="Cambia el asunto y la frase de entrada. El PDF y el saldo son los mismos.">
-        <span class="cbl">Como</span>
-        <select id="mailContexto">
-          <option value="">Estado actualizado a hoy</option>
-          <option value="estado">Envío del mes (al cierre)</option>
-        </select></label>
-      <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
+      <div class="mailGroup" title="Cambia el asunto y la frase de entrada. El PDF y el saldo son los mismos.">
+        <select id="mailContexto" aria-label="Cómo se presenta el estado de cuenta">
+          <option value="">Actualizado a hoy</option>
+          <option value="estado">Del cierre del mes</option>
+        </select>
+        <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
+      </div>
     </div>
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
       <div style="font-weight:600;margin-bottom:2px">Registrar pago manual</div>
