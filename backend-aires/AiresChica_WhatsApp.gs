@@ -15,6 +15,8 @@
  *   META_WABA_ID         — opcional; el identificador de la cuenta de WhatsApp Business.
  *                          Sólo sirve para que el diagnóstico pueda comprobar que la
  *                          suscripción al webhook está encendida.
+ *   META_ADMIN_WHATSAPP  — celulares de quien administra, separados por coma. Es la
+ *                          ÚNICA lista a la que sale un aviso de consulta pendiente.
  *
  * ── Sobre la seguridad de esta puerta ──────────────────────────────────────────
  * Meta firma cada webhook con la cabecera `X-Hub-Signature-256`, y `doPost(e)` de
@@ -31,6 +33,7 @@ var WA_PROP_VERIFY = 'META_VERIFY_TOKEN';
 var WA_PROP_TOKEN  = 'META_WHATSAPP_TOKEN';
 var WA_PROP_PHONE  = 'META_PHONE_ID';
 var WA_PROP_WABA   = 'META_WABA_ID';
+var WA_PROP_ADMIN  = 'META_ADMIN_WHATSAPP';
 var WA_GRAPH       = 'https://graph.facebook.com/v21.0';
 var SH_WA          = 'WhatsApp';
 var COL_WA         = ['id', 'fecha', 'direccion', 'telefono', 'clave', 'nombre',
@@ -117,11 +120,90 @@ function _waProcesar(msg, metadata) {
   var nota = quien.motivo || (quien.claves && quien.claves.length > 1
     ? 'varios lotes: ' + quien.claves.join(', ') : '');
 
-  _waAnotar({ id: id, direccion: 'entra', telefono: quien.e164 || de, clave: clave,
-              nombre: nombre, tipo: tipo, texto: texto.slice(0, 500),
-              estado: 'recibido', nota: nota });
+  var info = { id: id, direccion: 'entra', telefono: quien.e164 || de, clave: clave,
+               nombre: nombre, tipo: tipo, texto: texto.slice(0, 500),
+               estado: 'recibido', nota: nota };
+  _waAnotar(info);
   Logger.log('WhatsApp ← %s (%s) %s: %s', quien.e164 || de,
     clave || quien.motivo || 'desconocido', tipo, texto.slice(0, 80));
+
+  // Mientras el bot no conteste, la promesa de «responda a este mensaje» la cumple una
+  // persona. El aviso va DESPUÉS de anotar: si falla, el mensaje ya está guardado.
+  try { _waAvisarAdmin(info); }
+  catch (err) { Logger.log('WhatsApp aviso admin ERROR: ' + (err && err.message || err)); }
+}
+
+/* ─────────────── aviso a la administración ─────────────── */
+
+/**
+ * Los celulares de quien administra, de META_ADMIN_WHATSAPP (separados por coma).
+ *
+ * Es una propiedad del script y no una opción del panel a propósito: es la única lista
+ * a la que este módulo puede mandar un aviso, y no debe poder cambiarla nadie que entre
+ * al panel. Un error aquí manda la consulta de un propietario a un desconocido.
+ */
+function _waAdmins() {
+  return String(_waProps().getProperty(WA_PROP_ADMIN) || '')
+    .split(/[,;]/)
+    .map(function (s) { return normalizarCelular(s, true); })
+    .filter(function (n) { return n.ok; })
+    .map(function (n) { return n.e164; });
+}
+
+/**
+ * Avisa a la administración de un mensaje que el sistema no contesta.
+ *
+ * Dos cosas que no son obvias:
+ *
+ * · La ventana de 24 horas también corre para el celular de quien administra. Si hace
+ *   más de un día que no le escribe al número de la Asociación, el texto libre falla.
+ *   Por eso se intenta primero el texto —que dentro de la ventana es gratis y llega
+ *   completo— y sólo si Meta lo rechaza se gasta una plantilla.
+ *
+ * · Se avisa UNA vez por propietario y por hora. Sin eso, alguien que escribe cinco
+ *   mensajes seguidos genera cinco avisos, y si son plantillas, cinco cobros.
+ *
+ * Este aviso NO pasa por el interruptor maestro de envíos: sólo puede salir a los
+ * números de META_ADMIN_WHATSAPP, nunca a un propietario, y su razón de ser es que
+ * alguien lea lo que llega mientras el bot todavía no contesta.
+ */
+function _waAvisarAdmin(info) {
+  var admins = _waAdmins();
+  if (!admins.length) return { avisados: 0, motivo: 'sin META_ADMIN_WHATSAPP' };
+  var quien = info.telefono || '';
+  var res = { avisados: 0, fallos: [] };
+
+  admins.forEach(function (adm) {
+    // Quien administra también es propietario: no tiene sentido avisarle de su propio
+    // mensaje, y sin esto el sistema se escribe a sí mismo.
+    if (adm === quien) return;
+    var llave = 'wa_aviso_' + adm.replace(/\D/g, '') + '_' + quien.replace(/\D/g, '');
+    try {
+      var c = CacheService.getScriptCache();
+      if (c.get(llave)) return;
+      c.put(llave, '1', 3600);
+    } catch (e) {}
+
+    var lote = info.clave || 'sin identificar';
+    var nombre = info.nombre || info.nota || 'desconocido';
+    var texto = String(info.texto || '').slice(0, 300);
+    var enlace = 'https://wa.me/' + quien.replace(/\D/g, '');
+
+    var r = enviarWhatsAppTexto(adm,
+      'Consulta pendiente en el WhatsApp de la Asociación.\n\n' +
+      'Lote ' + lote + ' · ' + nombre + '\n' +
+      'Escribió: ' + texto + '\n\n' +
+      'Para contestarle directamente: ' + enlace);
+
+    // 131047 es exactamente «se cerró la ventana de 24 horas». Ahí sí toca plantilla.
+    if (!r.ok && String(r.codigo) === '131047' && typeof enviarPlantillaWhatsApp === 'function') {
+      r = enviarPlantillaWhatsApp(adm, 'consulta_pendiente',
+        [lote, nombre, texto, enlace], { nota: 'aviso-admin' });
+    }
+    if (r.ok) res.avisados++;
+    else res.fallos.push(adm + ': ' + r.error);
+  });
+  return res;
 }
 
 /** Acuse de Meta sobre un mensaje que mandamos: entregado, leído o fallido. */

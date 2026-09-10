@@ -116,6 +116,27 @@ function _waPlantillas() {
                  'a 2:00 p. m. Recomendamos almacenar agua la noche anterior.',
                  'https://admin.airesdechica.org/c/ejemplo'],
       pie: WA_PIE
+    },
+    {
+      nombre: 'consulta_pendiente',
+      categoria: 'UTILITY',
+      idioma: 'es',
+      para: 'NO va a propietarios: avisa a la administración de una consulta que el ' +
+            'sistema no contesta. Hace falta como plantilla porque la ventana de 24 ' +
+            'horas también corre para el celular de quien administra.',
+      encabezado: null,
+      cuerpo:
+        'Consulta pendiente en el WhatsApp de la Asociación.\n' +
+        '\n' +
+        'Lote {{1}} · {{2}}\n' +
+        'Escribió: {{3}}\n' +
+        '\n' +
+        'Para contestarle directamente: {{4}}\n' +
+        '\n' +
+        'La consulta quedó anotada en la hoja WhatsApp del sistema.',
+      ejemplos: ['Q-9', 'Ana Rosa Tejada', '¿Cuánto debo de este mes?',
+                 'https://wa.me/50761112233'],
+      pie: WA_PIE
     }
   ];
 }
@@ -400,6 +421,76 @@ function verPlantillas() {
   var listas = r.lista.filter(function (p) { return p.status === 'APPROVED'; }).length;
   console.log('\n%s de %s aprobadas.', listas, r.lista.length);
   return r;
+}
+
+/* ─────────────── envío por plantilla ─────────────── */
+
+/**
+ * Manda una plantilla aprobada. Es lo único que Meta entrega fuera de la ventana de 24
+ * horas, y por eso todo envío que empieza el sistema —el del día 5, un recordatorio, un
+ * aviso a la administración— pasa por aquí.
+ *
+ * Los parámetros van EN ORDEN: el primero es {{1}}. Si sobran o faltan, Meta responde
+ * 132000 y no dice cuántos esperaba, así que se comprueba antes contra la definición.
+ *
+ * opts.documentoId — id de un archivo ya subido a Meta, para las plantillas cuyo
+ * encabezado es un documento. No admite enlaces: el estado de cuenta no sale a ninguna
+ * URL pública.
+ */
+function enviarPlantillaWhatsApp(telefono, plantilla, params, opts) {
+  opts = opts || {};
+  var token = _waToken(), phoneId = _waPhoneId();
+  if (!token || !phoneId) return { ok: false, error: 'Faltan META_WHATSAPP_TOKEN o META_PHONE_ID.' };
+
+  var def = null;
+  _waPlantillas().forEach(function (d) { if (d.nombre === plantilla) def = d; });
+  if (!def) return { ok: false, error: 'No existe la plantilla «' + plantilla + '» en el sistema.' };
+  params = params || [];
+  var esperados = (def.ejemplos || []).length;
+  if (params.length !== esperados) {
+    return { ok: false, error: 'La plantilla «' + plantilla + '» lleva ' + esperados +
+             ' valores y se le pasaron ' + params.length + '.' };
+  }
+  if (def.encabezado && def.encabezado.tipo === 'DOCUMENT' && !opts.documentoId) {
+    return { ok: false, error: 'La plantilla «' + plantilla + '» lleva un documento y no se le pasó ninguno.' };
+  }
+
+  var n = normalizarCelular(telefono);
+  if (!n.ok) return { ok: false, error: 'Número no utilizable: ' + n.por };
+
+  var comps = [];
+  if (def.encabezado && def.encabezado.tipo === 'DOCUMENT') {
+    comps.push({ type: 'header', parameters: [{ type: 'document',
+      document: { id: String(opts.documentoId), filename: opts.nombreArchivo || 'documento.pdf' } }] });
+  }
+  comps.push({ type: 'body', parameters: params.map(function (v) {
+    // Meta rechaza saltos de línea y tabulaciones dentro de un parámetro.
+    return { type: 'text', text: String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ') };
+  }) });
+
+  try {
+    var r = UrlFetchApp.fetch(WA_GRAPH + '/' + phoneId + '/messages', {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ messaging_product: 'whatsapp', to: n.e164.replace('+', ''),
+        type: 'template',
+        template: { name: plantilla, language: { code: def.idioma || 'es' }, components: comps } }),
+      muteHttpExceptions: true
+    });
+    var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    if (r.getResponseCode() !== 200) {
+      var err = (j.error && (j.error.error_user_msg || j.error.message)) || r.getContentText().slice(0, 200);
+      _waAnotar({ direccion: 'sale', telefono: n.e164, tipo: 'template',
+                  texto: plantilla, estado: 'error', nota: err });
+      return { ok: false, error: err, codigo: (j.error && j.error.code) || r.getResponseCode() };
+    }
+    var mid = (j.messages && j.messages[0] && j.messages[0].id) || '';
+    _waAnotar({ id: mid, direccion: 'sale', telefono: n.e164, tipo: 'template',
+                texto: plantilla, estado: 'enviado', nota: opts.nota || '' });
+    return { ok: true, id: mid };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
 }
 
 /** Muestra en el registro cómo se verá cada plantilla, con los ejemplos puestos. */
