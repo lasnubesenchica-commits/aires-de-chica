@@ -334,6 +334,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .seg-btn.active:hover { background:var(--ac-teal-600); }
 .pill { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
+/* Etiqueta de un campo dentro de una celda: cuando dos decisiones comparten
+   columna, cada una necesita decir cuál es sin robarle ancho a la tabla. */
+.cbl { font-size:.66rem; font-weight:700; color:var(--ac-muted); text-transform:uppercase; letter-spacing:.04em; }
+.cAplicar { display:flex; flex-direction:column; gap:9px; min-width:210px; }
+.cAplicar select { width:100%; padding:6px; border:1px solid var(--ac-border); border-radius:7px; font:inherit; font-size:.82rem; }
+.cAplicar .cbl-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap; }
 .link-btn { border:0; background:none; color:var(--ac-teal-600); font:inherit; font-weight:600; cursor:pointer; padding:0; }
 .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 /* Tarjetas de cuentas (vista móvil) */
@@ -3819,10 +3825,25 @@ function _cbBancoSelect(c){
   const nota=det
     ? '<span style="color:var(--ac-ok)">✓ detectada del aviso</span>'
     : '<span class="muted">sin detectar · queda la de cobro</span>';
-  return `<div style="margin-bottom:3px;font-size:.66rem">${nota}</div>
-    <select class="cBanco" style="max-width:190px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem">${
+  return `<div class="cbl-row"><span class="cbl">Entró a</span><span style="font-size:.66rem">${nota}</span></div>
+    <select class="cBanco">${
       (CUENTAS_LISTA||[]).map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${_esc(x.nombre)}</option>`).join('')
     }</select>`;
+}
+
+/* Las dos decisiones que toma quien confirma —a quién y a qué cuenta— comparten
+   columna. Separadas eran dos columnas de selectores anchos que empujaban la tabla
+   fuera de la pantalla; apiladas caben, y además se leen juntas, que es como se
+   deciden. Cada una conserva su etiqueta y su señal de confianza. */
+function _cbAplicarA(c, opts){
+  const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
+  return `<div class="cAplicar">
+    <div>
+      <div class="cbl-row"><span class="cbl">Propietario</span><span class="pill ${conf}" style="font-size:.62rem">${c.metodo}</span></div>
+      <select class="cCuenta"><option value="">— asignar —</option>${opts}</select>
+    </div>
+    <div>${_cbBancoSelect(c)}</div>
+  </div>`;
 }
 
 function _verifBanner(v){
@@ -3846,16 +3867,15 @@ async function renderComprob(){
   const apl=aplAll.slice(0,50), rech=rechAll.slice(0,50);   // últimos 50 (getComprobantes viene ordenado por fecha desc)
   const adj=c=>c.adjuntoUrl?`<a href="${c.adjuntoUrl}" target="_blank" class="cprev" style="font-size:.78rem;color:var(--ac-teal-600);font-weight:600">📎 Ver comprobante</a>`:'<span class="muted" style="font-size:.72rem">sin adjunto</span>';
   const pendHtml = !pend.length ? '<div class="muted" style="padding:16px 0">No hay comprobantes pendientes. Pulsa <b>“Revisar correo ahora”</b> para leer el buzón.</div>'
-    : `<table class="stack-table"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Entró a</th><th>Propietario</th><th></th></tr></thead><tbody>${
-      pend.map(c=>{ const conf=(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
-      return `<tr data-id="${c.id}"><td data-label="Fecha">${_fx(c.fecha)}</td>
-        <td class="stack-col" data-label="Remitente"><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div></td>
-        <td class="stack-col" data-label="Asunto / adjunto" style="max-width:240px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}${c.metodoPago?`<div class="muted" style="font-size:.7rem">Método: ${String(c.metodoPago).replace(/</g,'&lt;')}</div>`:''}<div>${_verifBadge(c.verif)}</div></td>
+    : `<table class="stack-table"><thead><tr><th>Recibido</th><th>Asunto / adjunto</th><th class="num">Monto</th><th>Aplicar a</th><th></th></tr></thead><tbody>${
+      pend.map(c=>{
+      return `<tr data-id="${c.id}">
+        <td class="stack-col" data-label="Recibido"><div>${c.nombre||'<span class="muted">—</span>'}</div><div class="muted" style="font-size:.72rem">${(c.remitente||'').replace(/</g,'&lt;')}</div><div class="muted" style="font-size:.72rem">${_fx(c.fecha)}</div></td>
+        <td class="stack-col" data-label="Asunto / adjunto" style="max-width:280px"><div style="white-space:normal">${c.asunto||'<span class="muted">(sin asunto)</span>'}</div>${adj(c)}${c.referencia?`<div class="muted" style="font-size:.7rem">Ref: ${String(c.referencia).replace(/</g,'&lt;')}</div>`:''}${c.metodoPago?`<div class="muted" style="font-size:.7rem">Método: ${String(c.metodoPago).replace(/</g,'&lt;')}</div>`:''}<div>${_verifBadge(c.verif)}</div></td>
         <td class="num" data-label="Monto"><input type="number" step="0.01" min="0" class="cMonto" value="${c.monto||''}" placeholder="0.00" style="width:84px;text-align:right;padding:5px 6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit"></td>
-        <td class="stack-col" data-label="Entró a">${_cbBancoSelect(c)}</td>
-        <td class="stack-col" data-label="Propietario"><div style="margin-bottom:3px"><span class="pill ${conf}" style="font-size:.62rem">${c.metodo}</span></div><select class="cCuenta" style="max-width:230px;padding:6px;border:1px solid var(--ac-border);border-radius:7px;font:inherit;font-size:.82rem"><option value="">— asignar —</option>${opts}</select></td>
-        <td class="acts" style="white-space:nowrap"><button class="btn green" style="padding:6px 10px" onclick="previewComprob('${c.id}',this)">Confirmar</button>
-          <button class="link-btn" style="color:var(--ac-danger);margin-left:8px" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`; }).join('')
+        <td class="stack-col" data-label="Aplicar a">${_cbAplicarA(c, opts)}</td>
+        <td class="acts"><button class="btn green" style="padding:6px 10px" onclick="previewComprob('${c.id}',this)">Confirmar</button>
+          <button class="link-btn" style="color:var(--ac-danger)" onclick="rechazarComprob('${c.id}',this)">Rechazar</button></td></tr>`; }).join('')
     }</tbody></table>`;
   const descHtml = !desc.length ? '' : `<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--ac-muted);font-weight:600">Descartados (${desc.length}) — sin adjunto o no parecen pago</summary>
     <table class="stack-table" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Remitente</th><th>Asunto / adjunto</th><th>Motivo</th><th></th></tr></thead><tbody>${
@@ -3981,7 +4001,7 @@ async function previewComprob(id,btn){
   catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) alert('Error: '+e); return; }
   btn.disabled=false; btn.textContent=t;
   const det=document.createElement('tr'); det.className='cdet'; det.dataset.for=id;
-  det.innerHTML=`<td colspan="7" style="background:var(--ac-teal-50,#eef8f6);border-left:3px solid var(--ac-teal-600,#0d9488);padding:14px 16px">${_preHtml(d,id)}</td>`;
+  det.innerHTML=`<td colspan="5" style="background:var(--ac-teal-50,#eef8f6);border-left:3px solid var(--ac-teal-600,#0d9488);padding:14px 16px">${_preHtml(d,id)}</td>`;
   tr.after(det);
 }
 async function aplicarComprob(id,btn){
