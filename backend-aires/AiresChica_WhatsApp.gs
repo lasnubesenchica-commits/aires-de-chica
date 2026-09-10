@@ -12,6 +12,9 @@
  *   META_WHATSAPP_TOKEN  — token permanente (el de usuario del sistema, NO el de
  *                          prueba: ese caduca en 24 horas).
  *   META_PHONE_ID        — el `phone_number_id` que da Meta. No es el número.
+ *   META_WABA_ID         — opcional; el identificador de la cuenta de WhatsApp Business.
+ *                          Sólo sirve para que el diagnóstico pueda comprobar que la
+ *                          suscripción al webhook está encendida.
  *
  * ── Sobre la seguridad de esta puerta ──────────────────────────────────────────
  * Meta firma cada webhook con la cabecera `X-Hub-Signature-256`, y `doPost(e)` de
@@ -27,6 +30,7 @@
 var WA_PROP_VERIFY = 'META_VERIFY_TOKEN';
 var WA_PROP_TOKEN  = 'META_WHATSAPP_TOKEN';
 var WA_PROP_PHONE  = 'META_PHONE_ID';
+var WA_PROP_WABA   = 'META_WABA_ID';
 var WA_GRAPH       = 'https://graph.facebook.com/v21.0';
 var SH_WA          = 'WhatsApp';
 var COL_WA         = ['id', 'fecha', 'direccion', 'telefono', 'clave', 'nombre',
@@ -275,12 +279,98 @@ function diagnosticarWhatsApp() {
     console.log('  Número      : %s', j.display_phone_number || '—');
     console.log('  A nombre de : %s', j.verified_name || '—');
     console.log('  Calidad     : %s', j.quality_rating || '—');
+
+    var sus = _waComprobarSuscripcion();
+    console.log('\n──── SUSCRIPCIÓN AL WEBHOOK ────');
+    if (sus.sinWaba) {
+      console.log('(No se puede comprobar: falta META_WABA_ID en las propiedades del script.');
+      console.log(' Es el identificador que aparece en el Administrador de WhatsApp, bajo el');
+      console.log(' nombre de la cuenta. Sin él esto no se comprueba, pero todo lo demás funciona.)');
+    } else if (!sus.ok) {
+      console.log('✗ No se pudo comprobar: %s', sus.error);
+    } else if (!sus.suscrita) {
+      console.log('✗ LA APP NO ESTÁ SUSCRITA a esta cuenta de WhatsApp.');
+      console.log('  Meta verifica la URL pero no te manda ni un mensaje. En el Administrador');
+      console.log('  de WhatsApp → Configuración → Webhooks, enciende «Suscribir webhooks».');
+    } else {
+      console.log('✓ La app está suscrita.');
+      console.log('  Campos: %s', sus.campos.length ? sus.campos.join(', ') : '(ninguno)');
+      if (sus.campos.length && sus.campos.indexOf('messages') < 0) {
+        console.log('  ⚠ Falta el campo «messages», que es el único imprescindible.');
+      }
+    }
+
     console.log('\nWebhook: la URL del despliegue de este proyecto, con hub.mode/hub.verify_token.');
-    return { listo: true, numero: j.display_phone_number, nombre: j.verified_name };
+    return { listo: true, numero: j.display_phone_number, nombre: j.verified_name,
+             suscrita: sus.suscrita === true };
   } catch (e) {
     console.log('\n✗ No se pudo consultar a Meta: %s', String(e && e.message || e));
     return { listo: false };
   }
+}
+
+/**
+ * ¿Está la app suscrita a los webhooks de la cuenta de WhatsApp?
+ *
+ * Es el paso que más silenciosamente se olvida: la URL se verifica bien, Meta la da por
+ * buena, y sin este interruptor no llega ni un mensaje. Desde fuera se ve idéntico a que
+ * el código esté roto, así que conviene poder responderlo sin adivinar.
+ */
+function _waComprobarSuscripcion() {
+  var waba = String(_waProps().getProperty(WA_PROP_WABA) || '').trim();
+  var tok = _waToken();
+  if (!waba) return { ok: false, sinWaba: true };
+  if (!tok) return { ok: false, error: 'falta META_WHATSAPP_TOKEN' };
+  try {
+    var r = UrlFetchApp.fetch(WA_GRAPH + '/' + waba + '/subscribed_apps',
+      { headers: { Authorization: 'Bearer ' + tok }, muteHttpExceptions: true });
+    var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    if (r.getResponseCode() !== 200) {
+      return { ok: false, error: (j.error && j.error.message) || r.getContentText().slice(0, 200) };
+    }
+    var apps = j.data || [];
+    var campos = [];
+    apps.forEach(function (a) {
+      ((a.whatsapp_business_api_data && a.whatsapp_business_api_data.subscribed_fields) ||
+       a.subscribed_fields || []).forEach(function (c) {
+        if (campos.indexOf(c) < 0) campos.push(String(c));
+      });
+    });
+    return { ok: true, suscrita: apps.length > 0, apps: apps.length, campos: campos };
+  } catch (e) {
+    // Nunca se registra la URL: lleva el token en la cabecera, pero por costumbre.
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+/**
+ * Las últimas conversaciones anotadas, para verlas desde el editor sin abrir la hoja.
+ * Es la comprobación de que un mensaje entrante llegó de verdad y a quién se atribuyó.
+ */
+function ultimosWhatsApp(cuantos) {
+  var n = Number(cuantos) > 0 ? Number(cuantos) : 10;
+  var sh = _waSheet();
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) {
+    console.log('La hoja «%s» está vacía: todavía no ha entrado ni salido ningún mensaje.', SH_WA);
+    console.log('Escríbele algo al número desde tu celular y vuelve a ejecutar esto.');
+    return [];
+  }
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var col = function (f, c) { return f[h.indexOf(c)]; };
+  var filas = vals.slice(Math.max(1, vals.length - n));
+  console.log('════ ÚLTIMOS %s MENSAJES ════', filas.length);
+  filas.forEach(function (f) {
+    var fecha = col(f, 'fecha');
+    console.log('%s  %s  %s  %s  %s%s',
+      fecha instanceof Date ? Utilities.formatDate(fecha, CONFIG.TZ, 'dd/MM HH:mm') : String(fecha),
+      col(f, 'direccion') === 'sale' ? '→' : '←',
+      col(f, 'telefono') || '—',
+      col(f, 'clave') ? col(f, 'clave') + ' · ' + col(f, 'nombre') : '(sin identificar)',
+      String(col(f, 'texto') || '').slice(0, 60),
+      col(f, 'nota') ? '   [' + col(f, 'nota') + ']' : '');
+  });
+  return filas;
 }
 
 /** Manda un mensaje de prueba al número que le pases. Requiere la ventana de 24 h. */
