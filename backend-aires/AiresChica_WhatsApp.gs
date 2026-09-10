@@ -292,10 +292,14 @@ function diagnosticarWhatsApp() {
       console.log('✗ LA APP NO ESTÁ SUSCRITA a esta cuenta de WhatsApp.');
       console.log('  Meta verifica la URL pero no te manda ni un mensaje. En el Administrador');
       console.log('  de WhatsApp → Configuración → Webhooks, enciende «Suscribir webhooks».');
+    } else if (!sus.campos.length) {
+      console.log('✓ La app está suscrita a esta cuenta de WhatsApp.');
+      console.log('  (Meta no informa aquí a qué campos; eso se configura en el panel de');
+      console.log('   Webhooks de la app y no se puede consultar con este token. La prueba');
+      console.log('   de verdad es escribirle al número y mirar ultimosWhatsApp().)');
     } else {
-      console.log('✓ La app está suscrita.');
-      console.log('  Campos: %s', sus.campos.length ? sus.campos.join(', ') : '(ninguno)');
-      if (sus.campos.length && sus.campos.indexOf('messages') < 0) {
+      console.log('✓ La app está suscrita. Campos: %s', sus.campos.join(', '));
+      if (sus.campos.indexOf('messages') < 0) {
         console.log('  ⚠ Falta el campo «messages», que es el único imprescindible.');
       }
     }
