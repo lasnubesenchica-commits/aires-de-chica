@@ -336,6 +336,16 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .pill.ok { background:#e4f5ec; color:var(--ac-ok); } .pill.warn { background:#fbf0dc; color:var(--ac-warn); } .pill.red { background:#fbe6e3; color:var(--ac-danger); }
 /* Etiqueta de un campo dentro de una celda: cuando dos decisiones comparten
    columna, cada una necesita decir cuál es sin robarle ancho a la tabla. */
+/* Lista de avisos de Opciones: nombre y botones en una fila que sabe partirse.
+   `justify-content:space-between` los separa cuando caben; al no caber, el bloque
+   de botones baja entero en vez de desbordar la tarjeta. */
+.avisoList { display:flex; flex-direction:column; }
+.avisoRow { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center;
+            justify-content:space-between; padding:11px 0; border-top:1px solid var(--ac-border); }
+.avisoRow:first-child { border-top:0; }
+.avisoRow .a-t { flex:1 1 220px; min-width:0; }
+.avisoActs { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+
 .cbl { font-size:.66rem; font-weight:700; color:var(--ac-muted); text-transform:uppercase; letter-spacing:.04em; }
 .cAplicar { display:flex; flex-direction:column; gap:9px; min-width:210px; }
 .cAplicar select { width:100%; padding:6px; border:1px solid var(--ac-border); border-radius:7px; font:inherit; font-size:.82rem; }
@@ -1204,7 +1214,12 @@ const ADMIN_ACCIONES = new Set(['guardarConfig','liberarAutor',
   'enviarPruebaEstado','enviarPruebaAlertaUsuario','emitirConstanciasFaltantes',
   'enviarRecordatorios','enviarInformePL',
   'enviarComunicado','reenviarComunicado','enviarPruebaComunicado']);
-const ADMIN_MINUTOS = 10;
+const ADMIN_MINUTOS = 60;
+// El texto se deriva del número: si mañana cambia la ventana, los tres avisos que
+// la anuncian cambian con ella y no se quedan diciendo otra cosa.
+function _adminDura(){ return ADMIN_MINUTOS % 60 === 0
+  ? (ADMIN_MINUTOS/60) + (ADMIN_MINUTOS === 60 ? ' hora' : ' horas')
+  : ADMIN_MINUTOS + ' minutos'; }
 let ADMIN_PWD = '', ADMIN_HASTA = 0;
 function adminAbierto(){ return !!ADMIN_PWD && Date.now() < ADMIN_HASTA; }
 function adminCerrar(){ ADMIN_PWD=''; ADMIN_HASTA=0; }
@@ -1222,7 +1237,7 @@ function onAuthError(e){
   // Acción de Opciones sin contraseña vigente (o el desbloqueo caducó).
   if(String(e)==='admin-clave'){
     adminCerrar();
-    alert('El cambio no se guardó.\n\nLa confirmación con contraseña caducó (dura '+ADMIN_MINUTOS+' minutos).\n\nRepite la acción y vuelve a escribirla.');
+    alert('El cambio no se guardó.\n\nLa confirmación con contraseña caducó (dura '+_adminDura()+').\n\nRepite la acción y vuelve a escribirla.');
     if(document.getElementById('optsBody')) renderOpts();
     return true;
   }
@@ -2191,14 +2206,17 @@ function _recorMsg(html){ const e=document.getElementById('recorResult'); if(e) 
 let RECOR_PROPS=null;
 async function renderRecor(){
   const tb=document.getElementById('tblAvisos');
-  if(tb) tb.innerHTML=AVISOS.map(a=>`<tr>
-    <td style="padding:9px 6px 9px 0">
+  // Filas flexibles, no tabla: los dos botones no caben al lado del nombre en la
+  // columna estrecha de Opciones, y con `white-space:nowrap` la tabla se negaba a
+  // encoger y empujaba la tarjeta fuera de la pantalla. Ahora bajan solos.
+  if(tb) tb.innerHTML=AVISOS.map(a=>`<div class="avisoRow">
+    <div class="a-t">
       <b style="font-size:.9rem">${a.nombre}</b>
-      <div class="muted" style="font-size:.78rem;margin-top:2px">${a.quien}</div></td>
-    <td style="padding:9px 0;text-align:right;white-space:nowrap">
+      <div class="muted" style="font-size:.78rem;margin-top:2px">${a.quien}</div></div>
+    <div class="avisoActs">
       <button class="link-btn" onclick="probarAviso('${a.tipo}',this)">Probar a mi correo</button>
-      ${a.manual?`<button class="btn ghost" style="padding:7px 12px;margin-left:8px" onclick="enviarAviso('${a.tipo}',this)">${a.manual}</button>`:''}
-    </td></tr>`).join('');
+      ${a.manual?`<button class="btn ghost" style="padding:7px 12px" onclick="enviarAviso('${a.tipo}',this)">${a.manual}</button>`:''}
+    </div></div>`).join('');
   let props;
   try{ props = RECOR_PROPS || await jsonp('getPropietarios'); }catch(e){ if(onAuthError(e))return; return; }
   RECOR_PROPS=props;
@@ -2839,7 +2857,7 @@ async function renderOpts(){
   body.innerHTML=`
     ${adminAbierto()
       ? `<div class="opts-llave">
-           <span>🔓 <b>Confirmado</b> · puedes guardar cambios sin volver a escribir la contraseña durante ${ADMIN_MINUTOS} minutos.</span>
+           <span>🔓 <b>Confirmado</b> · puedes guardar cambios sin volver a escribir la contraseña durante ${_adminDura()}.</span>
            <button class="btn ghost" onclick="adminCerrar();renderOpts()">Bloquear ahora</button>
          </div>`
       : `<div class="opts-llave lectura">
@@ -2897,15 +2915,13 @@ async function renderOpts(){
         Los botones de «Enviar ahora» sí escriben a la comunidad y respetan el interruptor y el modo prueba.</p>
 
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:14px 0 6px;padding:12px 14px;border:1px solid var(--ac-border);border-radius:10px;background:#f7fbfc">
-          <label class="muted" style="flex:1;min-width:200px;font-size:.78rem">Mi correo para las pruebas
+          <label class="muted" style="flex:1 1 190px;min-width:0;font-size:.78rem">Mi correo para las pruebas
             <input type="email" id="pruebaEmail" placeholder="tu-correo@ejemplo.com" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--ac-border);border-radius:8px;font:inherit"></label>
-          <label class="muted" style="flex:1;min-width:220px;font-size:.78rem">Propietario de muestra
+          <label class="muted" style="flex:1 1 190px;min-width:0;font-size:.78rem">Propietario de muestra
             <select id="pruebaProp" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--ac-border);border-radius:8px;font:inherit"></select></label>
         </div>
 
-        <table style="width:100%;margin-top:4px">
-          <tbody id="tblAvisos"></tbody>
-        </table>
+        <div id="tblAvisos" class="avisoList"></div>
         <div id="recorResult" style="margin-top:14px"></div>
       </div></div>
       </div>
@@ -3207,7 +3223,7 @@ function _optsPedirClave(){
       <button class="btn green" id="optsGo" onclick="desbloquearOpts(this)">Confirmar</button>
     </div>
     <div id="optsPwdErr" style="margin-top:10px"></div>
-    <div class="help" style="margin-top:12px">Vale para los próximos ${ADMIN_MINUTOS} minutos. No se guarda en el navegador: se pierde al recargar o al salir.</div>`;
+    <div class="help" style="margin-top:12px">Vale para la próxima ${_adminDura()}. No se guarda en el navegador: se pierde al recargar o al salir.</div>`;
   const m=document.getElementById('modal');
   m.classList.add('show');
   // cerrar con la × o pinchando fuera cuenta como cancelar
