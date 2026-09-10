@@ -45,7 +45,7 @@ var CEL_PAISES = [
  * celda no se distinguen de un espacio normal. `partes` trae los trozos cuando la
  * celda contiene más de un número, que es el caso que hay que preguntar y no adivinar.
  */
-function normalizarCelular(raw) {
+function normalizarCelular(raw, asumirInternacional) {
   var s = String(raw == null ? '' : raw);
   var visible = s.replace(/[^\x20-\x7E]/g, function (ch) {
     return '‹U+' + ('000' + ch.charCodeAt(0).toString(16).toUpperCase()).slice(-4) + '›';
@@ -63,7 +63,7 @@ function normalizarCelular(raw) {
     // sólo uno obliga a preguntar.
     var vistos = {}, unicos = [], invalidos = [];
     partes.forEach(function (x) {
-      var q = normalizarCelular(x);
+      var q = normalizarCelular(x, asumirInternacional);
       if (!q.ok) { invalidos.push(x); return; }
       if (!vistos[q.e164]) { vistos[q.e164] = true; unicos.push(q); }
     });
@@ -118,7 +118,7 @@ function normalizarCelular(raw) {
   // 3) Internacional de un país que no está en la tabla. Si viene con + y tiene un
   //    largo válido de E.164, se acepta: la alternativa es rechazar por ignorancia un
   //    número correcto, que es justo lo que pasaba con los de Suiza y Argentina.
-  if (masMas && d.length >= 8 && d.length <= 15) {
+  if ((masMas || asumirInternacional) && d.length >= 8 && d.length <= 15) {
     return { ok: true, e164: '+' + d, pais: 'internacional', por: '', visible: visible, partes: [] };
   }
   return { ok: false, e164: '', pais: '', visible: visible, partes: [],
@@ -295,7 +295,11 @@ function _celNombre(x) {
  *     contestar por uno sería enseñarle a alguien el saldo de otro.
  */
 function identificarPorCelular(tel) {
-  var n = normalizarCelular('+' + String(tel || '').replace(/\D/g, ''));
+  // NO se le antepone un «+» al número. Hacerlo convertía un celular panameño escrito
+  // a la panameña —6111-2233— en «+61112233», un número de otro país que no existe:
+  // con el + delante, la regla de los 8 dígitos que empiezan por 6 deja de aplicar.
+  // Meta entrega el número completo y sin +, y esa forma ya se reconoce sola.
+  var n = normalizarCelular(tel, true);
   if (!n.ok) return { prop: null, motivo: 'numero-ilegible', e164: '', lotes: [] };
   var hits = [];
   getPropietarios().forEach(function (p) {

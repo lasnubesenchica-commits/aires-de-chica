@@ -56,6 +56,14 @@ function doGet(e) {
   var action = p.action || 'ping';
   var out;
 
+  // Verificación del webhook de WhatsApp. Meta llama con hub.mode y espera el
+  // hub.challenge en TEXTO PLANO: va antes del try/JSON porque no comparte formato, y
+  // antes de cualquier requireAuth porque Meta no tiene token del panel.
+  if (typeof _whatsappHandleVerify === 'function' && (p['hub.mode'] || p.hub_mode)) {
+    var _waV = _whatsappHandleVerify(p);
+    if (_waV) return _waV;
+  }
+
   // Páginas públicas de comunicados: devuelven HTML, no JSON, y no llevan token de
   // panel — el enlace ya trae el token personal del propietario (ver
   // AiresChica_Comunicados.gs). Van antes del try/JSON porque no comparten formato.
@@ -114,6 +122,16 @@ function doPost(e) {
   // nombre ya reservado no se pueda usar desde otro equipo (AiresChica_Usuarios.gs).
   var AC_DISP = String(data.dispositivo || '').trim().slice(0, 80);
   var out;
+
+  // Mensajes entrantes de WhatsApp. Va lo primero, antes del enrutado por `action` y
+  // de cualquier comprobación de sesión: el webhook de Meta no lleva token de panel ni
+  // campo `action`, y devuelve siempre 200 para que Meta no reintente. Si el contenido
+  // no es suyo, devuelve null y el panel sigue su camino normal.
+  if (typeof _whatsappHandleWebhook === 'function') {
+    var _waR = _whatsappHandleWebhook(data);
+    if (_waR) return _waR;
+  }
+
   try {
     // acciones de autenticación (públicas)
     if (action === 'verifyPassword')        return _reply({ ok: true, data: verifyPassword(data.password) }, null);
