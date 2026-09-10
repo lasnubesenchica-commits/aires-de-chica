@@ -143,11 +143,31 @@ function _waProcesar(msg, metadata) {
  * al panel. Un error aquí manda la consulta de un propietario a un desconocido.
  */
 function _waAdmins() {
-  return String(_waProps().getProperty(WA_PROP_ADMIN) || '')
-    .split(/[,;]/)
-    .map(function (s) { return normalizarCelular(s, true); })
-    .filter(function (n) { return n.ok; })
-    .map(function (n) { return n.e164; });
+  return _waAdminsDetalle()
+    .filter(function (a) { return a.ok; })
+    .map(function (a) { return a.e164; });
+}
+
+/**
+ * Lo mismo, pero diciendo qué entendió de cada trozo y por qué descartó los demás.
+ *
+ * Existe porque el fallo natural aquí es mudo: un número mal escrito se descarta, la
+ * lista queda vacía y nadie recibe avisos sin que nada se queje. El diagnóstico lo
+ * enseña para que se vea antes de que haga falta.
+ *
+ * Se corta también por « y », no sólo por coma: «6981-2266 y 6555-0000» es como lo
+ * escribiría cualquiera, y sin esto se descartaban los dos a la vez.
+ */
+function _waAdminsDetalle() {
+  var crudo = String(_waProps().getProperty(WA_PROP_ADMIN) || '').trim();
+  if (!crudo) return [];
+  return crudo.split(/[,;]|\s+y\s+/i)
+    .map(function (s) { return String(s).trim(); })
+    .filter(function (s) { return /\d/.test(s); })
+    .map(function (s) {
+      var n = normalizarCelular(s, true);
+      return { crudo: s, ok: n.ok, e164: n.e164, por: n.por };
+    });
 }
 
 /**
@@ -399,6 +419,20 @@ function diagnosticarWhatsApp() {
       if (sus.campos.indexOf('messages') < 0) {
         console.log('  ⚠ Falta el campo «messages», que es el único imprescindible.');
       }
+    }
+
+    console.log('\n──── AVISOS A LA ADMINISTRACIÓN ────');
+    var adm = _waAdminsDetalle();
+    if (!adm.length) {
+      console.log('✗ META_ADMIN_WHATSAPP está vacío: los mensajes de los propietarios se');
+      console.log('  anotan en la hoja pero no avisan a nadie.');
+    } else {
+      adm.forEach(function (a) {
+        if (a.ok) console.log('✓ %s  (escrito «%s»)', a.e164, a.crudo);
+        else console.log('✗ «%s» no se entiende: %s', a.crudo, a.por);
+      });
+      var buenos = adm.filter(function (a) { return a.ok; }).length;
+      if (!buenos) console.log('  Ninguno es utilizable: nadie recibirá los avisos.');
     }
 
     console.log('\nWebhook: la URL del despliegue de este proyecto, con hub.mode/hub.verify_token.');
