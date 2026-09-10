@@ -26,8 +26,13 @@ var CEL_INTOCABLES = ['L-4A', 'L-5'];
 
 // Códigos de país que aparecen en el padrón. Sirven para reconocer un número que ya
 // viene con su prefijo pero sin el +, que es como suele quedar al copiarlo.
+// Ordenados de código más largo a más corto: '1' no debe tragarse a '13' ni '54' a '5'.
+// Suiza y Argentina salieron del padrón real -L-17 vive en Suiza, H-20 en Argentina- y
+// sin ellos sus números se reportaban como ilegibles cuando estaban perfectos.
 var CEL_PAISES = [
   { cc: '507', nombre: 'Panamá',         largo: [8] },
+  { cc: '54',  nombre: 'Argentina',      largo: [10, 11] },  // con o sin el 9 de móvil
+  { cc: '41',  nombre: 'Suiza',          largo: [9] },
   { cc: '34',  nombre: 'España',         largo: [9] },
   { cc: '1',   nombre: 'EE. UU./Canadá', largo: [10] }
 ];
@@ -54,8 +59,29 @@ function normalizarCelular(raw) {
     .map(function (x) { return String(x).trim(); })
     .filter(function (x) { return /\d/.test(x); });
   if (partes.length > 1) {
+    // No todas las celdas con dos trozos son ambiguas. Hay tres casos distintos y
+    // sólo uno obliga a preguntar.
+    var vistos = {}, unicos = [], invalidos = [];
+    partes.forEach(function (x) {
+      var q = normalizarCelular(x);
+      if (!q.ok) { invalidos.push(x); return; }
+      if (!vistos[q.e164]) { vistos[q.e164] = true; unicos.push(q); }
+    });
+    // (a) El mismo número escrito dos veces: no hay nada que elegir.
+    if (unicos.length === 1 && !invalidos.length) {
+      return { ok: true, e164: unicos[0].e164, pais: unicos[0].pais, visible: visible, partes: [],
+               por: '', nota: 'la celda traía el mismo número repetido' };
+    }
+    // (b) Sólo uno de los trozos es un celular; el otro está roto o incompleto.
+    if (unicos.length === 1 && invalidos.length) {
+      return { ok: false, e164: '', pais: unicos[0].pais, partes: partes, visible: visible,
+               sugerido: unicos[0].e164,
+               por: 'de los ' + partes.length + ' trozos sólo «' + unicos[0].e164 + '» es un celular; ' +
+                    '«' + invalidos.join('», «') + '» no. Confirma que ese es el bueno' };
+    }
+    // (c) Dos celulares distintos: cuál es el de WhatsApp lo sabe el propietario.
     return { ok: false, e164: '', pais: '', partes: partes, visible: visible,
-             por: 'hay ' + partes.length + ' números en la misma celda: hay que elegir cuál es el de WhatsApp' };
+             por: 'hay ' + unicos.length + ' números distintos en la misma celda: hay que elegir cuál es el de WhatsApp' };
   }
 
   var masMas = /^\s*\+/.test(t);
@@ -89,8 +115,15 @@ function normalizarCelular(raw) {
     return { ok: false, e164: '', pais: 'Panamá', visible: visible, partes: [],
              por: 'siete dígitos: es un fijo de los de antes, o le falta un dígito' };
   }
+  // 3) Internacional de un país que no está en la tabla. Si viene con + y tiene un
+  //    largo válido de E.164, se acepta: la alternativa es rechazar por ignorancia un
+  //    número correcto, que es justo lo que pasaba con los de Suiza y Argentina.
+  if (masMas && d.length >= 8 && d.length <= 15) {
+    return { ok: true, e164: '+' + d, pais: 'internacional', por: '', visible: visible, partes: [] };
+  }
   return { ok: false, e164: '', pais: '', visible: visible, partes: [],
-           por: 'no se reconoce como un número marcable (' + d.length + ' dígitos)' };
+           por: 'no se reconoce como un número marcable (' + d.length + ' dígitos)' +
+                (masMas ? '' : '. Si es de otro país, escríbelo con el + y su código') };
 }
 
 /**
@@ -141,14 +174,27 @@ function revisarCelularesPropietarios() {
   var porNum = {};
   bien.forEach(function (x) { (porNum[x.n.e164] = porNum[x.n.e164] || []).push(x.p); });
   var repes = Object.keys(porNum).filter(function (k) { return porNum[k].length > 1; });
-  if (repes.length) {
-    console.log('\n──── EL MISMO NÚMERO EN VARIOS LOTES ────');
-    console.log('El bot no puede saber por cuál de ellos pregunta quien escribe.');
-    repes.forEach(function (k) {
+  var mismaPersona = [], variosDuenos = [];
+  repes.forEach(function (k) {
+    var nom = {}; porNum[k].forEach(function (p) { nom[_celNombre(p.nombre)] = true; });
+    (Object.keys(nom).length === 1 ? mismaPersona : variosDuenos).push(k);
+  });
+  if (mismaPersona.length) {
+    console.log('\n──── UNA PERSONA CON VARIOS LOTES (no hay que corregir nada) ────');
+    console.log('El bot la reconoce sin problema; sólo tendrá que preguntarle de qué lote habla.');
+    mismaPersona.forEach(function (k) {
+      console.log('   %s  →  %s  ·  %s', k, porNum[k][0].nombre,
+        porNum[k].map(function (p) { return p.clave; }).join(', '));
+    });
+  }
+  if (variosDuenos.length) {
+    console.log('\n──── PERSONAS DISTINTAS CON EL MISMO NÚMERO ────');
+    console.log('Aquí sí hay riesgo: contestarle a uno seria enseñarle a alguien el saldo de otro.');
+    variosDuenos.forEach(function (k) {
       console.log('   %s  →  %s', k, porNum[k].map(function (p) { return p.clave + ' (' + p.nombre + ')'; }).join(' · '));
     });
   }
-  if (!malos.length && !sin.length && !repes.length && !cambian.length) {
+  if (!malos.length && !sin.length && !variosDuenos.length && !cambian.length) {
     console.log('\nTodo el padrón está listo para WhatsApp.');
   }
 
@@ -156,7 +202,10 @@ function revisarCelularesPropietarios() {
     malos: malos.map(function (m) { return { clave: m.p.clave, nombre: m.p.nombre,
       guardado: m.n.visible, problema: m.n.por, opciones: m.n.partes }; }),
     sinCelular: sin.map(function (m) { return m.p.clave; }),
-    repetidos: repes.map(function (k) { return { numero: k, claves: porNum[k].map(function (p) { return p.clave; }) }; }) };
+    mismaPersona: mismaPersona.map(function (k) { return { numero: k, nombre: porNum[k][0].nombre,
+      claves: porNum[k].map(function (p) { return p.clave; }) }; }),
+    variosDuenos: variosDuenos.map(function (k) { return { numero: k,
+      claves: porNum[k].map(function (p) { return p.clave; }) }; }) };
 }
 
 /**
@@ -223,31 +272,46 @@ function normalizarCelularesPropietarios(aplicar) {
  * enseñarle a alguien el saldo de otro. El bot tiene que preguntar en ese caso.
  */
 function propietarioPorCelular(tel) {
-  var n = normalizarCelular(String(tel || '').replace(/^\+?/, '+'));
-  if (!n.ok) {
-    // Meta entrega el número sin el +; si no casó, se reintenta como internacional.
-    n = normalizarCelular('+' + String(tel || '').replace(/\D/g, ''));
-    if (!n.ok) return null;
-  }
-  var hits = [];
-  getPropietarios().forEach(function (p) {
-    var q = normalizarCelular(p.celular);
-    if (q.ok && q.e164 === n.e164) hits.push(p);
-  });
-  return hits.length === 1 ? hits[0] : null;
+  return identificarPorCelular(tel).prop;
 }
 
-/** Como propietarioPorCelular, pero diciendo por qué no hubo respuesta. Para el bot. */
+/** Nombre comparable: sin tildes, sin mayúsculas y sin dobles espacios. */
+function _celNombre(x) {
+  return String(x || '').toUpperCase()
+    .replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I')
+    .replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U').replace(/Ñ/g, 'N')
+    .replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Quién escribe, con el motivo cuando no se puede saber. Es la puerta del bot.
+ *
+ * Un número en varios lotes tiene DOS lecturas muy distintas y el bot no puede
+ * tratarlas igual:
+ *   · La misma persona con varios lotes (Cecibel Agudo tiene tres). Está identificada
+ *     sin ambigüedad; lo único que hay que decidir es de qué lote quiere hablar, y eso
+ *     se le puede preguntar sin riesgo porque todos son suyos.
+ *   · Personas distintas compartiendo un teléfono (una familia). Aquí sí hay riesgo:
+ *     contestar por uno sería enseñarle a alguien el saldo de otro.
+ */
 function identificarPorCelular(tel) {
   var n = normalizarCelular('+' + String(tel || '').replace(/\D/g, ''));
-  if (!n.ok) return { prop: null, motivo: 'numero-ilegible', e164: '' };
+  if (!n.ok) return { prop: null, motivo: 'numero-ilegible', e164: '', lotes: [] };
   var hits = [];
   getPropietarios().forEach(function (p) {
     var q = normalizarCelular(p.celular);
     if (q.ok && q.e164 === n.e164) hits.push(p);
   });
-  if (hits.length === 1) return { prop: hits[0], motivo: '', e164: n.e164 };
-  if (hits.length > 1) return { prop: null, motivo: 'varios-lotes', e164: n.e164,
+  if (!hits.length) return { prop: null, motivo: 'no-esta-en-el-padron', e164: n.e164, lotes: [] };
+  if (hits.length === 1) return { prop: hits[0], motivo: '', e164: n.e164, lotes: hits };
+
+  var nombres = {};
+  hits.forEach(function (p) { nombres[_celNombre(p.nombre)] = true; });
+  if (Object.keys(nombres).length === 1) {
+    // Una sola persona: identificada, con varios lotes suyos.
+    return { prop: hits[0], motivo: '', e164: n.e164, lotes: hits,
+      claves: hits.map(function (p) { return p.clave; }) };
+  }
+  return { prop: null, motivo: 'varios-duenos', e164: n.e164, lotes: hits,
     claves: hits.map(function (p) { return p.clave; }) };
-  return { prop: null, motivo: 'no-esta-en-el-padron', e164: n.e164 };
 }
