@@ -134,9 +134,9 @@ function _waAnotarEstado(st) {
   var iId = h.indexOf('id'), iEs = h.indexOf('estado'), iNo = h.indexOf('nota');
   for (var r = vals.length - 1; r >= 1; r--) {
     if (String(vals[r][iId]) !== id) continue;
-    sh.getRange(r + 1, iEs + 1).setValue(String(st.status || ''));
+    sh.getRange(r + 1, iEs + 1).setValue(_waTexto(st.status || ''));
     if (st.errors && st.errors.length) {
-      sh.getRange(r + 1, iNo + 1).setValue(String(st.errors[0].title || st.errors[0].message || ''));
+      sh.getRange(r + 1, iNo + 1).setValue(_waTexto(st.errors[0].title || st.errors[0].message || ''));
     }
     return;
   }
@@ -156,13 +156,28 @@ function _waSheet() {
   return sh;
 }
 
+/**
+ * Google Sheets interpreta como fórmula todo lo que empieza por = + - @, y eso hace dos
+ * estragos aquí. El menor: un teléfono «+50769812266» se guarda como el número
+ * 50769812266 y se pierde el formato E.164. El mayor: un propietario que escriba un
+ * mensaje empezando por «=» mete una fórmula viva en la hoja de la administración, que
+ * es una puerta que no queremos ni entreabierta.
+ *
+ * El apóstrofo de delante marca «esto es texto»; no se ve en la celda ni vuelve al leer.
+ */
+function _waTexto(v) {
+  if (v instanceof Date || typeof v === 'number') return v;
+  var s = String(v === undefined || v === null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
 function _waAnotar(d) {
   var sh = _waSheet();
   var h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]
     .map(function (x) { return String(x).trim(); });
   var fila = h.map(function (c) {
     if (c === 'fecha') return new Date();
-    return d[c] === undefined ? '' : d[c];
+    return _waTexto(d[c]);
   });
   sh.appendRow(fila);
 }
