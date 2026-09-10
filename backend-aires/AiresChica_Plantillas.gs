@@ -439,6 +439,17 @@ function verPlantillas() {
  */
 function enviarPlantillaWhatsApp(telefono, plantilla, params, opts) {
   opts = opts || {};
+  // El editor de Apps Script deja ejecutar cualquier función del proyecto, y ésta sin
+  // argumentos devolvía un error que nadie veía: el registro quedaba en «started /
+  // completed» y parecía que había funcionado.
+  if (!telefono || !plantilla) {
+    console.log('Esta función manda UNA plantilla ya aprobada y necesita a quién y cuál.');
+    console.log('  enviarPlantillaWhatsApp("6981-2266", "recordatorio_saldo", [...])');
+    console.log('');
+    console.log('Si lo que quieres es mandarlas a revisión, elige «subirPlantillas» en el');
+    console.log('desplegable de arriba. Para verlas antes, «verTextoPlantillas».');
+    return { ok: false, error: 'Faltan el número o el nombre de la plantilla.' };
+  }
   var token = _waToken(), phoneId = _waPhoneId();
   if (!token || !phoneId) return { ok: false, error: 'Faltan META_WHATSAPP_TOKEN o META_PHONE_ID.' };
 
