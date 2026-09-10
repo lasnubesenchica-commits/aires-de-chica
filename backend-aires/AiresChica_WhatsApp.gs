@@ -237,6 +237,29 @@ function diagnosticarWhatsApp() {
     console.log('\nFaltan datos. Ponlos en Configuración del proyecto → Propiedades del script.');
     return { listo: false };
   }
+  // ¿El token caduca? El que la consola muestra en «Configuración de la API» dura 24
+  // horas, y cuando muere el bot deja de mandar sin avisar y sin error visible en el
+  // panel. Vale la pena saberlo el primer día y no el segundo.
+  try {
+    var dt = UrlFetchApp.fetch(WA_GRAPH + '/debug_token?input_token=' + encodeURIComponent(tok),
+      { headers: { Authorization: 'Bearer ' + tok }, muteHttpExceptions: true });
+    var dj = JSON.parse(dt.getContentText());
+    var di = (dj && dj.data) || {};
+    if (di.app_id) {
+      console.log('\nToken: app %s · tipo %s', di.application || di.app_id, di.type || '?');
+      if (di.expires_at) {
+        console.log('  ⚠ CADUCA el %s — es un token temporal, no sirve para producción.',
+          new Date(di.expires_at * 1000));
+        console.log('    Genera uno permanente desde el usuario del sistema del portafolio.');
+      } else {
+        console.log('  ✓ No caduca.');
+      }
+    }
+  } catch (e) {
+    // Nunca se registra la URL: lleva el token dentro.
+    console.log('\n(No se pudo comprobar la caducidad del token.)');
+  }
+
   // Preguntarle a Meta por el propio número confirma que el token sirve y que el
   // phone_number_id es el correcto, sin mandarle un mensaje a nadie.
   try {
