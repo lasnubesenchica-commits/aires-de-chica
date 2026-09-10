@@ -339,6 +339,10 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 /* Lista de avisos de Opciones: nombre y botones en una fila que sabe partirse.
    `justify-content:space-between` los separa cuando caben; al no caber, el bloque
    de botones baja entero en vez de desbordar la tarjeta. */
+.mailCtx { display:flex; flex-direction:column; gap:3px; margin-right:auto; }
+.mailCtx select { padding:7px 9px; border:1px solid var(--ac-border); border-radius:8px;
+                  font:inherit; font-size:.82rem; background:#fff; }
+
 .avisoList { display:flex; flex-direction:column; }
 .avisoRow { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center;
             justify-content:space-between; padding:11px 0; border-top:1px solid var(--ac-border); }
@@ -1940,6 +1944,12 @@ function _renderEstado(e, opts){
     ${opts.sim?'':`<div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
       <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar pago</button>
+      <label class="mailCtx" title="Cambia el asunto y la frase de entrada. El PDF y el saldo son los mismos.">
+        <span class="cbl">Como</span>
+        <select id="mailContexto">
+          <option value="">Estado actualizado a hoy</option>
+          <option value="estado">Envío del mes (al cierre)</option>
+        </select></label>
       <button class="btn" onclick="mailEstado('${e.clave}',this)" ${e.email?'':'disabled title="Sin correo"'}>Enviar por correo</button>
     </div>
     <div id="pgForm" style="display:none;margin-top:14px;border-top:1px dashed var(--ac-border);padding-top:14px">
@@ -2174,7 +2184,11 @@ async function guardarPagoManual(clave){
 async function mailEstado(clave,btn){
   const t = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
-  try{ const r=await post('enviarEstado',{clave});
+  // El contexto decide la redacción, no el contenido: "envío del mes" nombra el mes
+  // cerrado, como el automático del día 5, para que un propietario al que se le
+  // completa el envío a mano reciba el mismo asunto que los demás.
+  const ctx=(document.getElementById('mailContexto')||{}).value||'';
+  try{ const r=await post('enviarEstado',{clave,contexto:ctx});
     // La copia a la administración se reporta aparte: es un segundo correo y puede
     // fallar por su cuenta sin que eso signifique que el propietario no recibió el suyo.
     let cop='';

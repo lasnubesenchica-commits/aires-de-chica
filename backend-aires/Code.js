@@ -181,7 +181,12 @@ function doPost(e) {
     else if (action === 'enviarInformePL')  out = { ok: true, data: enviarInformePL(data.anio, data.mesIni, data.mesFin, data.nota) };
     else if (action === 'conciliarBanco')   out = { ok: true, data: conciliarBanco(data.rows, data.filename) };
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };
-    else if (action === 'enviarEstado')     out = { ok: true, data: enviarEstadoCuenta(data.clave) };
+    // El contexto sólo cambia la redacción. Se filtra contra una lista blanca: desde
+    // el modal únicamente tienen sentido el genérico y el del cierre del mes, y un
+    // valor suelto haría que el correo se presentara como algo que no es —un aviso de
+    // mora, por ejemplo— sin que nadie lo hubiera pedido.
+    else if (action === 'enviarEstado')     { var _cx = (data.contexto === 'estado') ? 'estado' : '';
+                                              out = { ok: true, data: enviarEstadoCuenta(data.clave, _cx) }; }
     else if (action === 'enviarRecordatorios') out = { ok: true, data: enviarRecordatorios(data.tipo, data.claves || null) };
     else if (action === 'enviarPruebaEstado')  out = { ok: true, data: enviarPruebaEstado(data.email, data.tipo, data.clave) };
     else if (action === 'enviarPruebaAlertaUsuario') out = { ok: true, data: enviarPruebaAlertaUsuario(data.email) };
