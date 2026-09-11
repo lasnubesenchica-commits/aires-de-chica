@@ -168,24 +168,17 @@ function _botIntencionPorPalabras(texto) {
 function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title: titulo } }; }
 
 // Los títulos no pasan de 20 caracteres: WhatsApp los corta sin avisar.
-var BOT_BTN_SALDO    = _botBoton('bot_saldo', 'Mi saldo');
-var BOT_BTN_PAGOS    = _botBoton('bot_pagos', 'Mis últimos pagos');
-var BOT_BTN_DETALLE  = _botBoton('bot_detalle', 'Estado de cuenta');
-var BOT_BTN_OPCIONES = _botBoton('bot_opciones', 'Ver opciones');
-var BOT_BTN_HUMANO   = _botBoton('bot_humano', 'Hablar con alguien');
-
 /**
- * Los tres botones de siempre: lo que pregunta casi todo el mundo, y una puerta a lo
- * demás. Se repiten al pie de cada respuesta, así que quien escribe no necesita
- * recordar nada ni volver atrás.
- */
-var BOT_MENU = [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_OPCIONES];
-
-/**
- * Lo que hay detrás de «Ver opciones», como lista.
+ * El menú, como lista, al pie de CADA respuesta.
  *
- * Un mensaje de botones admite tres; la lista, diez repartidas en secciones. Aquí van
- * las que no están en los botones, que es justo lo que la lista tiene que aportar.
+ * WhatsApp tiene dos mensajes interactivos y no se mezclan. Los botones —hasta tres—
+ * mandan una respuesta: un botón llamado «Ver opciones» obliga al sistema a contestar
+ * con otro mensaje, y llegar al menú cuesta tres toques y deja un «Ver opciones»
+ * suelto en la conversación. La lista, en cambio, abre el menú en el mismo momento.
+ *
+ * Por eso todo va por lista. Se pierde el toque único de «Mi saldo», que pasa a ser la
+ * primera fila, y se gana que cualquier opción esté siempre a dos toques y que el
+ * botón haga lo que dice.
  *
  * Enviar un comprobante NO está en el menú: recibirlos funciona —la gente manda la
  * foto igual, se invite o no, y si no se atendiera se perdería— pero no se ofrece
@@ -194,7 +187,9 @@ var BOT_MENU = [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_OPCIONES];
 function _botSecciones() {
   return [
     { title: 'Mi cuenta', rows: [
+      { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su lote' },
       { id: 'bot_pagos',    title: 'Mis últimos pagos',      description: 'Los pagos que le tenemos registrados' },
+      { id: 'bot_detalle',  title: 'Estado de cuenta',       description: 'Le enviamos el PDF, mes por mes' },
       { id: 'bot_cuota',    title: 'Mi cuota y vencimiento', description: 'Cuánto es, cuándo vence y el recargo' }
     ] },
     { title: 'La comunidad', rows: [
@@ -270,7 +265,7 @@ function _botAtender(info, msg) {
   if (accion === 'bot_detalle') return _botMandaEstado(tel, claves);
   if (accion === 'bot_cuota') return _botCuota(tel, claves);
   if (accion === 'bot_comunicado') return _botComunicado(tel, info.clave);
-  if (accion === 'bot_comopago') return _botComoPago(tel);
+  if (accion === 'bot_comopago') return _botComoPago(tel, claves);
   if (accion === 'bot_datos') return _botDatos(tel, claves);
   if (accion === 'bot_comprobante') return _botPideComprobante(tel);
   if (accion === 'bot_comprobante_recibido') return _botRecibeComprobante(tel, info, msg);
@@ -280,16 +275,22 @@ function _botAtender(info, msg) {
 
 function _botSaluda(tel, info) {
   var nombre = String(info.nombre || '').split(' ')[0];
-  _waEnviarBotones(tel,
-    (nombre ? 'Hola ' + nombre + '. ' : 'Hola. ') +
-    'Le contesta el sistema de la Asociación de Aires de Chicá. ¿En qué le ayudamos?',
-    BOT_MENU);
+  _botDice(tel, (nombre ? 'Hola ' + nombre + '. ' : 'Hola. ') +
+    'Le contesta el sistema de la Asociación de Aires de Chicá. ¿En qué le ayudamos?');
   return { contesto: true, avisar: false };
 }
 
-/** Todo lo demás, detrás de un toque. */
+/**
+ * La única forma de contestar: el texto, y el menú siempre debajo. Quien escribe no
+ * necesita recordar nada ni volver atrás.
+ */
+function _botDice(tel, texto) {
+  return _waEnviarLista(tel, texto, 'Ver opciones', _botSecciones());
+}
+
+/** Cuando alguien escribe «menú» a secas. */
 function _botOpciones(tel) {
-  _waEnviarLista(tel, '¿Qué necesita?', 'Ver opciones', _botSecciones());
+  _botDice(tel, '¿En qué le ayudamos?');
   return { contesto: true, avisar: false };
 }
 
@@ -328,10 +329,8 @@ function _botUltimosPagos(tel, claves) {
   });
   if (!partes.length) return _botPasaAHumano(tel);
 
-  _waEnviarBotones(tel,
-    partes.join('\n\n') +
-    '\n\nSi hizo un pago que no aparece aquí, envíenos el comprobante y lo registramos.',
-    BOT_MENU);
+  _botDice(tel, partes.join('\n\n') +
+    '\n\nSi hizo un pago que no aparece aquí, envíenos el comprobante y lo registramos.');
   return { contesto: true, avisar: false };
 }
 
@@ -359,29 +358,45 @@ function _botCuota(tel, claves) {
     } catch (e) { Logger.log('Bot cuota ' + c + ': ' + (e && e.message || e)); }
   });
   if (!partes.length) return _botPasaAHumano(tel);
-  _waEnviarBotones(tel, partes.join('\n\n'), BOT_MENU);
+  _botDice(tel, partes.join('\n\n'));
   return { contesto: true, avisar: false };
 }
 
 /** La cuenta de cobro y qué escribir para que el pago se reconozca solo. */
-function _botComoPago(tel) {
+function _botComoPago(tel, claves) {
   var cta = (typeof _ctaCobro === 'function') ? _ctaCobro() : null;
   if (!cta || !cta.numero) return _botPasaAHumano(tel);
   var buzon = (typeof CONFIG === 'object' && CONFIG.COMPROBANTES_EMAIL) || '';
-  var l = ['Puede pagar por transferencia desde su banca en línea:',
+
+  // El mismo lote que lleva el correo, para que el paso 3 diga qué escribir y no
+  // «su número de lote» en abstracto.
+  var lotes = [];
+  (claves || []).forEach(function (c) {
+    try { var e = getEstadoCuentaByKey(c); if (e.lote) lotes.push(String(e.lote)); }
+    catch (err) {}
+  });
+  var loteTxt = (lotes.length === 1) ? ' ' + lotes[0]
+              : (lotes.length > 1 ? ' (' + lotes.join(' o ') + ', según cuál esté pagando)' : '');
+
+  var l = ['*Cómo registrar su pago por banca en línea*',
            '',
-           cta.banco + ' · ' + cta.tipo,
-           'N.º ' + cta.numero,
-           'A nombre de ' + cta.titular,
-           '',
-           'En la descripción del pago, escriba su número de lote. Es lo que nos permite ' +
-           'reconocerlo sin preguntarle.'];
+           '1. Entre a su banca en línea (web o app) y elija *Transferencias*.',
+           '2. Elija o agregue como beneficiario la cuenta de ' + cta.titular + ':',
+           '   ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero,
+           '3. Indique el *monto* de su cuota y, en la *descripción o concepto*, escriba su ' +
+           'número de lote' + loteTxt + '.'];
   if (buzon) {
+    l.push('4. En el campo de *correo electrónico para enviar el comprobante*, agregue:');
+    l.push('   ' + buzon);
+    l.push('5. Revise los datos y *confirme* la transferencia.');
     l.push('');
-    l.push('Y si su banco le pide un correo para enviar el comprobante, ponga ' + buzon +
-           ': así su pago se registra solo.');
+    l.push('¿Por qué el paso 4? Al incluir ese correo, el comprobante de su pago llega ' +
+           'automáticamente a la administración y su cuota se registra sin que usted tenga ' +
+           'que enviarlo por otro medio. Si no lo agrega, su pago podría no reflejarse a tiempo.');
+  } else {
+    l.push('4. Revise los datos y *confirme* la transferencia.');
   }
-  _waEnviarBotones(tel, l.join('\n'), BOT_MENU);
+  _botDice(tel, l.join('\n'));
   return { contesto: true, avisar: false };
 }
 
@@ -416,7 +431,7 @@ function _botComunicado(tel, clave) {
     l.push('');
     l.push(String(c.cuerpo || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400));
     if (enlace) { l.push(''); l.push('Leerlo completo: ' + enlace); }
-    _waEnviarBotones(tel, l.join('\n'), BOT_MENU);
+    _botDice(tel, l.join('\n'));
     return { contesto: true, avisar: false };
   } catch (e) {
     Logger.log('Bot comunicado: ' + (e && e.message || e));
@@ -447,7 +462,7 @@ function _botDatos(tel, claves) {
   if (!l.length) return _botPasaAHumano(tel);
   l.push('Si algo está mal o cambió, toque «Hablar con alguien» y lo corregimos. ' +
          'Su estado de cuenta se envía a ese correo.');
-  _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_HUMANO]);
+  _botDice(tel, l.join('\n'));
   return { contesto: true, avisar: false };
 }
 
@@ -466,7 +481,7 @@ function _botContestaSaldo(tel, claves) {
     texto += '\n\nPara pagar: ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero +
              ' a nombre de ' + cta.titular + '.';
   }
-  _waEnviarBotones(tel, texto, [BOT_BTN_PAGOS, BOT_BTN_DETALLE, BOT_BTN_OPCIONES]);
+  _botDice(tel, texto);
   return { contesto: true, avisar: false };
 }
 
