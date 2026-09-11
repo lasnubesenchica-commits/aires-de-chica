@@ -208,15 +208,15 @@ function _botTextoSaldo(est) {
   var saldo = Number(est.saldoConMora) || 0;
   var credito = Number(est.creditoAFavor) || 0;
   var l = [];
-  l.push('Lote ' + est.lote + ' · ' + est.nombre);
+  l.push('*Lote ' + est.lote + '* · ' + est.nombre);
   if (saldo > 0.009) {
-    l.push('Saldo pendiente: B/. ' + saldo.toFixed(2));
+    l.push('\uD83D\uDCB3 Saldo pendiente: *B/. ' + saldo.toFixed(2) + '*');
     var mora = Number(est.mora) || 0;
     if (mora > 0.009) l.push('(incluye B/. ' + mora.toFixed(2) + ' de recargo por mora)');
   } else if (credito > 0.009) {
-    l.push('Está al día, y tiene B/. ' + credito.toFixed(2) + ' a favor.');
+    l.push('\u2705 Está al día, y tiene B/. ' + credito.toFixed(2) + ' a favor.');
   } else {
-    l.push('Está al día. No tiene saldo pendiente.');
+    l.push('\u2705 Está al día. No tiene saldo pendiente.');
   }
   return l.join('\n');
 }
@@ -294,11 +294,45 @@ function _botOpciones(tel) {
   return { contesto: true, avisar: false };
 }
 
-/** «5 de septiembre de 2026». Los meses en español salen del mismo sitio que el correo. */
+/**
+ * «5 de septiembre de 2026».
+ *
+ * Los meses salen del mismo sitio que el correo, pero ahí están en mayúscula porque
+ * encabezan títulos. En medio de una frase van en minúscula, que es como se escriben
+ * en español.
+ */
+function _botMes(i) { return String(AC_MESES_LARGO[i] || '').toLowerCase(); }
+
 function _botFecha(d) {
   var f = (d instanceof Date) ? d : new Date(d);
   if (isNaN(f.getTime())) return String(d || '');
-  return f.getDate() + ' de ' + AC_MESES_LARGO[f.getMonth()] + ' de ' + f.getFullYear();
+  return f.getDate() + ' de ' + _botMes(f.getMonth()) + ' de ' + f.getFullYear();
+}
+
+/** «15 ago» — en una lista de pagos el año se dice una vez, en el título. */
+function _botFechaCorta(d) {
+  var f = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(f.getTime())) return String(d || '');
+  return f.getDate() + ' ' + _botMes(f.getMonth()).slice(0, 3);
+}
+
+/**
+ * Recorta una lista de renglones para que el cuerpo quepa en el mensaje.
+ *
+ * WhatsApp corta a 1024 caracteres sin avisar, y lo que se pierde es el final: el
+ * total y la frase de qué hacer si falta un pago. Mejor quitar los pagos más viejos
+ * y decir cuántos quedaron fuera.
+ */
+function _botCabe(cabecera, renglones, cola, limite) {
+  limite = limite || 950;
+  var fijo = [cabecera].concat(cola).join('\n').length + 2;
+  var fuera = 0;
+  while (renglones.join('\n').length + fijo > limite && renglones.length > 1) {
+    renglones.pop();
+    fuera++;
+  }
+  if (fuera) renglones.push('… y ' + fuera + ' pago(s) más. Pida su estado de cuenta para verlos todos.');
+  return [cabecera].concat(renglones, cola).join('\n');
 }
 
 /**
@@ -308,29 +342,42 @@ function _botFecha(d) {
  * y que hasta ahora sólo se respondía de refilón mirando el saldo.
  */
 function _botUltimosPagos(tel, claves) {
-  var partes = [];
+  var anio = (typeof CONFIG === 'object' && Number(CONFIG.ANIO_ACTUAL)) || new Date().getFullYear();
+  var bloques = [];
+
   claves.forEach(function (c) {
     try {
       var est = getEstadoCuentaByKey(c);
-      var hist = (est.pagosHistorial || []).slice().sort(function (a, b) {
+      var todos = (est.pagosHistorial || []).slice().sort(function (a, b) {
         return new Date(b.fecha) - new Date(a.fecha);
-      }).slice(0, 3);
-      var l = ['Lote ' + est.lote];
-      if (!hist.length) {
-        l.push('No tenemos ningún pago registrado.');
-      } else {
-        hist.forEach(function (p) {
-          l.push('· ' + _botFecha(p.fecha) + ' — B/. ' + (Number(p.monto) || 0).toFixed(2) +
-                 (p.referencia ? ' (ref. ' + p.referencia + ')' : ''));
-        });
+      });
+      var delAnio = todos.filter(function (p) {
+        return new Date(p.fecha).getFullYear() === anio;
+      });
+      var cab = '\uD83E\uDDFE *Pagos del ' + anio + '* \u2014 Lote ' + est.lote;
+
+      if (!delAnio.length) {
+        var l = ['Sin pagos registrados este a\u00f1o.'];
+        if (todos.length) l.push('El \u00faltimo que consta es del ' + _botFecha(todos[0].fecha) + '.');
+        bloques.push([cab].concat(l).join('\n'));
+        return;
       }
-      partes.push(l.join('\n'));
+
+      var total = 0;
+      var renglones = delAnio.map(function (p) {
+        total += Number(p.monto) || 0;
+        return '\u2705 ' + _botFechaCorta(p.fecha) + '  \u2014  B/. ' + (Number(p.monto) || 0).toFixed(2) +
+               (p.referencia ? '  \u00b7  ref. ' + p.referencia : '');
+      });
+      var cola = ['', '\uD83D\uDCB0 *Total ' + anio + ': B/. ' + total.toFixed(2) + '*'];
+      bloques.push(_botCabe(cab, renglones, cola, Math.floor(900 / claves.length)));
     } catch (e) { Logger.log('Bot pagos ' + c + ': ' + (e && e.message || e)); }
   });
-  if (!partes.length) return _botPasaAHumano(tel);
 
-  _botDice(tel, partes.join('\n\n') +
-    '\n\nSi hizo un pago que no aparece aquí, envíenos el comprobante y lo registramos.');
+  if (!bloques.length) return _botPasaAHumano(tel);
+
+  _botDice(tel, bloques.join('\n\n') +
+    '\n\nSi hizo un pago que no aparece aqu\u00ed, env\u00edenos el comprobante y lo registramos.');
   return { contesto: true, avisar: false };
 }
 
@@ -345,7 +392,8 @@ function _botCuota(tel, claves) {
   claves.forEach(function (c) {
     try {
       var est = getEstadoCuentaByKey(c);
-      var l = ['Lote ' + est.lote + ': B/. ' + (Number(est.cuota) || 0).toFixed(2) + ' al mes.'];
+      var l = ['\uD83D\uDCC5 *Lote ' + est.lote + '* \u2014 cuota de B/. ' +
+               (Number(est.cuota) || 0).toFixed(2) + ' al mes.'];
       if (est.fechaVencimiento) {
         l.push('La cuota del mes vence el ' + _botFecha(est.fechaVencimiento) + '.');
       }
@@ -378,7 +426,7 @@ function _botComoPago(tel, claves) {
   var loteTxt = (lotes.length === 1) ? ' ' + lotes[0]
               : (lotes.length > 1 ? ' (' + lotes.join(' o ') + ', según cuál esté pagando)' : '');
 
-  var l = ['*Cómo registrar su pago por banca en línea*',
+  var l = ['\uD83C\uDFE6 *Cómo registrar su pago por banca en línea*',
            '',
            '1. Entre a su banca en línea (web o app) y elija *Transferencias*.',
            '2. Elija o agregue como beneficiario la cuenta de ' + cta.titular + ':',
@@ -426,8 +474,9 @@ function _botComunicado(tel, clave) {
     var c = mios[0];
     var enlace = '';
     try { enlace = _comLink('verComunicado', { id: c.id, t: _acTokenDe(clave) }); } catch (e) {}
-    var l = [c.titulo];
-    if (c.enviadoEn) l.push('(' + String(c.enviadoEn).slice(0, 10) + ')');
+    var l = ['\uD83D\uDCE2 *' + c.titulo + '*'];
+    // enviadoEn viene «2026-09-02 10:00»; en un mensaje eso se lee como una máquina.
+    if (c.enviadoEn) l.push(_botFecha(String(c.enviadoEn).slice(0, 10) + 'T00:00:00'));
     l.push('');
     l.push(String(c.cuerpo || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400));
     if (enlace) { l.push(''); l.push('Leerlo completo: ' + enlace); }
@@ -453,7 +502,7 @@ function _botDatos(tel, claves) {
       var est = getEstadoCuentaByKey(c);
       if (vistos[est.email + '|' + est.celular]) return;
       vistos[est.email + '|' + est.celular] = 1;
-      l.push('Lote ' + est.lote + ' · ' + est.nombre);
+      l.push('\uD83D\uDC64 *Lote ' + est.lote + '* · ' + est.nombre);
       l.push('Correo: ' + (est.email || '— no tenemos ninguno —'));
       l.push('Celular: ' + (est.celular || '— no tenemos ninguno —'));
       l.push('');
