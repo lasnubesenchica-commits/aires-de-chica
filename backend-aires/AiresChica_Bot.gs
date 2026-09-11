@@ -96,6 +96,9 @@ var BOT_ACCIONES = ['bot_saldo', 'bot_pagos', 'bot_detalle', 'bot_cuota', 'bot_c
 function _botIntencion(texto) {
   var t = String(texto || '').trim();
   if (!t) return '';
+  // «menú» es una orden, no una frase que interpretar: se atiende antes de gastar una
+  // llamada al modelo, que además la clasificaría como cualquier otra cosa.
+  if (/^\s*(menu|menú|opciones|ver opciones)\s*$/i.test(t)) return 'bot_opciones';
   var deRespaldo = _botIntencionPorPalabras(t);
   var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
   if (!key) return deRespaldo;
@@ -147,6 +150,7 @@ function _botIntencionPorPalabras(texto) {
   var t = String(texto || '').toLowerCase()
     .replace(/[áà]/g, 'a').replace(/[éè]/g, 'e').replace(/[íì]/g, 'i')
     .replace(/[óò]/g, 'o').replace(/[úù]/g, 'u');
+  if (/^\s*(menu|opciones|ayuda|ver opciones)\s*$/.test(t)) return 'bot_opciones';
   if (/reclamo|no estoy de acuerdo|arreglo de pago|plazo|reglamento|junta|queja|reclam/.test(t)) return 'bot_humano';
   if (/estado de cuenta|desglose|detalle|pdf|documento/.test(t)) return 'bot_detalle';
   if (/mis datos|mi correo|mi email|mi celular|actualizar.*(datos|correo|celular)|cambiar.*(datos|correo|celular)/.test(t)) return 'bot_datos';
@@ -164,17 +168,24 @@ function _botIntencionPorPalabras(texto) {
 function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title: titulo } }; }
 
 // Los títulos no pasan de 20 caracteres: WhatsApp los corta sin avisar.
-var BOT_BTN_SALDO   = _botBoton('bot_saldo', 'Mi saldo');
-var BOT_BTN_PAGOS   = _botBoton('bot_pagos', 'Mis últimos pagos');
-var BOT_BTN_DETALLE = _botBoton('bot_detalle', 'Estado de cuenta');
-var BOT_BTN_HUMANO  = _botBoton('bot_humano', 'Hablar con alguien');
+var BOT_BTN_SALDO    = _botBoton('bot_saldo', 'Mi saldo');
+var BOT_BTN_PAGOS    = _botBoton('bot_pagos', 'Mis últimos pagos');
+var BOT_BTN_DETALLE  = _botBoton('bot_detalle', 'Estado de cuenta');
+var BOT_BTN_OPCIONES = _botBoton('bot_opciones', 'Ver opciones');
+var BOT_BTN_HUMANO   = _botBoton('bot_humano', 'Hablar con alguien');
 
 /**
- * El menú de entrada, como lista.
+ * Los tres botones de siempre: lo que pregunta casi todo el mundo, y una puerta a lo
+ * demás. Se repiten al pie de cada respuesta, así que quien escribe no necesita
+ * recordar nada ni volver atrás.
+ */
+var BOT_MENU = [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_OPCIONES];
+
+/**
+ * Lo que hay detrás de «Ver opciones», como lista.
  *
- * Un mensaje de botones admite tres y ya son siete opciones. La lista admite diez
- * repartidas en secciones, que además agrupan: lo de la cuenta de uno por un lado y
- * la ayuda por otro.
+ * Un mensaje de botones admite tres; la lista, diez repartidas en secciones. Aquí van
+ * las que no están en los botones, que es justo lo que la lista tiene que aportar.
  *
  * Enviar un comprobante NO está en el menú: recibirlos funciona —la gente manda la
  * foto igual, se invite o no, y si no se atendiera se perdería— pero no se ofrece
@@ -183,9 +194,7 @@ var BOT_BTN_HUMANO  = _botBoton('bot_humano', 'Hablar con alguien');
 function _botSecciones() {
   return [
     { title: 'Mi cuenta', rows: [
-      { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su lote' },
       { id: 'bot_pagos',    title: 'Mis últimos pagos',      description: 'Los pagos que le tenemos registrados' },
-      { id: 'bot_detalle',  title: 'Estado de cuenta',       description: 'Le enviamos el PDF, mes por mes' },
       { id: 'bot_cuota',    title: 'Mi cuota y vencimiento', description: 'Cuánto es, cuándo vence y el recargo' }
     ] },
     { title: 'La comunidad', rows: [
@@ -255,6 +264,7 @@ function _botAtender(info, msg) {
   var quien = identificarPorCelular(tel);
   var claves = (quien.claves && quien.claves.length) ? quien.claves : [info.clave];
 
+  if (accion === 'bot_opciones') return _botOpciones(tel);
   if (accion === 'bot_saldo') return _botContestaSaldo(tel, claves);
   if (accion === 'bot_pagos') return _botUltimosPagos(tel, claves);
   if (accion === 'bot_detalle') return _botMandaEstado(tel, claves);
@@ -270,10 +280,16 @@ function _botAtender(info, msg) {
 
 function _botSaluda(tel, info) {
   var nombre = String(info.nombre || '').split(' ')[0];
-  _waEnviarLista(tel,
+  _waEnviarBotones(tel,
     (nombre ? 'Hola ' + nombre + '. ' : 'Hola. ') +
     'Le contesta el sistema de la Asociación de Aires de Chicá. ¿En qué le ayudamos?',
-    'Ver opciones', _botSecciones());
+    BOT_MENU);
+  return { contesto: true, avisar: false };
+}
+
+/** Todo lo demás, detrás de un toque. */
+function _botOpciones(tel) {
+  _waEnviarLista(tel, '¿Qué necesita?', 'Ver opciones', _botSecciones());
   return { contesto: true, avisar: false };
 }
 
@@ -315,7 +331,7 @@ function _botUltimosPagos(tel, claves) {
   _waEnviarBotones(tel,
     partes.join('\n\n') +
     '\n\nSi hizo un pago que no aparece aquí, envíenos el comprobante y lo registramos.',
-    [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
+    BOT_MENU);
   return { contesto: true, avisar: false };
 }
 
@@ -343,7 +359,7 @@ function _botCuota(tel, claves) {
     } catch (e) { Logger.log('Bot cuota ' + c + ': ' + (e && e.message || e)); }
   });
   if (!partes.length) return _botPasaAHumano(tel);
-  _waEnviarBotones(tel, partes.join('\n\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+  _waEnviarBotones(tel, partes.join('\n\n'), BOT_MENU);
   return { contesto: true, avisar: false };
 }
 
@@ -365,7 +381,7 @@ function _botComoPago(tel) {
     l.push('Y si su banco le pide un correo para enviar el comprobante, ponga ' + buzon +
            ': así su pago se registra solo.');
   }
-  _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+  _waEnviarBotones(tel, l.join('\n'), BOT_MENU);
   return { contesto: true, avisar: false };
 }
 
@@ -400,7 +416,7 @@ function _botComunicado(tel, clave) {
     l.push('');
     l.push(String(c.cuerpo || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400));
     if (enlace) { l.push(''); l.push('Leerlo completo: ' + enlace); }
-    _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+    _waEnviarBotones(tel, l.join('\n'), BOT_MENU);
     return { contesto: true, avisar: false };
   } catch (e) {
     Logger.log('Bot comunicado: ' + (e && e.message || e));
@@ -450,7 +466,7 @@ function _botContestaSaldo(tel, claves) {
     texto += '\n\nPara pagar: ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero +
              ' a nombre de ' + cta.titular + '.';
   }
-  _waEnviarBotones(tel, texto, [BOT_BTN_PAGOS, BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
+  _waEnviarBotones(tel, texto, [BOT_BTN_PAGOS, BOT_BTN_DETALLE, BOT_BTN_OPCIONES]);
   return { contesto: true, avisar: false };
 }
 
