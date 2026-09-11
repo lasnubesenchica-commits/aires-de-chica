@@ -11,7 +11,24 @@
  * (igual que el resto del stack BalanceClip).
  */
 
-var CONFIG = {
+/**
+ * CONFIG — la identidad de ESTA comunidad.
+ *
+ * Lo que manda son las Propiedades del script: AC_NEGOCIO, AC_SHEET_ID, AC_CUENTA_NUM…
+ * Los valores de abajo son sólo el respaldo mientras dura la migración, y quedarán
+ * vacíos en cuanto esta comunidad tenga sus propiedades puestas.
+ *
+ * La razón es concreta: el despliegue automático sobrescribe el código en cada push a
+ * main, así que una copia para otro PH no puede llevar sus datos aquí dentro — se le
+ * borrarían solos. Y con los datos en el código, una copia mal configurada mandaría a
+ * los propietarios de un PH a la cuenta bancaria de otro.
+ *
+ * Se arma aquí mismo, sin llamar a ninguna función de otro archivo: en Apps Script el
+ * código de nivel superior de un archivo corre antes de que existan las funciones de
+ * los archivos que se evalúan después, y a CONFIG lo usa medio sistema.
+ */
+var CONFIG = (function () {
+  var d = {
   NEGOCIO:        'Aires de Chicá',
   RAZON_SOCIAL:   'Aires de Chica, S.A.',
   // Si se deja vacío y el script está ligado a un Sheet, usa el Sheet activo.
@@ -44,6 +61,23 @@ var CONFIG = {
   MONEDA:         'B/.',
   TZ:             'America/Panama'
 };
+  try {
+    var p = PropertiesService.getScriptProperties().getProperties() || {};
+    Object.keys(d).forEach(function (k) {
+      var v = p['AC_' + k];
+      if (v === undefined || v === null || String(v).trim() === '') return;
+      if (typeof d[k] === 'number') {
+        var n = Number(v);
+        if (!isNaN(n)) d[k] = n;          // una propiedad ilegible no pisa el respaldo
+      } else {
+        d[k] = String(v).trim();
+      }
+    });
+  } catch (e) {
+    // Sin acceso a propiedades —contexto sin autorizar— se sigue con el respaldo.
+  }
+  return d;
+})();
 
 var AC_MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 var AC_MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
