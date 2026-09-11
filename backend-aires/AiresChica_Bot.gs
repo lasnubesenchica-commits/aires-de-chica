@@ -153,11 +153,15 @@ function _botIntencionPorPalabras(texto) {
 
 function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title: titulo } }; }
 
-var BOT_MENU = [
-  _botBoton('bot_saldo', 'Mi saldo'),
-  _botBoton('bot_comprobante', 'Enviar comprobante'),
-  _botBoton('bot_humano', 'Hablar con alguien')
-];
+// Los títulos no pasan de 20 caracteres: WhatsApp los corta sin avisar.
+var BOT_BTN_SALDO   = _botBoton('bot_saldo', 'Mi saldo');
+var BOT_BTN_DETALLE = _botBoton('bot_detalle', 'Estado de cuenta');
+var BOT_BTN_HUMANO  = _botBoton('bot_humano', 'Hablar con alguien');
+
+// El menú de entrada. Enviar un comprobante NO tiene botón: recibirlos funciona
+// —la gente manda la foto igual, se invite o no, y si no se atendiera se perdería—
+// pero no se ofrece hasta que la administración quiera ese flujo abierto.
+var BOT_MENU = [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_HUMANO];
 
 /** El saldo, compuesto por el código. Sin adornos y sin prometer nada. */
 function _botTextoSaldo(est) {
@@ -247,11 +251,7 @@ function _botContestaSaldo(tel, claves) {
     texto += '\n\nPara pagar: ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero +
              ' a nombre de ' + cta.titular + '.';
   }
-  _waEnviarBotones(tel, texto, [
-    _botBoton('bot_detalle', 'Enviarme el detalle'),
-    _botBoton('bot_comprobante', 'Enviar comprobante'),
-    _botBoton('bot_humano', 'Hablar con alguien')
-  ]);
+  _waEnviarBotones(tel, texto, [BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
   return { contesto: true, avisar: false };
 }
 
