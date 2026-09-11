@@ -416,36 +416,53 @@ function _botComoPago(tel, claves) {
   if (!cta || !cta.numero) return _botPasaAHumano(tel);
   var buzon = (typeof CONFIG === 'object' && CONFIG.COMPROBANTES_EMAIL) || '';
 
-  // El mismo lote que lleva el correo, para que el paso 3 diga qué escribir y no
+  // El mismo lote que lleva el correo, para que el paso diga qué escribir y no
   // «su número de lote» en abstracto.
   var lotes = [];
   (claves || []).forEach(function (c) {
     try { var e = getEstadoCuentaByKey(c); if (e.lote) lotes.push(String(e.lote)); }
     catch (err) {}
   });
-  var loteTxt = (lotes.length === 1) ? ' ' + lotes[0]
-              : (lotes.length > 1 ? ' (' + lotes.join(' o ') + ', según cuál esté pagando)' : '');
+  var loteTxt = lotes.length ? lotes.map(function (x) { return '*lote ' + x + '*'; }).join(' o ')
+                             : 'su número de lote';
 
-  var l = ['\uD83C\uDFE6 *Cómo registrar su pago por banca en línea*',
+  // Los datos van arriba y sueltos, no dentro de un paso: en el teléfono, una línea
+  // larga se parte por donde quiere y el número de cuenta acababa cortado en dos.
+  var l = ['\uD83C\uDFE6 *Cómo pagar su cuota*',
            '',
-           '1. Entre a su banca en línea (web o app) y elija *Transferencias*.',
-           '2. Elija o agregue como beneficiario la cuenta de ' + cta.titular + ':',
-           '   ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero,
-           '3. Indique el *monto* de su cuota y, en la *descripción o concepto*, escriba su ' +
-           'número de lote' + loteTxt + '.'];
+           '*La cuenta*',
+           cta.banco + ' \u00b7 ' + cta.tipo,
+           _botNumeroCuenta(cta.numero),
+           cta.titular,
+           '',
+           '*Los pasos*',
+           '1. En su banca en línea, elija *Transferencias*.',
+           '2. Agregue esa cuenta como beneficiario.',
+           '3. En *descripción o concepto*, escriba ' + loteTxt + '.'];
   if (buzon) {
-    l.push('4. En el campo de *correo electrónico para enviar el comprobante*, agregue:');
-    l.push('   ' + buzon);
-    l.push('5. Revise los datos y *confirme* la transferencia.');
+    l.push('4. Donde el banco pide *correo para enviar el comprobante*, ponga:');
+    l.push(buzon);
+    l.push('5. Revise y confirme.');
     l.push('');
-    l.push('¿Por qué el paso 4? Al incluir ese correo, el comprobante de su pago llega ' +
-           'automáticamente a la administración y su cuota se registra sin que usted tenga ' +
-           'que enviarlo por otro medio. Si no lo agrega, su pago podría no reflejarse a tiempo.');
+    l.push('\u26A0\uFE0F El paso 4 es el que hace que su pago se registre solo. ' +
+           'Sin ese correo, podría no reflejarse a tiempo.');
   } else {
-    l.push('4. Revise los datos y *confirme* la transferencia.');
+    l.push('4. Revise y confirme.');
   }
   _botDice(tel, l.join('\n'));
   return { contesto: true, avisar: false };
+}
+
+/**
+ * El número de cuenta, en monoespaciado.
+ *
+ * Suelto, WhatsApp ve once dígitos seguidos, decide que es un teléfono y lo subraya:
+ * el dato más importante del mensaje queda convertido en un enlace para llamar. Dentro
+ * de un bloque monoespaciado deja de tocarlo, y de paso los dígitos se leen mejor y se
+ * copian de un toque.
+ */
+function _botNumeroCuenta(numero) {
+  return '```' + String(numero).trim() + '```';
 }
 
 /**
