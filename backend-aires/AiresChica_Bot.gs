@@ -81,7 +81,10 @@ function _botAccion(msg) {
   return 'bot_humano';
 }
 
-var BOT_ACCIONES = ['bot_saldo', 'bot_detalle', 'bot_comprobante', 'bot_humano'];
+// La lista cerrada. Claude sólo puede devolver una de éstas; cualquier otra cosa cae
+// en las palabras clave, y de ahí a un humano.
+var BOT_ACCIONES = ['bot_saldo', 'bot_pagos', 'bot_detalle', 'bot_cuota', 'bot_comopago',
+                    'bot_comprobante', 'bot_datos', 'bot_comunicado', 'bot_humano'];
 
 /**
  * Clasifica texto libre. Devuelve siempre una de BOT_ACCIONES, o '' para saludar.
@@ -107,15 +110,20 @@ function _botIntencion(texto) {
         system:
           'Clasificas mensajes de WhatsApp que propietarios de una comunidad en Panamá le ' +
           'escriben a la administración sobre su cuota de mantenimiento. Responde SOLO con ' +
-          'una de estas cinco palabras, sin explicar nada:\n' +
-          'saldo — pregunta cuánto debe, si está al día, si le llegó un pago.\n' +
+          'una de estas palabras, sin explicar nada:\n' +
+          'saldo — pregunta cuánto debe o si está al día.\n' +
+          'pagos — pregunta si le llegó un pago, o por los pagos que tiene registrados.\n' +
           'detalle — pide el estado de cuenta, el desglose o el PDF.\n' +
-          'comprobante — dice que va a mandar o que mandó un comprobante de pago, o pregunta ' +
-          'a qué cuenta pagar.\n' +
+          'cuota — pregunta cuánto es la cuota, cuándo vence o cómo se calcula el recargo.\n' +
+          'comopago — pregunta a qué cuenta pagar o cómo hacer el pago.\n' +
+          'comprobante — dice que va a mandar o que ya mandó un comprobante.\n' +
+          'datos — pregunta por su correo o su celular registrados, o quiere cambiarlos.\n' +
+          'comunicado — pregunta por un aviso, una reunión o algo que pasó en la comunidad.\n' +
           'humano — reclama, no está de acuerdo con un cargo, pide un arreglo de pago, ' +
-          'pregunta por el reglamento o por cualquier asunto de la comunidad.\n' +
+          'pregunta por el reglamento, o cualquier otra cosa.\n' +
           'saludo — sólo saluda o no se entiende qué necesita.\n' +
-          'Ante la duda entre saldo y humano, responde humano.',
+          'Ante cualquier duda, responde humano: es preferible que conteste una persona ' +
+          'a que el sistema conteste otra cosa.',
         messages: [{ role: 'user', content: t.slice(0, 600) }]
       }),
       muteHttpExceptions: true
@@ -125,11 +133,8 @@ function _botIntencion(texto) {
     var txt = '';
     (j.content || []).forEach(function (c) { if (c.type === 'text' && !txt) txt = String(c.text || ''); });
     var w = txt.toLowerCase().replace(/[^a-z]/g, '');
-    if (w === 'saldo') return 'bot_saldo';
-    if (w === 'detalle') return 'bot_detalle';
-    if (w === 'comprobante') return 'bot_comprobante';
-    if (w === 'humano') return 'bot_humano';
     if (w === 'saludo') return '';
+    if (BOT_ACCIONES.indexOf('bot_' + w) >= 0) return 'bot_' + w;
     return deRespaldo;
   } catch (e) {
     Logger.log('Bot: Claude falló, se usan palabras clave — ' + (e && e.message || e));
@@ -142,10 +147,15 @@ function _botIntencionPorPalabras(texto) {
   var t = String(texto || '').toLowerCase()
     .replace(/[áà]/g, 'a').replace(/[éè]/g, 'e').replace(/[íì]/g, 'i')
     .replace(/[óò]/g, 'o').replace(/[úù]/g, 'u');
+  if (/reclamo|no estoy de acuerdo|arreglo de pago|plazo|reglamento|junta|queja|reclam/.test(t)) return 'bot_humano';
   if (/estado de cuenta|desglose|detalle|pdf|documento/.test(t)) return 'bot_detalle';
-  if (/comprobante|recibo|transferenc|deposit|yappy|ach|ya pague|le pague|hice el pago|a que cuenta|numero de cuenta/.test(t)) return 'bot_comprobante';
+  if (/mis datos|mi correo|mi email|mi celular|actualizar.*(datos|correo|celular)|cambiar.*(datos|correo|celular)/.test(t)) return 'bot_datos';
+  if (/comunicado|aviso|reunion|asamblea|circular/.test(t)) return 'bot_comunicado';
+  if (/a que cuenta|numero de cuenta|como pago|donde pago|a donde pago|a nombre de quien/.test(t)) return 'bot_comopago';
+  if (/comprobante|recibo|le mando|les mando|adjunto/.test(t)) return 'bot_comprobante';
+  if (/ya pague|le pague|les pague|hice el pago|hice la transferenc|deposit|les llego|recibieron|mis pagos|ultimos pagos/.test(t)) return 'bot_pagos';
+  if (/cuanto es la cuota|cual es la cuota|cuando vence|vencimiento|fecha limite|recargo|como se calcula/.test(t)) return 'bot_cuota';
   if (/saldo|cuanto debo|cuanto es|deuda|debo|pendiente|mora|atrasad|al dia|adeud/.test(t)) return 'bot_saldo';
-  if (/reclamo|no estoy de acuerdo|arreglo|abono|plazo|reglamento|junta|queja|error/.test(t)) return 'bot_humano';
   return '';
 }
 
@@ -155,13 +165,39 @@ function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title:
 
 // Los títulos no pasan de 20 caracteres: WhatsApp los corta sin avisar.
 var BOT_BTN_SALDO   = _botBoton('bot_saldo', 'Mi saldo');
+var BOT_BTN_PAGOS   = _botBoton('bot_pagos', 'Mis últimos pagos');
 var BOT_BTN_DETALLE = _botBoton('bot_detalle', 'Estado de cuenta');
 var BOT_BTN_HUMANO  = _botBoton('bot_humano', 'Hablar con alguien');
 
-// El menú de entrada. Enviar un comprobante NO tiene botón: recibirlos funciona
-// —la gente manda la foto igual, se invite o no, y si no se atendiera se perdería—
-// pero no se ofrece hasta que la administración quiera ese flujo abierto.
-var BOT_MENU = [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_HUMANO];
+/**
+ * El menú de entrada, como lista.
+ *
+ * Un mensaje de botones admite tres y ya son siete opciones. La lista admite diez
+ * repartidas en secciones, que además agrupan: lo de la cuenta de uno por un lado y
+ * la ayuda por otro.
+ *
+ * Enviar un comprobante NO está en el menú: recibirlos funciona —la gente manda la
+ * foto igual, se invite o no, y si no se atendiera se perdería— pero no se ofrece
+ * hasta que la administración quiera ese flujo abierto.
+ */
+function _botSecciones() {
+  return [
+    { title: 'Mi cuenta', rows: [
+      { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su lote' },
+      { id: 'bot_pagos',    title: 'Mis últimos pagos',      description: 'Los pagos que le tenemos registrados' },
+      { id: 'bot_detalle',  title: 'Estado de cuenta',       description: 'Le enviamos el PDF, mes por mes' },
+      { id: 'bot_cuota',    title: 'Mi cuota y vencimiento', description: 'Cuánto es, cuándo vence y el recargo' }
+    ] },
+    { title: 'La comunidad', rows: [
+      { id: 'bot_comunicado', title: 'Último comunicado',    description: 'El último aviso de la administración' }
+    ] },
+    { title: 'Ayuda', rows: [
+      { id: 'bot_comopago', title: 'Cómo pago',              description: 'La cuenta de la Asociación y qué poner' },
+      { id: 'bot_datos',    title: 'Mis datos',              description: 'El correo y el celular que tenemos suyos' },
+      { id: 'bot_humano',   title: 'Hablar con alguien',     description: 'Le contesta la administración' }
+    ] }
+  ];
+}
 
 /** El saldo, compuesto por el código. Sin adornos y sin prometer nada. */
 function _botTextoSaldo(est) {
@@ -220,7 +256,12 @@ function _botAtender(info, msg) {
   var claves = (quien.claves && quien.claves.length) ? quien.claves : [info.clave];
 
   if (accion === 'bot_saldo') return _botContestaSaldo(tel, claves);
+  if (accion === 'bot_pagos') return _botUltimosPagos(tel, claves);
   if (accion === 'bot_detalle') return _botMandaEstado(tel, claves);
+  if (accion === 'bot_cuota') return _botCuota(tel, claves);
+  if (accion === 'bot_comunicado') return _botComunicado(tel, info.clave);
+  if (accion === 'bot_comopago') return _botComoPago(tel);
+  if (accion === 'bot_datos') return _botDatos(tel, claves);
   if (accion === 'bot_comprobante') return _botPideComprobante(tel);
   if (accion === 'bot_comprobante_recibido') return _botRecibeComprobante(tel, info, msg);
   if (accion === 'bot_humano') return _botPasaAHumano(tel);
@@ -229,10 +270,168 @@ function _botAtender(info, msg) {
 
 function _botSaluda(tel, info) {
   var nombre = String(info.nombre || '').split(' ')[0];
-  _waEnviarBotones(tel,
+  _waEnviarLista(tel,
     (nombre ? 'Hola ' + nombre + '. ' : 'Hola. ') +
     'Le contesta el sistema de la Asociación de Aires de Chicá. ¿En qué le ayudamos?',
-    BOT_MENU);
+    'Ver opciones', _botSecciones());
+  return { contesto: true, avisar: false };
+}
+
+/** «5 de septiembre de 2026». Los meses en español salen del mismo sitio que el correo. */
+function _botFecha(d) {
+  var f = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(f.getTime())) return String(d || '');
+  return f.getDate() + ' de ' + AC_MESES_LARGO[f.getMonth()] + ' de ' + f.getFullYear();
+}
+
+/**
+ * Los últimos pagos registrados.
+ *
+ * Contesta «¿les llegó mi transferencia?», que es la pregunta con más ansiedad detrás
+ * y que hasta ahora sólo se respondía de refilón mirando el saldo.
+ */
+function _botUltimosPagos(tel, claves) {
+  var partes = [];
+  claves.forEach(function (c) {
+    try {
+      var est = getEstadoCuentaByKey(c);
+      var hist = (est.pagosHistorial || []).slice().sort(function (a, b) {
+        return new Date(b.fecha) - new Date(a.fecha);
+      }).slice(0, 3);
+      var l = ['Lote ' + est.lote];
+      if (!hist.length) {
+        l.push('No tenemos ningún pago registrado.');
+      } else {
+        hist.forEach(function (p) {
+          l.push('· ' + _botFecha(p.fecha) + ' — B/. ' + (Number(p.monto) || 0).toFixed(2) +
+                 (p.referencia ? ' (ref. ' + p.referencia + ')' : ''));
+        });
+      }
+      partes.push(l.join('\n'));
+    } catch (e) { Logger.log('Bot pagos ' + c + ': ' + (e && e.message || e)); }
+  });
+  if (!partes.length) return _botPasaAHumano(tel);
+
+  _waEnviarBotones(tel,
+    partes.join('\n\n') +
+    '\n\nSi hizo un pago que no aparece aquí, envíenos el comprobante y lo registramos.',
+    [BOT_BTN_SALDO, BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * La cuota, el vencimiento y el recargo.
+ *
+ * No sólo informa: casi todo reclamo por un recargo empieza en que la regla nunca se
+ * dijo. Los números salen de la configuración, no escritos a mano aquí.
+ */
+function _botCuota(tel, claves) {
+  var partes = [];
+  claves.forEach(function (c) {
+    try {
+      var est = getEstadoCuentaByKey(c);
+      var l = ['Lote ' + est.lote + ': B/. ' + (Number(est.cuota) || 0).toFixed(2) + ' al mes.'];
+      if (est.fechaVencimiento) {
+        l.push('La cuota del mes vence el ' + _botFecha(est.fechaVencimiento) + '.');
+      }
+      var pct = Number(est.moraPct) || 0;
+      if (pct > 0) {
+        l.push('Pasada esa fecha se aplica un recargo por mora del ' + pct + '% ' +
+               (est.moraBase === 'pendiente' ? 'sobre el saldo pendiente.' : 'sobre la cuota del mes.'));
+      }
+      partes.push(l.join('\n'));
+    } catch (e) { Logger.log('Bot cuota ' + c + ': ' + (e && e.message || e)); }
+  });
+  if (!partes.length) return _botPasaAHumano(tel);
+  _waEnviarBotones(tel, partes.join('\n\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+  return { contesto: true, avisar: false };
+}
+
+/** La cuenta de cobro y qué escribir para que el pago se reconozca solo. */
+function _botComoPago(tel) {
+  var cta = (typeof _ctaCobro === 'function') ? _ctaCobro() : null;
+  if (!cta || !cta.numero) return _botPasaAHumano(tel);
+  var buzon = (typeof CONFIG === 'object' && CONFIG.COMPROBANTES_EMAIL) || '';
+  var l = ['Puede pagar por transferencia desde su banca en línea:',
+           '',
+           cta.banco + ' · ' + cta.tipo,
+           'N.º ' + cta.numero,
+           'A nombre de ' + cta.titular,
+           '',
+           'En la descripción del pago, escriba su número de lote. Es lo que nos permite ' +
+           'reconocerlo sin preguntarle.'];
+  if (buzon) {
+    l.push('');
+    l.push('Y si su banco le pide un correo para enviar el comprobante, ponga ' + buzon +
+           ': así su pago se registra solo.');
+  }
+  _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * El último comunicado que le tocaba a esta persona.
+ *
+ * Se comprueba que estuviera entre sus destinatarios: un comunicado dirigido a un
+ * residencial concreto no se le enseña a quien no vive ahí. El enlace es el personal,
+ * el mismo del correo, así que el acuse de lectura sigue contando.
+ */
+function _botComunicado(tel, clave) {
+  try {
+    var lista = (typeof getComunicados === 'function') ? getComunicados(40) : [];
+    var mios = lista.filter(function (c) {
+      if (String(c.estado) !== 'enviado') return false;
+      try {
+        return _comDestinatarios(c).some(function (p) {
+          return String(p.clave).toUpperCase() === String(clave).toUpperCase();
+        });
+      } catch (e) { return false; }
+    }).sort(function (a, b) { return String(b.enviadoEn).localeCompare(String(a.enviadoEn)); });
+
+    if (!mios.length) {
+      enviarWhatsAppTexto(tel, 'Por ahora no hay ningún comunicado publicado para su lote.');
+      return { contesto: true, avisar: false };
+    }
+    var c = mios[0];
+    var enlace = '';
+    try { enlace = _comLink('verComunicado', { id: c.id, t: _acTokenDe(clave) }); } catch (e) {}
+    var l = [c.titulo];
+    if (c.enviadoEn) l.push('(' + String(c.enviadoEn).slice(0, 10) + ')');
+    l.push('');
+    l.push(String(c.cuerpo || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400));
+    if (enlace) { l.push(''); l.push('Leerlo completo: ' + enlace); }
+    _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_SALDO, BOT_BTN_HUMANO]);
+    return { contesto: true, avisar: false };
+  } catch (e) {
+    Logger.log('Bot comunicado: ' + (e && e.message || e));
+    return _botPasaAHumano(tel);
+  }
+}
+
+/**
+ * Los datos de contacto que tenemos suyos.
+ *
+ * Esto no edita nada, y aun así vale por sí solo: convierte a cada propietario en el
+ * corrector de su propia ficha. Un correo mal escrito es un estado de cuenta que no
+ * llega y nadie se entera hasta el envío masivo.
+ */
+function _botDatos(tel, claves) {
+  var l = [], vistos = {};
+  claves.forEach(function (c) {
+    try {
+      var est = getEstadoCuentaByKey(c);
+      if (vistos[est.email + '|' + est.celular]) return;
+      vistos[est.email + '|' + est.celular] = 1;
+      l.push('Lote ' + est.lote + ' · ' + est.nombre);
+      l.push('Correo: ' + (est.email || '— no tenemos ninguno —'));
+      l.push('Celular: ' + (est.celular || '— no tenemos ninguno —'));
+      l.push('');
+    } catch (e) { Logger.log('Bot datos ' + c + ': ' + (e && e.message || e)); }
+  });
+  if (!l.length) return _botPasaAHumano(tel);
+  l.push('Si algo está mal o cambió, toque «Hablar con alguien» y lo corregimos. ' +
+         'Su estado de cuenta se envía a ese correo.');
+  _waEnviarBotones(tel, l.join('\n'), [BOT_BTN_HUMANO]);
   return { contesto: true, avisar: false };
 }
 
@@ -251,7 +450,7 @@ function _botContestaSaldo(tel, claves) {
     texto += '\n\nPara pagar: ' + cta.banco + ' · ' + cta.tipo + ' N.º ' + cta.numero +
              ' a nombre de ' + cta.titular + '.';
   }
-  _waEnviarBotones(tel, texto, [BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
+  _waEnviarBotones(tel, texto, [BOT_BTN_PAGOS, BOT_BTN_DETALLE, BOT_BTN_HUMANO]);
   return { contesto: true, avisar: false };
 }
 
@@ -363,6 +562,60 @@ function _waEnviarBotones(telefono, texto, botones) {
     _waAnotar({ id: mid, direccion: 'sale', telefono: n.e164, tipo: 'interactive',
                 texto: String(texto).slice(0, 300), estado: 'enviado',
                 nota: bs.map(function (b) { return b.reply.title; }).join(' | ') });
+    return { ok: true, id: mid };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+/**
+ * Mensaje de lista: hasta 10 filas en secciones, frente a las 3 de los botones.
+ *
+ * Los límites de WhatsApp se aplican aquí y no se dejan a su criterio: corta títulos
+ * a 24 y descripciones a 72 sin avisar, y se pasa de 10 filas devolviendo un error
+ * que no dice cuál sobra.
+ */
+function _waEnviarLista(telefono, texto, textoBoton, secciones) {
+  var token = _waToken(), phoneId = _waPhoneId();
+  if (!token || !phoneId) return { ok: false, error: 'Faltan META_WHATSAPP_TOKEN o META_PHONE_ID.' };
+  var n = normalizarCelular(telefono);
+  if (!n.ok) return { ok: false, error: 'Número no utilizable: ' + n.por };
+
+  var quedan = 10, secs = [];
+  (secciones || []).forEach(function (s) {
+    if (quedan <= 0) return;
+    var filas = (s.rows || []).slice(0, quedan).map(function (r) {
+      var f = { id: String(r.id).slice(0, 200), title: String(r.title).slice(0, 24) };
+      if (r.description) f.description = String(r.description).slice(0, 72);
+      return f;
+    });
+    if (!filas.length) return;
+    quedan -= filas.length;
+    secs.push({ title: String(s.title || '').slice(0, 24), rows: filas });
+  });
+  if (!secs.length) return { ok: false, error: 'La lista no tiene ninguna fila.' };
+
+  try {
+    var r = UrlFetchApp.fetch(WA_GRAPH + '/' + phoneId + '/messages', {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ messaging_product: 'whatsapp', to: n.e164.replace('+', ''),
+        type: 'interactive',
+        interactive: { type: 'list', body: { text: String(texto).slice(0, 1024) },
+                       action: { button: String(textoBoton || 'Ver opciones').slice(0, 20),
+                                 sections: secs } } }),
+      muteHttpExceptions: true
+    });
+    var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    if (r.getResponseCode() !== 200) {
+      var err = (j.error && j.error.message) || r.getContentText().slice(0, 200);
+      _waAnotar({ direccion: 'sale', telefono: n.e164, tipo: 'interactive',
+                  texto: String(texto).slice(0, 300), estado: 'error', nota: err });
+      return { ok: false, error: err, codigo: (j.error && j.error.code) || r.getResponseCode() };
+    }
+    var mid = (j.messages && j.messages[0] && j.messages[0].id) || '';
+    _waAnotar({ id: mid, direccion: 'sale', telefono: n.e164, tipo: 'interactive',
+                texto: String(texto).slice(0, 300), estado: 'enviado', nota: 'menú' });
     return { ok: true, id: mid };
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) };
