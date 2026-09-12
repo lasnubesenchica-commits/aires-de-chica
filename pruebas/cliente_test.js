@@ -37,14 +37,22 @@ const soltar = () => { console.log = _log; return salida.join('\n'); };
 const cargar = () => eval(bloque + '\n' + cliente +
   '\n({ CONFIG: CONFIG, verConfiguracionCliente: verConfiguracionCliente,' +
   '   configurarCliente: configurarCliente,' +
-  '   sembrarConfiguracionDesdeCodigo: sembrarConfiguracionDesdeCodigo,' +
   '   AC_CLAVES_CLIENTE: AC_CLAVES_CLIENTE })');
 
-console.log('── SIN PROPIEDADES, EL CÓDIGO ES EL RESPALDO ──');
+console.log('── UNA COPIA SIN CONFIGURAR NO HEREDA A NADIE ──');
 PROPS = {};
 let m = cargar();
-ok(m.CONFIG.NEGOCIO === 'Aires de Chicá', 'usa lo que hay en el código: ' + m.CONFIG.NEGOCIO);
-ok(m.CONFIG.CUOTA_BASE === 45, 'incluidos los números: ' + m.CONFIG.CUOTA_BASE);
+ok(m.CONFIG.NEGOCIO === '' && m.CONFIG.RAZON_SOCIAL === '',
+   'no se llama como la comunidad original');
+ok(m.CONFIG.CUENTA_NUM === '' && m.CONFIG.BANCO === '' && m.CONFIG.CUENTA_NOMBRE === '',
+   'y sobre todo NO trae su cuenta bancaria: ese era el riesgo de dejarla en el código');
+ok(m.CONFIG.SHEET_ID === '', 'ni su hoja de cálculo');
+ok(m.CONFIG.CUOTA_BASE === 0 && m.CONFIG.MORA_PCT === 0,
+   'la cuota y la mora quedan en 0: sin configurar no cobra, en vez de cobrar de más');
+ok(m.CONFIG.ANIO_ACTUAL === new Date().getFullYear(),
+   'el año es el de hoy, no 0, que rompería todo cálculo: ' + m.CONFIG.ANIO_ACTUAL);
+ok(m.CONFIG.MONEDA === 'B/.' && m.CONFIG.TZ === 'America/Panama',
+   'moneda y zona horaria sí quedan: son de Panamá y no cambian entre copias');
 
 console.log('\n── UNA PROPIEDAD MANDA SOBRE EL CÓDIGO ──');
 PROPS = { AC_NEGOCIO: 'PH Las Palmas', AC_CUENTA_NUM: '99-88-77',
@@ -56,23 +64,22 @@ ok(m.CONFIG.CUENTA_NUM === '99-88-77',
 ok(m.CONFIG.CUOTA_BASE === 85.5 && typeof m.CONFIG.CUOTA_BASE === 'number',
    'los números llegan como número, no como texto: ' + JSON.stringify(m.CONFIG.CUOTA_BASE));
 ok(m.CONFIG.ANIO_ACTUAL === 2027, 'el año también: ' + m.CONFIG.ANIO_ACTUAL);
-ok(m.CONFIG.ADMIN_EMAIL === 'admin@airesdechica.org',
-   'lo que no tiene propiedad sigue saliendo del código');
+ok(m.CONFIG.ADMIN_EMAIL === '', 'y lo que no tiene propiedad queda vacío, no heredado');
 
-console.log('\n── UNA PROPIEDAD ROTA NO PISA EL RESPALDO ──');
-PROPS = { AC_CUOTA_BASE: 'cuarenta y cinco', AC_NEGOCIO: '   ' };
+console.log('\n── UNA PROPIEDAD ROTA NO SE TRAGA ──');
+PROPS = { AC_CUOTA_BASE: '45', AC_CABANA_FEE: 'trece con cincuenta' };
 m = cargar();
-ok(m.CONFIG.CUOTA_BASE === 45,
-   'un número ilegible se ignora en vez de dejar la cuota en 0: ' + m.CONFIG.CUOTA_BASE);
-ok(m.CONFIG.NEGOCIO === 'Aires de Chicá', 'y una propiedad vacía tampoco borra el nombre');
+ok(m.CONFIG.CUOTA_BASE === 45, 'la buena entra: ' + m.CONFIG.CUOTA_BASE);
+ok(m.CONFIG.CABANA_FEE === 0,
+   'y un número ilegible se ignora en vez de meter NaN en los cálculos de cobro');
 
 console.log('\n── SIN PERMISO PARA LEER PROPIEDADES, EL SISTEMA NO SE CAE ──');
 const guardado = global.PropertiesService;
 global.PropertiesService = { getScriptProperties: () => { throw new Error('sin autorizar'); } };
 m = cargar();
 global.PropertiesService = guardado;
-ok(m.CONFIG.NEGOCIO === 'Aires de Chicá',
-   'sigue con el respaldo: una página pública no puede reventar por esto');
+ok(m.CONFIG.TZ === 'America/Panama' && m.CONFIG.NEGOCIO === '',
+   'no revienta: una página pública de comunicados no puede caerse por esto');
 
 console.log('\n── ESCRIBIR LA CONFIGURACIÓN DE UNA COPIA ──');
 PROPS = {}; m = cargar();
@@ -101,33 +108,38 @@ txt = soltar();
 ok(r.ok === false && /tienen que ser números/.test(txt), 'lo dice antes de guardarlo');
 ok(Object.keys(PROPS).length === 0, 'y no escribe nada');
 
-console.log('\n── SEMBRAR DESDE EL CÓDIGO ──');
+console.log('\n── CONFIGURAR UNA COPIA LA DEJA INDEPENDIENTE ──');
 PROPS = {}; m = cargar();
-capturar(); r = m.sembrarConfiguracionDesdeCodigo(); soltar();
-ok(r.escritas > 10, 'copia la configuración actual a propiedades: ' + r.escritas + ' claves');
-ok(PROPS.AC_SHEET_ID && PROPS.AC_CUENTA_NUM === '04-02-98-706290-3',
-   'con los valores que hoy están en el código, sin cambiar ninguno');
+capturar();
+m.configurarCliente({ NEGOCIO: 'PH Las Palmas', RAZON_SOCIAL: 'PH Las Palmas',
+  SHEET_ID: 'HOJA-PALMAS', ADMIN_EMAIL: 'admin@palmas.com', REPLY_TO: 'admin@palmas.com',
+  COMPROBANTES_EMAIL: 'pagos@palmas.com', WEBAPP_URL: 'https://script.google.com/x/exec',
+  BANCO: 'Banistmo', CUENTA_TIPO: 'Cuenta corriente', CUENTA_NUM: '01-234-567890',
+  CUENTA_NOMBRE: 'PH Las Palmas', CUOTA_BASE: 85, ANIO_ACTUAL: 2026 });
+soltar();
 m = cargar();
-ok(m.CONFIG.NEGOCIO === 'Aires de Chicá' && m.CONFIG.CUOTA_BASE === 45,
-   'y el sistema sigue viendo exactamente lo mismo que antes: la migración no cambia nada');
-
-console.log('\n── SEMBRAR DOS VECES NO PISA LO QUE YA ESTABA ──');
-PROPS.AC_NEGOCIO = 'PH Las Palmas';
-capturar(); r = m.sembrarConfiguracionDesdeCodigo(); txt = soltar();
-ok(PROPS.AC_NEGOCIO === 'PH Las Palmas',
-   'una copia ya configurada no vuelve a llamarse como la comunidad original');
-ok(/no se tocan/.test(txt) && /NEGOCIO/.test(txt), 'y se dice cuáles se respetaron');
+capturar(); r = m.verConfiguracionCliente(); txt = soltar();
+ok(r.faltan.length === 0, 'no le falta nada obligatorio');
+ok(/Lo obligatorio está puesto/.test(txt), 'y el informe lo confirma');
+ok(/Opcionales sin poner: .*LOGO_URL/.test(txt),
+   'distinguiendo lo que falta de verdad de lo que simplemente no se puso');
+ok(m.CONFIG.CUENTA_NUM === '01-234-567890' && m.CONFIG.CUOTA_BASE === 85,
+   'con su cuenta y su cuota, sin rastro de ninguna otra comunidad');
 
 console.log('\n── EL INFORME DICE DE DÓNDE SALE CADA VALOR ──');
 PROPS = { AC_NEGOCIO: 'PH Las Palmas' }; m = cargar();
 capturar(); r = m.verConfiguracionCliente(); txt = soltar();
-ok(/✓ NEGOCIO/.test(txt) && /PH Las Palmas/.test(txt), 'marca con ✓ lo que viene de propiedades');
-ok(/· SHEET_ID/.test(txt) && /CÓDIGO/.test(txt), 'y señala lo que todavía sale del código');
+ok(/✓ NEGOCIO/.test(txt) && /PH Las Palmas/.test(txt), 'marca con ✓ lo que está puesto');
+ok(/✗ SHEET_ID +— FALTA —/.test(txt),
+   'y con ✗ lo obligatorio que falta, que es lo que hay que ir a arreglar');
+ok(/· LOGO_URL +\(sin poner\)/.test(txt),
+   'lo opcional se distingue de lo que falta: ' + (/· LOGO_URL[^\n]*/.exec(txt)||[''])[0]);
 ok(!/%-?\d*s/.test(txt),
    'y ningún marcador de formato sale impreso: Apps Script sólo entiende «%s» a secas');
 // La clave ocupa 18 caracteres desde la posición 2, así que el valor empieza siempre
 // en la 21 — da igual que la clave se llame NEGOCIO o COMPROBANTES_EMAIL.
-const filas = txt.split('\n').filter(l => /^[✓·] /.test(l));
+// Sólo las filas de claves: el resumen de abajo también empieza por ✗ y colaba.
+const filas = txt.split('\n').filter(l => /^[✓·✗] [A-Z_]+ /.test(l));
 ok(filas.length === 19 && filas.every(l => l[20] === ' ' && l[21] && l[21] !== ' '),
    'los valores arrancan todos en la misma columna, con clave corta o larga');
 ok(r.faltan.indexOf('SHEET_ID') >= 0, 'y enumera lo obligatorio que falta: ' + r.faltan.length + ' claves');

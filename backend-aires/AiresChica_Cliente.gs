@@ -13,11 +13,12 @@
  * a la cuenta de otro. Eso no puede depender de que alguien se acuerde.
  *
  * ── Cómo se usa ──────────────────────────────────────────────────────────────
- *   1. verConfiguracionCliente()          — qué hay puesto y qué falta.
- *   2. sembrarConfiguracionDesdeCodigo()  — SÓLO en la comunidad que ya venía
- *                                           funcionando: copia a propiedades lo que
- *                                           hoy está en el código.
- *   3. configurarCliente({...})           — en una copia nueva: escribe sus datos.
+ *   1. verConfiguracionCliente()  — qué hay puesto y qué falta.
+ *   2. configurarCliente({...})   — escribe los datos de esta comunidad.
+ *
+ * Hubo una tercera, sembrarConfiguracionDesdeCodigo(), para migrar la comunidad que ya
+ * venía funcionando cuando sus datos vivían en Code.js. Hizo su trabajo y se retiró: el
+ * código ya no tiene datos que copiar.
  *
  * Cada clave se guarda con el prefijo AC_ para no chocar con las de Meta o Anthropic,
  * que viven en el mismo sitio.
@@ -71,35 +72,32 @@ function _acEsNumerica(k) {
   return ['CUOTA_BASE', 'CABANA_FEE', 'MORA_PCT', 'DUE_DAY', 'ANIO_ACTUAL'].indexOf(k) >= 0;
 }
 
-/** Qué está puesto, qué falta, y de dónde sale cada valor. */
+/** Qué está puesto y qué falta en esta copia. */
 function verConfiguracionCliente() {
   var props = PropertiesService.getScriptProperties().getProperties() || {};
-  var faltan = [], enCodigo = [];
+  var faltan = [], sinPoner = [];
   console.log('════ CONFIGURACIÓN DE ESTA COPIA ════');
   AC_CLAVES_CLIENTE.forEach(function (c) {
     var p = props[_acClaveProp(c.k)];
     var puesta = !(p === undefined || p === null || String(p).trim() === '');
-    var valor = puesta ? String(p).trim() : CONFIG[c.k];
-    var origen = puesta ? 'propiedad' : 'CÓDIGO';
     if (!puesta) {
-      enCodigo.push(c.k);
+      sinPoner.push(c.k);
       if (c.req) faltan.push(c.k);
     }
-    console.log('%s %s %s   [%s]', puesta ? '✓' : '·', _acPad(c.k, 18),
-      (valor === '' || valor === undefined) ? '(vacío)' : valor, origen);
+    console.log('%s %s %s', puesta ? '✓' : (c.req ? '✗' : '·'), _acPad(c.k, 18),
+      puesta ? String(p).trim() : (c.req ? '— FALTA —' : '(sin poner)'));
   });
 
-  if (!enCodigo.length) {
-    console.log('\n✓ Todo viene de las propiedades. Esta copia ya es independiente del código.');
-  } else {
-    console.log('\n%s clave(s) todavía salen del código: %s', enCodigo.length, enCodigo.join(', '));
-    console.log('En la comunidad que ya venía funcionando, ejecuta sembrarConfiguracionDesdeCodigo().');
-    console.log('En una copia nueva, ejecuta configurarCliente({...}) con sus datos.');
-  }
   if (faltan.length) {
-    console.log('\n⚠ Sin estas el sistema no puede operar bien: %s', faltan.join(', '));
+    console.log('\n✗ Faltan %s obligatoria(s): %s', faltan.length, faltan.join(', '));
+    console.log('Sin ellas el sistema no cobra ni envía bien. Ponlas con configurarCliente({...}).');
+  } else if (sinPoner.length) {
+    console.log('\n✓ Lo obligatorio está puesto.');
+    console.log('Opcionales sin poner: %s', sinPoner.join(', '));
+  } else {
+    console.log('\n✓ Configuración completa.');
   }
-  return { faltan: faltan, enCodigo: enCodigo };
+  return { faltan: faltan, sinPoner: sinPoner };
 }
 
 /**
@@ -154,39 +152,4 @@ function configurarCliente(datos) {
   console.log('✓ Escritas %s clave(s).', Object.keys(aEscribir).length);
   console.log('El cambio surte efecto en la siguiente ejecución. Comprueba con verConfiguracionCliente().');
   return { ok: true, escritas: Object.keys(aEscribir).length };
-}
-
-/**
- * Migración de la comunidad que ya venía funcionando: copia a propiedades lo que hoy
- * está en el código, sin cambiar ningún valor.
- *
- * No pisa lo que ya esté puesto — si una clave ya vive en propiedades, se respeta.
- * Ejecutarla dos veces no hace daño.
- */
-function sembrarConfiguracionDesdeCodigo() {
-  var props = PropertiesService.getScriptProperties();
-  var actuales = props.getProperties() || {};
-  var nuevas = {}, respetadas = [];
-
-  AC_CLAVES_CLIENTE.forEach(function (c) {
-    var p = actuales[_acClaveProp(c.k)];
-    if (!(p === undefined || p === null || String(p).trim() === '')) { respetadas.push(c.k); return; }
-    var v = CONFIG[c.k];
-    if (v === undefined || v === null || String(v) === '') return;
-    nuevas[_acClaveProp(c.k)] = String(v);
-  });
-
-  console.log('════ SEMBRAR DESDE EL CÓDIGO ════');
-  if (respetadas.length) console.log('Ya estaban en propiedades, no se tocan: %s', respetadas.join(', '));
-  if (!Object.keys(nuevas).length) {
-    console.log('No hay nada que sembrar: todo viene ya de las propiedades.');
-    return { ok: true, escritas: 0 };
-  }
-  Object.keys(nuevas).forEach(function (k) {
-    console.log('  %s = %s', k, nuevas[k]);
-  });
-  props.setProperties(nuevas, false);
-  console.log('\n✓ Sembradas %s clave(s).', Object.keys(nuevas).length);
-  console.log('Comprueba con verConfiguracionCliente() y luego se pueden vaciar del código.');
-  return { ok: true, escritas: Object.keys(nuevas).length };
 }

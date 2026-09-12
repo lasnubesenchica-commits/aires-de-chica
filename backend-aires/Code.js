@@ -28,39 +28,46 @@
  * los archivos que se evalúan después, y a CONFIG lo usa medio sistema.
  */
 var CONFIG = (function () {
+  // Nada de esto identifica a ninguna comunidad. Los datos viven en las Propiedades
+  // del script —AC_NEGOCIO, AC_SHEET_ID, AC_CUENTA_NUM…— y se ponen con
+  // configurarCliente(). Lo que queda aquí es sólo lo que NO cambia entre copias, más
+  // valores neutros que fallan de forma visible y barata:
+  //
+  //   · cuota y mora en 0        — una copia sin configurar no cobra de más; no cobra.
+  //   · cuenta de cobro vacía    — el bot deriva a una persona en vez de dar una
+  //                                cuenta ajena, que era el riesgo de dejarla escrita.
+  //   · SHEET_ID vacío           — usa la hoja a la que esté ligado el script.
+  //   · año en curso             — un 0 rompería todo cálculo; el año de hoy es la
+  //                                única suposición razonable.
+  //
+  // Ejecuta verConfiguracionCliente() para ver qué falta en esta copia.
   var d = {
-  NEGOCIO:        'Aires de Chicá',
-  RAZON_SOCIAL:   'Aires de Chica, S.A.',
-  // Si se deja vacío y el script está ligado a un Sheet, usa el Sheet activo.
-  SHEET_ID:       '1S-mea6zy87PwYFuwtbb4hqHX8LaK7sHW4zqX5kk2_4E',
-  ADMIN_EMAIL:    'admin@airesdechica.org',
-  REPLY_TO:       'admin@airesdechica.org',
-  COMPROBANTES_EMAIL: 'comprobantes@airesdechica.org', // alias/reenvío a admin@
-  // URL pública del web app. La usan los enlaces personales de los comunicados
-  // (ver en el navegador, archivo del propietario, acuse de recibo). Se deja fija
-  // porque ScriptApp.getService().getUrl() devuelve la del despliegue en curso, que
-  // no siempre es el de producción.
-  WEBAPP_URL:     'https://script.google.com/macros/s/AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4/exec',
-  // Logo servido desde GitHub Pages (dominio propio de Aires de Chicá).
-  LOGO_URL:       'https://admin.airesdechica.org/logo-airesdechica.jpeg',
-  LOGO_PNG_URL:   'https://admin.airesdechica.org/logo-airesdechica.jpeg',
+    NEGOCIO:        '',
+    RAZON_SOCIAL:   '',
+    SHEET_ID:       '',
+    ADMIN_EMAIL:    '',
+    REPLY_TO:       '',
+    COMPROBANTES_EMAIL: '',
+    WEBAPP_URL:     '',
+    LOGO_URL:       '',
+    LOGO_PNG_URL:   '',
 
-  // Datos de cobro
-  BANCO:          'Banco General',
-  CUENTA_TIPO:    'Cuenta de ahorros',
-  CUENTA_NUM:     '04-02-98-706290-3',
-  CUENTA_NOMBRE:  'Aires de Chica, S.A.',
+    BANCO:          '',
+    CUENTA_TIPO:    '',
+    CUENTA_NUM:     '',
+    CUENTA_NOMBRE:  '',
 
-  // Reglas de la cuota (confirmadas con el cliente)
-  CUOTA_BASE:     45.00,   // B/. por lote / mes
-  CABANA_FEE:     13.50,   // B/. por cabaña / mes
-  MORA_PCT:       0.10,    // 10% mensual
-  MORA_DESDE:     '2026-04', // primera cuota que genera mora (abril 2026)
-  DUE_DAY:        0,       // 0 = vence fin de mes; la mora corre el mes siguiente
-  ANIO_ACTUAL:    2026,
-  MONEDA:         'B/.',
-  TZ:             'America/Panama'
-};
+    CUOTA_BASE:     0,
+    CABANA_FEE:     0,
+    MORA_PCT:       0,
+    MORA_DESDE:     '',
+    DUE_DAY:        0,                        // 0 = vence fin de mes
+    ANIO_ACTUAL:    new Date().getFullYear(),
+
+    // Lo único que de verdad no cambia entre comunidades: son de Panamá.
+    MONEDA:         'B/.',
+    TZ:             'America/Panama'
+  };
   try {
     var p = PropertiesService.getScriptProperties().getProperties() || {};
     Object.keys(d).forEach(function (k) {
@@ -68,13 +75,13 @@ var CONFIG = (function () {
       if (v === undefined || v === null || String(v).trim() === '') return;
       if (typeof d[k] === 'number') {
         var n = Number(v);
-        if (!isNaN(n)) d[k] = n;          // una propiedad ilegible no pisa el respaldo
+        if (!isNaN(n)) d[k] = n;          // una propiedad ilegible no pisa el valor neutro
       } else {
         d[k] = String(v).trim();
       }
     });
   } catch (e) {
-    // Sin acceso a propiedades —contexto sin autorizar— se sigue con el respaldo.
+    // Sin acceso a propiedades —contexto sin autorizar— se sigue con los neutros.
   }
   return d;
 })();
