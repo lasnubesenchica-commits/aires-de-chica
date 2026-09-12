@@ -6,6 +6,15 @@
       "nombre": "Aires de Chicá",
       "scriptId": "1M3Kr-Y58i-eJCmIdtKoq1DXXM7PU36vyMkIuAR5HAWiN9YTvsIBI-zVA",
       "deploymentId": "AKfycbwuRoK_23HiOcqkR0itIV87lYH8YKzh-jIGnuJRWyZa9_QubxbjzlZnVU2BryyGikB4"
+    },
+    {
+      "id": "router",
+      "nombre": "Router de WhatsApp",
+      "gasDir": "router",
+      "scriptId": "",
+      "deploymentId": "",
+      "activo": false,
+      "nota": "Crear el proyecto en Apps Script, pegar aqui su scriptId y deploymentId, y poner activo en true."
     }
   ]
 }

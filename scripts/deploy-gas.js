@@ -169,11 +169,21 @@ async function main(opciones) {
   if (opciones.esperaMs !== undefined) ESPERA_BASE = opciones.esperaMs;
 
   const { gasDir, clientes } = leerClientes(raiz, solo);
-  const files = readGasFiles(path.join(raiz, gasDir));
-  if (!files.length) throw new Error(`Sin archivos .gs/.js en ${gasDir}`);
 
-  console.log(`${files.length} archivos de ${gasDir} → ${clientes.length} copia(s)`);
-  clientes.forEach((c) => console.log(`  · ${c.id}  ${c.nombre || ''}`));
+  // Cada copia puede traer su propio directorio. El router no lleva el backend de una
+  // comunidad: lleva el suyo, que sólo reparte mensajes.
+  const porDir = {};
+  clientes.forEach((c) => {
+    const d = c.gasDir || gasDir;
+    if (!porDir[d]) {
+      porDir[d] = readGasFiles(path.join(raiz, d));
+      if (!porDir[d].length) throw new Error(`Sin archivos .gs/.js en ${d}`);
+    }
+  });
+
+  console.log(`${clientes.length} copia(s):`);
+  clientes.forEach((c) => console.log(
+    `  · ${c.id}  ${c.nombre || ''}  [${c.gasDir || gasDir}, ${porDir[c.gasDir || gasDir].length} archivos]`));
   if (seco) {
     console.log('\n(--seco: no se tocó nada.)');
     return { seco: true, clientes: clientes.map((c) => c.id) };
@@ -184,7 +194,7 @@ async function main(opciones) {
   const resultados = [];
   for (const c of clientes) {
     console.log(`\n── ${c.nombre || c.id} (${c.scriptId})`);
-    resultados.push(await desplegarCliente(api, c, files));
+    resultados.push(await desplegarCliente(api, c, porDir[c.gasDir || gasDir]));
   }
 
   const mal = resultados.filter((r) => !r.ok);
