@@ -204,6 +204,7 @@ function _anotar(d) {
  */
 var R_ALTA = {
   // verifyToken: '',      // sólo la primera vez, para dar de alta el webhook en Meta
+  // hoja:        '',      // id de la hoja de bitácora; también una sola vez
   // phoneId:     '',      // el phone_number_id que da Meta. NO es el número.
   // url:         '',      // https://script.google.com/macros/s/…/exec de esa comunidad
   // nombre:      ''
@@ -223,6 +224,12 @@ function altaDePH() {
     _rProps().setProperty(R_PROP_VERIFY, String(a.verifyToken).trim());
     console.log('✓ Frase de verificación guardada (%s caracteres).',
                 String(a.verifyToken).trim().length);
+    hizo = true;
+  }
+
+  if (a.hoja) {
+    _rProps().setProperty(R_PROP_HOJA, String(a.hoja).trim());
+    console.log('✓ Bitácora en la hoja %s.', String(a.hoja).trim());
     hizo = true;
   }
 

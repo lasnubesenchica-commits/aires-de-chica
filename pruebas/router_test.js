@@ -174,6 +174,11 @@ R_ALTA = { phoneId: '666', url: 'script.google.com/macros/s/FFFF/exec', nombre: 
 capturar(); ra = altaDePH(); soltar();
 ok(ra.ok === false && !JSON.parse(PROPS.RUTEO_JSON)['666'],
    'una URL mal pegada se rechaza también por esta puerta');
+R_ALTA = { hoja: 'HOJA-NUEVA' };
+capturar(); ra = altaDePH(); soltar();
+ok(ra.ok === true && PROPS.ROUTER_SHEET_ID === 'HOJA-NUEVA',
+   'y la bitácora también se pone desde aquí, sin pasar por la pantalla de propiedades');
+PROPS.ROUTER_SHEET_ID = 'HOJA1';
 R_ALTA = {};
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
