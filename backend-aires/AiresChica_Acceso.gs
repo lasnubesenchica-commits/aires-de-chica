@@ -1022,20 +1022,64 @@ var ACC_CONFIANZA_MIN   = 0.75;
  */
 function _accLecturaFloja(j) {
   if (!j) return true;
+  if (!j.esCedula) return true;
   if ((Number(j.confianza) || 0) < ACC_CONFIANZA_MIN) return true;
-
-  var nombre = String(j.visitante || '').trim();
-  var numero = String(j.cedula || '').trim();
-  if (!nombre || !numero) return true;
-  if (!/\d/.test(numero)) return true;                       // un documento sin dígitos no es un documento
-
-  var palabras = nombre.split(/\s+/).filter(function (p) { return p.length > 1; });
-  if (!palabras.length) return true;
-  var distintas = {};
-  palabras.forEach(function (p) { distintas[p.toLowerCase()] = true; });
-  // «PERLA PERLA»: repetir la misma palabra no es un nombre, es el modelo atascado.
-  if (Object.keys(distintas).length < 2) return true;
+  if (!_accNombrePlausible(j.visitante)) return true;
+  if (!/\d/.test(String(j.cedula || ''))) return true;   // un documento sin dígitos no es un documento
   return false;
+}
+
+/**
+ * ¿Esto tiene forma de nombre de persona?
+ *
+ * Dos palabras distintas, mínimo. Los dos disparates reales que ha soltado el lector
+ * —«PERLA PERLA» y «PERLA MANCANELA PROVISONAL»— salen de que el modelo está leyendo
+ * el TÍTULO del carné («PERMANENCIA PROVISIONAL») creyendo que es el nombre, porque la
+ * foto está girada. De ahí que las palabras del encabezado descalifiquen: ningún
+ * visitante se llama «Permanencia».
+ */
+var ACC_PALABRAS_DE_CARNE = ['permanencia', 'provisional', 'provisonal', 'republica', 'república',
+  'panama', 'panamá', 'tribunal', 'electoral', 'migracion', 'migración', 'ministerio',
+  'seguridad', 'publica', 'pública', 'nacional', 'servicio', 'pasaporte', 'nombre', 'apellido',
+  'nacionalidad', 'firma', 'fecha', 'expedicion', 'expedición', 'expiracion', 'expiración'];
+
+function _accNombrePlausible(nombre) {
+  var palabras = String(nombre || '').trim().split(/\s+/)
+    .filter(function (p) { return p.length > 1; });
+  if (palabras.length < 2) return false;
+
+  var distintas = {}, delCarne = 0;
+  palabras.forEach(function (p) {
+    var limpia = _accNombre(p);
+    distintas[limpia] = true;
+    if (ACC_PALABRAS_DE_CARNE.indexOf(limpia) >= 0) delCarne++;
+  });
+  // «PERLA PERLA»: repetir la misma palabra no es un nombre, es el modelo atascado.
+  if (Object.keys(distintas).length < 2) return false;
+  // Si una de cada tres palabras sale del encabezado del documento, no está leyendo un
+  // nombre: está transcribiendo el cartón.
+  if (delCarne * 3 >= palabras.length) return false;
+  return true;
+}
+
+/**
+ * Cuánto vale una lectura. Sirve para quedarse con la MEJOR de varias.
+ *
+ * Esto nació de un fallo tonto y caro: la versión anterior sólo aceptaba la segunda
+ * lectura «si no era floja», así que cuando el modelo bueno devolvió el nombre perfecto
+ * pero con 0.72 de confianza —por debajo del umbral— se descartó entera y se mantuvo la
+ * del modelo barato, que traía un disparate. Tirar una lectura buena por no ser perfecta
+ * y quedarse con una mala es lo contrario de lo que hay que hacer: la comparación es
+ * entre las dos, no contra un ideal.
+ */
+function _accPuntosLectura(j) {
+  if (!j) return 0;
+  var n = 0;
+  if (j.esCedula) n += 2;
+  if (_accNombrePlausible(j.visitante)) n += 3;
+  if (/\d/.test(String(j.cedula || ''))) n += 2;
+  n += Math.max(0, Math.min(1, Number(j.confianza) || 0)) * 2;
+  return n;
 }
 
 /**
@@ -1134,10 +1178,16 @@ function _accApunte(msg) {
  *
  *   1. La respuesta al guardia REPITE siempre lo leído y dice que salió de la foto. Él
  *      tiene el documento en la mano y le cuesta un segundo desmentirlo.
- *   2. Si la lectura sale floja —poca confianza, o con una forma que no es la de un
- *      nombre— se repite con un modelo mejor antes de darla por buena.
- *   3. Si después de eso sigue floja, se marca `floja` y el guardia recibe un aviso de
- *      que NO se confíe y lo teclee. Leer mal en silencio es peor que no leer.
+ *   2. Si la primera lectura sale floja se pide una segunda a un modelo mejor, y se
+ *      QUEDA LA MEJOR DE LAS DOS — no «la segunda si es perfecta». Es el fallo que tuvo
+ *      esto: el modelo bueno devolvió el nombre correcto con 0.72 de confianza, por
+ *      debajo del umbral, y se descartó entero a favor de un disparate del barato.
+ *   3. Que los dos lectores coincidan DÍGITO A DÍGITO en el número vale más que la
+ *      confianza que cualquiera de ellos se declare a sí mismo: son dos lecturas
+ *      independientes de la misma imagen. Si coinciden, la lectura pasa aunque la
+ *      confianza sea tibia. Si discrepan, no pasa aunque sea alta.
+ *   4. Si aun así queda floja, se marca `floja` y el guardia recibe un aviso de que NO
+ *      se confíe y lo teclee. Leer mal en silencio es peor que no leer.
  */
 function _accLeerCedulaFoto(blob, tipo) {
   var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
@@ -1149,25 +1199,44 @@ function _accLeerCedulaFoto(blob, tipo) {
   try { b64 = Utilities.base64Encode(blob.getBytes()); }
   catch (e) { _accApunte('no se pudo codificar la imagen — ' + (e && e.message || e)); return null; }
 
-  var j = _accPasadaCedula(b64, mime, ACC_MODELO_CEDULA, key);
+  var lecturas = [_accPasadaCedula(b64, mime, ACC_MODELO_CEDULA, key)];
   var reintento = false;
-  if (_accLecturaFloja(j) && ACC_MODELO_CEDULA_2 && ACC_MODELO_CEDULA_2 !== ACC_MODELO_CEDULA) {
-    var j2 = _accPasadaCedula(b64, mime, ACC_MODELO_CEDULA_2, key);
-    // La segunda sólo gana si es mejor. Si también sale floja, se queda la que haya.
-    if (j2 && (!_accLecturaFloja(j2) || !j)) { j = j2; }
+  if (_accLecturaFloja(lecturas[0]) && ACC_MODELO_CEDULA_2 &&
+      ACC_MODELO_CEDULA_2 !== ACC_MODELO_CEDULA) {
+    lecturas.push(_accPasadaCedula(b64, mime, ACC_MODELO_CEDULA_2, key));
     reintento = true;
   }
 
+  // La mejor de las que haya. En empate gana la última, que es la del modelo mejor.
+  var j = null;
+  lecturas.forEach(function (x) {
+    if (_accPuntosLectura(x) >= _accPuntosLectura(j)) j = x;
+  });
+
   if (!j) { _accApunte('ninguna de las pasadas devolvió nada legible.'); return null; }
-  if (!j.esCedula) {
-    _accApunte('el modelo dice que la foto NO es un documento de identidad: ' + JSON.stringify(j));
+  var nombre = String(j.visitante || '').trim();
+  var numero = String(j.cedula || '').trim();
+  if (!nombre && !numero) {
+    _accApunte('no se sacó ni nombre ni número de la foto: ' + JSON.stringify(j));
     return null;
   }
-  return { visitante: String(j.visitante || '').trim(),
-           cedula: String(j.cedula || '').trim(),
+
+  // ¿Coinciden los dos lectores en el número? Se compara normalizado, igual que todo lo
+  // demás: «8-743-456» y «8743456» son el mismo documento.
+  var numeros = lecturas.filter(function (x) { return x && String(x.cedula || '').trim(); })
+                        .map(function (x) { return _accCedula(x.cedula); });
+  var coinciden = numeros.length >= 2 && numeros[0] === numeros[1];
+  var discrepan = numeros.length >= 2 && numeros[0] !== numeros[1];
+
+  var floja = _accLecturaFloja(j);
+  if (coinciden && _accNombrePlausible(nombre)) floja = false;
+  if (discrepan) floja = true;
+  if (discrepan) _accApunte('los dos lectores NO coinciden en el número: ' + numeros.join(' vs '));
+
+  return { visitante: nombre, cedula: numero,
            tipoDoc: String(j.tipoDoc || '').trim().toLowerCase(),
            confianza: Number(j.confianza) || 0,
-           floja: _accLecturaFloja(j), reintento: reintento, deFoto: true };
+           floja: floja, discrepan: discrepan, reintento: reintento, deFoto: true };
 }
 
 /* ─────────────── la conversación con el guardia ─────────────── */
@@ -1248,7 +1317,8 @@ function _botGuardia(tel, garita, msg) {
     fotoUrl: fotoUrl,
     notas: datos.deFoto
       ? ('Documento leído de una foto' + (datos.tipoDoc ? ' (' + datos.tipoDoc + ')' : '') +
-         (datos.floja ? ' — LECTURA DUDOSA, sin confirmar por el guardia.' : '.'))
+         (datos.floja ? ' — LECTURA DUDOSA, sin confirmar por el guardia.' : '.') +
+         (datos.discrepan ? ' Los dos lectores no coincidieron en el número.' : ''))
       : ''
   });
 

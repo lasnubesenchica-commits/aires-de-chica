@@ -613,6 +613,50 @@ ok(!_accLecturaFloja({ esCedula: true, visitante: 'Joslyn Alonso Lopez Albelo', 
 ok(_accLecturaFloja({ esCedula: true, visitante: 'Georgina Vanesa Martinez', cedula: 'ILEGIBLE', confianza: 0.9 }),
    'un número sin un solo dígito no es un número de documento');
 
+console.log('\n── EL CASO GEORGINA, TAL COMO SALIÓ EN EL REGISTRO DE LA GARITA ──');
+// Copiado literal de lo que devolvieron los dos modelos con la foto de verdad. Haiku
+// leyó el TÍTULO del carné como si fuera el nombre —está girado 90°— pero acertó el
+// número; sonnet leyó el nombre perfecto y se inventó un dígito de más.
+//
+// La versión anterior se quedaba con la de haiku porque la de sonnet venía con 0.72 de
+// confianza, por debajo del umbral, y la descartaba entera. Resultado: «No pude leer esa
+// foto», que no le sirve a nadie. Tirar la lectura buena por no ser perfecta y quedarse
+// con la mala es exactamente al revés.
+reiniciar(); reiniciarWA(); PROPS = {};
+CLAUDE = [ { esCedula: false, tipoDoc: 'permanencia', visitante: 'PERLA MANCANELA PROVISONAL',
+             cedula: '1045031', confianza: 0.65 },
+           { esCedula: true, tipoDoc: 'permanencia', visitante: 'GEORGINA VANESA MARTINEZ CALERO',
+             cedula: '10445031', confianza: 0.72 } ];
+foto();
+ok(!/No pude leer esa foto/.test(hablo().texto),
+   'ya no se tira todo a la basura: ' + hablo().texto.split('\n')[0]);
+ok(/GEORGINA VANESA MARTINEZ CALERO/.test(hablo().texto),
+   'se queda la MEJOR de las dos, aunque su confianza no llegue al umbral');
+ok(/NO ME FÍO DE ESTA LECTURA/.test(hablo().texto),
+   'y como los dos lectores no coinciden en el número, se le avisa de que lo teclee');
+ok(/no coincidieron en el número/.test(_sheetRows('Visitas')[0].notas),
+   'la bitácora guarda POR QUÉ se dudó: ' + _sheetRows('Visitas')[0].notas);
+
+ok(!_accNombrePlausible('PERLA MANCANELA PROVISONAL'),
+   '«PERLA MANCANELA PROVISONAL» no es un nombre: son las palabras del cartón');
+ok(!_accNombrePlausible('PERMANENCIA PROVISIONAL'), 'ni el título del carné');
+ok(_accNombrePlausible('GEORGINA VANESA MARTINEZ CALERO'), 'y el de ella sí lo es');
+ok(_accNombrePlausible('Joslyn Alonso Lopez Albelo'), 'igual que el de una cédula normal');
+
+console.log('\n── DOS LECTORES QUE COINCIDEN VALEN MÁS QUE UNA CONFIANZA ALTA ──');
+// Dos lecturas independientes de la misma imagen que dan el mismo número dígito a
+// dígito es mejor evidencia que un modelo diciendo de sí mismo que está seguro.
+reiniciar(); reiniciarWA();
+CLAUDE = [ { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza Ruiz',
+             cedula: '8-123-456', confianza: 0.55 },
+           { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza Ruiz',
+             cedula: '8123456', confianza: 0.6 } ];
+foto();
+ok(!/NO ME FÍO/.test(hablo().texto),
+   'coincidiendo los dos, la lectura pasa aunque ninguno llegara al umbral por su cuenta');
+ok(/Leído de la foto/.test(hablo().texto),
+   'pero se le sigue diciendo que salió de una foto, que eso no cambia');
+
 console.log('\n── UNA LECTURA FLOJA SE REINTENTA CON UN MODELO MEJOR ──');
 reiniciar();
 CLAUDE = [ { esCedula: true, visitante: 'PERLA PERLA', cedula: '104531', confianza: 0.9 },
@@ -627,7 +671,19 @@ ok(/1045031/.test(hablo().texto) && !/\b104531\b/.test(hablo().texto),
    'con el número completo, sin el cero que se comió la primera');
 ok(/Carné de permanencia/.test(hablo().texto),
    'y se le llama por lo que es: un carné de permanencia no es una cédula');
-ok(!/NO ME FÍO/.test(hablo().texto), 'resuelto el problema, no se le da la lata al guardia');
+ok(/NO ME FÍO/.test(hablo().texto),
+   'y se le avisa igual, porque los dos números no coinciden: 104531 contra 1045031. ' +
+   'Que la segunda lectura sea mejor no la vuelve segura');
+
+// La misma segunda lectura, pero con una primera que ni siquiera sacó número: entonces
+// no hay discrepancia que señalar, sólo una lectura buena que se cree.
+reiniciar(); reiniciarWA();
+CLAUDE = [ { esCedula: false, visitante: '', cedula: '', confianza: 0.2 },
+           { esCedula: true, tipoDoc: 'permanencia', visitante: 'Georgina Vanesa Martinez Calero',
+             cedula: '1045031', confianza: 0.92 } ];
+foto();
+ok(/Georgina Vanesa Martinez Calero/.test(hablo().texto) && !/NO ME FÍO/.test(hablo().texto),
+   'sin nada con qué discrepar, una segunda lectura firme se da por buena');
 
 console.log('\n── SI NI ASÍ SE LEE BIEN, SE DICE QUE NO SE CONFÍE ──');
 // Es el caso que de verdad importa: leer mal en silencio, en una garita, es peor que
@@ -662,8 +718,9 @@ console.log('\n── UN FALLO AL LEER TIENE QUE DEJAR RASTRO ──');
 reiniciar(); reiniciarWA(); PROPS = {};
 CLAUDE = { esCedula: false, visitante: '', cedula: '' };
 foto();
-ok(/NO es un documento/.test(apuntes()),
-   'cuando el modelo dice que no es un documento, queda apuntado: ' + apuntes().slice(12, 70));
+ok(/no se sacó ni nombre ni número/.test(apuntes()),
+   'cuando de la foto no sale nada, queda apuntado con lo que contestó el modelo: ' +
+   apuntes().split('\n').pop().slice(11, 75));
 
 PROPS = {}; reiniciarWA();
 const _fetch = global.UrlFetchApp.fetch;
