@@ -272,7 +272,10 @@ ok(SALIDAS[0].payload.type === 'text' && SALIDAS[1].payload.type === 'template',
    'primero texto libre, que dentro de la ventana es gratis y llega completo');
 ok(SALIDAS[1].payload.template.name === 'consulta_pendiente',
    'y la plantilla es la del aviso: ' + SALIDAS[1].payload.template.name);
-ok(SALIDAS[1].payload.template.components[0].parameters.length === 4, 'con sus cuatro valores');
+const par = SALIDAS[1].payload.template.components[0].parameters.map(x => x.text);
+ok(par.length === 5, 'con sus cinco valores: ' + par.length);
+ok(par[0] === 'Aires de Chicá',
+   'y el primero es la comunidad, que en la plantilla genérica ya no está escrita: ' + par[0]);
 
 console.log('\n── SIN LISTA DE ADMINISTRACIÓN NO LE ESCRIBE A NADIE ──');
 CACHE = {}; PROPS.META_ADMIN_WHATSAPP = '';

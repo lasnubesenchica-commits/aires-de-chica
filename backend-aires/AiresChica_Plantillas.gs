@@ -29,10 +29,33 @@
  */
 
 var WA_PROP_APP = 'META_APP_ID';
-var WA_PIE = 'Asociación de Propietarios de Aires de Chicá';
 
 /**
- * Las cuatro plantillas.
+ * El pie va vacío, y es a propósito.
+ *
+ * Meta no admite variables en el pie, y las plantillas se aprueban una vez para TODA la
+ * cuenta de WhatsApp Business, que es compartida por todas las comunidades. Es decir:
+ * cualquier cosa escrita aquí la leen los propietarios de todos los PH. El nombre de una
+ * comunidad concreta no puede ir.
+ *
+ * Y tampoco hace falta. Cada comunidad tiene su propio número, y el nombre visible es de
+ * cada número, no de la cuenta: el propietario ve el nombre de SU administración en la
+ * lista de chats antes de abrir el mensaje.
+ *
+ * Queda la tentación de firmar el producto — «Enviado con BalanceClip Lobby»—. No se
+ * hace: es texto promocional dentro de una plantilla UTILITY, y Meta ya reclasificó
+ * comunicado_aviso a MARKETING por su cuenta. Una plantilla MARKETING exige
+ * consentimiento explícito y el propietario puede silenciarla; que eso le pase al estado
+ * de cuenta, que es la columna vertebral del producto, no compensa una firma.
+ */
+var WA_PIE = '';
+
+/**
+ * Las cinco plantillas, en forma genérica.
+ *
+ * Ninguna nombra a una comunidad ni dice «lote»: el nombre del PH entra por variable y
+ * la palabra de la unidad la compone quien llama, con _acUnidadDe(). Una sola aprobación
+ * sirve para las veinte comunidades que caben en la cuenta.
  *
  * Todas se mandan como UTILITY: son avisos sobre la cuenta de una persona concreta,
  * no publicidad. Meta reclasifica por su cuenta si no está de acuerdo; el comunicado
@@ -48,16 +71,17 @@ function _waPlantillas() {
             'adjuntarlo fuera de la ventana de 24 horas.',
       encabezado: { tipo: 'DOCUMENT' },
       cuerpo:
-        'Hola {{1}}, le compartimos el estado de cuenta del lote {{2}} al cierre de {{3}}.\n' +
+        'Hola {{1}}, le compartimos el estado de cuenta de {{2}} correspondiente al ' +
+        '{{3}}, al cierre de {{4}}.\n' +
         '\n' +
-        'Saldo pendiente a la fecha: B/. {{4}}\n' +
+        'Saldo pendiente a la fecha: B/. {{5}}\n' +
         '\n' +
         'El detalle mes por mes está en el documento adjunto. Si realizó un pago en los ' +
         'últimos días, es posible que todavía no aparezca registrado.\n' +
         '\n' +
         'Este mismo estado de cuenta le llegó también por correo. Si necesita aclarar algo, ' +
         'responda a este mensaje.',
-      ejemplos: ['Ana Rosa Tejada', 'Q-9', 'agosto de 2026', '245.00'],
+      ejemplos: ['Ana Rosa Tejada', 'Aires de Chicá', 'lote Q-9', 'agosto de 2026', '245.00'],
       pie: WA_PIE
     },
     {
@@ -65,18 +89,22 @@ function _waPlantillas() {
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'Recordatorio de cuota pendiente. La cuenta de cobro va en variable a ' +
-            'propósito: si la Asociación cambia de banco, la plantilla sigue sirviendo.',
+            'propósito: si la comunidad cambia de banco, la plantilla sigue sirviendo.',
       encabezado: null,
+      // {{6}} repite el valor de {{3}}. Meta prohíbe reutilizar el mismo número dos
+      // veces, y «indicando su número de unidad» no sirve: cada comunidad llama a la
+      // suya de otra forma. Sale más barato pasar el dato dos veces que inventar un
+      // rodeo que se lea mal en todas.
       cuerpo:
-        'Hola {{1}}, le recordamos que el lote {{2}} mantiene un saldo pendiente de ' +
-        'B/. {{3}} en su cuota de mantenimiento.\n' +
+        'Hola {{1}}, le recordamos que en {{2}} el {{3}} mantiene un saldo pendiente de ' +
+        'B/. {{4}} en su cuota de mantenimiento.\n' +
         '\n' +
-        'Puede pagar por transferencia a {{4}}, indicando su número de lote en la ' +
-        'descripción.\n' +
+        'Puede pagar por transferencia a {{5}}, indicando {{6}} en la descripción.\n' +
         '\n' +
         'Si ya realizó el pago, puede enviarnos el comprobante por este mismo medio.',
-      ejemplos: ['Ana Rosa Tejada', 'Q-9', '245.00',
-                 'Global Bank, cuenta de ahorros N.º 12-345-6789 a nombre de la Asociación'],
+      ejemplos: ['Ana Rosa Tejada', 'Aires de Chicá', 'lote Q-9', '245.00',
+                 'Global Bank, cuenta de ahorros N.º 12-345-6789 a nombre de la Asociación',
+                 'lote Q-9'],
       pie: WA_PIE
     },
     {
@@ -87,31 +115,35 @@ function _waPlantillas() {
             'hoy el propietario transfiere y no sabe si llegó.',
       encabezado: null,
       cuerpo:
-        'Hola {{1}}, registramos su pago de B/. {{2}} para el lote {{3}} con fecha {{4}}.\n' +
+        'Hola {{1}}, la administración de {{2}} registró su pago de B/. {{3}} para el ' +
+        '{{4}} con fecha {{5}}.\n' +
         '\n' +
-        'Su saldo pendiente queda en B/. {{5}}\n' +
+        'Su saldo pendiente queda en B/. {{6}}\n' +
         '\n' +
         'Gracias. Si algo no coincide con lo que usted pagó, respóndanos a este mensaje y ' +
         'lo revisamos.',
-      ejemplos: ['Ana Rosa Tejada', '245.00', 'Q-9', '5 de septiembre de 2026', '0.00'],
+      ejemplos: ['Ana Rosa Tejada', 'Aires de Chicá', '245.00', 'lote Q-9',
+                 '5 de septiembre de 2026', '0.00'],
       pie: WA_PIE
     },
     {
       nombre: 'comunicado_aviso',
       categoria: 'UTILITY',
       idioma: 'es',
-      para: 'Comunicados de la Junta. El enlace es el personal de cada propietario, el ' +
-            'mismo que ya usa el correo, para que el acuse de lectura siga funcionando.',
-      encabezado: { tipo: 'TEXT', texto: 'Comunicado de la Asociación' },
+      para: 'Comunicados de la administración. El enlace es el personal de cada ' +
+            'propietario, el mismo que ya usa el correo, para que el acuse de lectura ' +
+            'siga funcionando.',
+      encabezado: { tipo: 'TEXT', texto: 'Comunicado de la administración' },
       cuerpo:
-        'Hola {{1}}, la administración publicó un comunicado: {{2}}.\n' +
+        'Hola {{1}}, la administración de {{2}} publicó un comunicado: {{3}}.\n' +
         '\n' +
-        '{{3}}\n' +
+        '{{4}}\n' +
         '\n' +
-        'Puede leerlo completo aquí: {{4}}\n' +
+        'Puede leerlo completo aquí: {{5}}\n' +
         '\n' +
         'También se lo enviamos a su correo electrónico.',
-      ejemplos: ['Ana Rosa Tejada', 'Corte de agua programado para el jueves',
+      ejemplos: ['Ana Rosa Tejada', 'Aires de Chicá',
+                 'Corte de agua programado para el jueves',
                  'El IDAAN informó que habrá suspensión del servicio el jueves 18 de 8:00 a. m. ' +
                  'a 2:00 p. m. Recomendamos almacenar agua la noche anterior.',
                  'https://admin.airesdechica.org/c/ejemplo'],
@@ -126,16 +158,16 @@ function _waPlantillas() {
             'horas también corre para el celular de quien administra.',
       encabezado: null,
       cuerpo:
-        'Consulta pendiente en el WhatsApp de la Asociación.\n' +
+        'Consulta pendiente en el WhatsApp de {{1}}.\n' +
         '\n' +
-        'Lote {{1}} · {{2}}\n' +
-        'Escribió: {{3}}\n' +
+        '{{2}} · {{3}}\n' +
+        'Escribió: {{4}}\n' +
         '\n' +
-        'Para contestarle directamente: {{4}}\n' +
+        'Para contestarle directamente: {{5}}\n' +
         '\n' +
         'La consulta quedó anotada en la hoja WhatsApp del sistema.',
-      ejemplos: ['Q-9', 'Ana Rosa Tejada', '¿Cuánto debo de este mes?',
-                 'https://wa.me/50761112233'],
+      ejemplos: ['Aires de Chicá', 'Lote Q-9', 'Ana Rosa Tejada',
+                 '¿Cuánto debo de este mes?', 'https://wa.me/50761112233'],
       pie: WA_PIE
     }
   ];
@@ -192,7 +224,7 @@ function _waValidarPlantilla(def) {
   return males;
 }
 
-/** Revisa las cuatro sin tocar Meta. Ejecútala antes que nada. */
+/** Revisa todas sin tocar Meta. Ejecútala antes que nada. */
 function validarPlantillas() {
   var defs = _waPlantillas(), mal = 0;
   console.log('════ PLANTILLAS ════');
@@ -224,7 +256,7 @@ function _waPdfDeMuestra() {
     '<div style="border-bottom:3px solid #0E8FB0;padding-bottom:12px;margin-bottom:18px">' +
     '<div style="font-size:11px;letter-spacing:2px;color:#0E8FB0">EJEMPLO · DATOS FICTICIOS</div>' +
     '<h1 style="font-size:22px;margin:6px 0 0">Estado de cuenta de mantenimiento</h1>' +
-    '<div style="font-size:12px;color:#5B7883">Lote Q-9 · al cierre de agosto de 2026</div></div>' +
+    '<div style="font-size:12px;color:#5B7883">Unidad Q-9 · al cierre de agosto de 2026</div></div>' +
     '<table style="width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;font-size:13px">' +
     '<tr><th style="text-align:left;padding:8px;border-bottom:2px solid #D3E6EC">Mes</th>' +
     '<th style="text-align:right;padding:8px;border-bottom:2px solid #D3E6EC">Cuota</th>' +
@@ -246,7 +278,7 @@ function _waPdfDeMuestra() {
     '<div style="margin-top:18px;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;color:#086176">' +
     'Saldo pendiente: B/. 90.00</div>' +
     '<div style="margin-top:28px;font-size:11px;color:#5B7883">Documento de muestra para la revisión ' +
-    'de la plantilla. No corresponde a ninguna persona ni a ningún lote real.</div></div>';
+    'de la plantilla. No corresponde a ninguna persona ni a ninguna unidad real.</div></div>';
   return HtmlService.createHtmlOutput(html).getAs('application/pdf')
     .setName('EstadoCuenta_Ejemplo.pdf');
 }
@@ -324,7 +356,7 @@ function subirPlantillas() {
   if (!tok) { console.log('Falta META_WHATSAPP_TOKEN.'); return { ok: false }; }
 
   var v = validarPlantillas();
-  if (!v.ok) { console.log('\nNo se sube nada hasta que estén las cuatro bien.'); return { ok: false }; }
+  if (!v.ok) { console.log('\nNo se sube nada hasta que estén todas bien.'); return { ok: false }; }
 
   var ya = {};
   var actuales = _waListarPlantillas();

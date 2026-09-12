@@ -15,7 +15,7 @@
  * ── Lo que el bot no hace, y no es un olvido ─────────────────────────────────
  *   · No aplica pagos ni cambia nada del padrón. Un comprobante que llega se guarda
  *     y se avisa; acreditarlo lo decide una persona.
- *   · No da cifras a un número que aparece en lotes de dueños distintos.
+ *   · No da cifras a un número que aparece en unidades de dueños distintos.
  *   · No contesta a números que no están en el padrón.
  *   · No negocia, no interpreta el reglamento y no promete nada de la Junta. Todo eso
  *     va a un humano, y el bot se calla mientras esa conversación está viva.
@@ -189,7 +189,7 @@ function _botSecciones() {
   // debe ver «Último comunicado» en el menú, ni poder llegar a él escribiendo.
   return _botFiltrarPorModulo([
     { title: 'Mi cuenta', rows: [
-      { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su lote' },
+      { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su ' + _acUnidad() },
       { id: 'bot_pagos',    title: 'Mis últimos pagos',      description: 'Los pagos que le tenemos registrados' },
       { id: 'bot_detalle',  title: 'Estado de cuenta',       description: 'Le enviamos el PDF, mes por mes' },
       { id: 'bot_cuota',    title: 'Mi cuota y vencimiento', description: 'Cuánto es, cuándo vence y el recargo' }
@@ -230,7 +230,7 @@ function _botTextoSaldo(est) {
   var saldo = Number(est.saldoConMora) || 0;
   var credito = Number(est.creditoAFavor) || 0;
   var l = [];
-  l.push('*Lote ' + est.lote + '* · ' + est.nombre);
+  l.push('*' + _acUnidadDeCap(est.lote) + '* · ' + est.nombre);
   if (saldo > 0.009) {
     l.push('\uD83D\uDCB3 Saldo pendiente: *B/. ' + saldo.toFixed(2) + '*');
     var mora = Number(est.mora) || 0;
@@ -259,22 +259,25 @@ function _botAtender(info, msg) {
 
   var accion = _botAccion(msg);
 
-  // Un número que aparece en lotes de dueños distintos no recibe cifras. Contestarle a
+  // Un número que aparece en unidades de dueños distintos no recibe cifras. Contestarle a
   // uno de los dos al azar sería enseñarle a alguien el saldo de otro.
   if (info.nota === 'varios-duenos') {
     _botSilenciar(tel);
     enviarWhatsAppTexto(tel,
-      'Gracias por escribir. Este número figura en más de un lote a nombre de personas ' +
+      'Gracias por escribir. Este número figura en más de ' + _acUn() + ' ' + _acUnidad() +
+      ' a nombre de personas ' +
       'distintas, así que por aquí no podemos darle cifras. La administración le ' +
       'contestará en un momento.');
     return { contesto: true, avisar: true };
   }
   if (!info.clave) {
     _botSilenciar(tel);
+    var correo = _botCorreoAdmin();
     enviarWhatsAppTexto(tel,
       'Gracias por escribir. Este número no aparece en el padrón de la comunidad, así que ' +
-      'no podemos darle información de ningún lote. Si es usted propietario, escríbanos a ' +
-      'admin@airesdechica.org y lo registramos.');
+      'no podemos darle información de ' + _acNingun() + ' ' + _acUnidad() + '.' +
+      (correo ? ' Si es usted propietario, escríbanos a ' + correo + ' y lo registramos.'
+              : ' Si es usted propietario, la administración le contestará en un momento.'));
     return { contesto: true, avisar: true };
   }
 
@@ -329,6 +332,22 @@ function _botOpciones(tel) {
  */
 function _botMes(i) { return String(AC_MESES_LARGO[i] || '').toLowerCase(); }
 
+/**
+ * A dónde se le dice a un desconocido que escriba.
+ *
+ * Devuelve cadena vacía si la copia todavía no tiene correo configurado, y quien llama
+ * cambia la frase. Antes esto era «admin@airesdechica.org» escrito a mano: en una copia
+ * nueva habría mandado a los propietarios de otro PH al buzón de Aires de Chicá.
+ */
+function _botCorreoAdmin() {
+  try {
+    if (typeof CONFIG === 'object' && CONFIG) {
+      return String(CONFIG.REPLY_TO || CONFIG.ADMIN_EMAIL || '').trim();
+    }
+  } catch (e) {}
+  return '';
+}
+
 function _botFecha(d) {
   var f = (d instanceof Date) ? d : new Date(d);
   if (isNaN(f.getTime())) return String(d || '');
@@ -380,7 +399,7 @@ function _botUltimosPagos(tel, claves) {
       var delAnio = todos.filter(function (p) {
         return new Date(p.fecha).getFullYear() === anio;
       });
-      var cab = '\uD83E\uDDFE *Pagos del ' + anio + '* \u2014 Lote ' + est.lote;
+      var cab = '\uD83E\uDDFE *Pagos del ' + anio + '* \u2014 ' + _acUnidadCap() + ' ' + est.lote;
 
       if (!delAnio.length) {
         var l = ['Sin pagos registrados este a\u00f1o.'];
@@ -418,7 +437,7 @@ function _botCuota(tel, claves) {
   claves.forEach(function (c) {
     try {
       var est = getEstadoCuentaByKey(c);
-      var l = ['\uD83D\uDCC5 *Lote ' + est.lote + '* \u2014 cuota de B/. ' +
+      var l = ['\uD83D\uDCC5 *' + _acUnidadDeCap(est.lote) + '* \u2014 cuota de B/. ' +
                (Number(est.cuota) || 0).toFixed(2) + ' al mes.'];
       if (est.fechaVencimiento) {
         l.push('La cuota del mes vence el ' + _botFecha(est.fechaVencimiento) + '.');
@@ -442,15 +461,16 @@ function _botComoPago(tel, claves) {
   if (!cta || !cta.numero) return _botPasaAHumano(tel);
   var buzon = (typeof CONFIG === 'object' && CONFIG.COMPROBANTES_EMAIL) || '';
 
-  // El mismo lote que lleva el correo, para que el paso diga qué escribir y no
-  // «su número de lote» en abstracto.
+  // La misma unidad que lleva el correo, para que el paso diga qué escribir y no
+  // «su número de unidad» en abstracto.
   var lotes = [];
   (claves || []).forEach(function (c) {
     try { var e = getEstadoCuentaByKey(c); if (e.lote) lotes.push(String(e.lote)); }
     catch (err) {}
   });
-  var loteTxt = lotes.length ? lotes.map(function (x) { return '*lote ' + x + '*'; }).join(' o ')
-                             : 'su número de lote';
+  var loteTxt = lotes.length
+    ? lotes.map(function (x) { return '*' + _acUnidadDe(x) + '*'; }).join(' o ')
+    : 'su número de ' + _acUnidad();
 
   // Los datos van arriba y sueltos, no dentro de un paso: en el teléfono, una línea
   // larga se parte por donde quiere y el número de cuenta acababa cortado en dos.
@@ -511,7 +531,8 @@ function _botComunicado(tel, clave) {
     }).sort(function (a, b) { return String(b.enviadoEn).localeCompare(String(a.enviadoEn)); });
 
     if (!mios.length) {
-      enviarWhatsAppTexto(tel, 'Por ahora no hay ningún comunicado publicado para su lote.');
+      enviarWhatsAppTexto(tel,
+        'Por ahora no hay ningún comunicado publicado para su ' + _acUnidad() + '.');
       return { contesto: true, avisar: false };
     }
     var c = mios[0];
@@ -545,7 +566,7 @@ function _botDatos(tel, claves) {
       var est = getEstadoCuentaByKey(c);
       if (vistos[est.email + '|' + est.celular]) return;
       vistos[est.email + '|' + est.celular] = 1;
-      l.push('\uD83D\uDC64 *Lote ' + est.lote + '* · ' + est.nombre);
+      l.push('\uD83D\uDC64 *' + _acUnidadDeCap(est.lote) + '* · ' + est.nombre);
       l.push('Correo: ' + (est.email || '— no tenemos ninguno —'));
       l.push('Celular: ' + (est.celular || '— no tenemos ninguno —'));
       l.push('');
@@ -583,7 +604,7 @@ function _botMandaEstado(tel, claves) {
     try {
       var est = getEstadoCuentaByKey(c);
       var r = _waEnviarDocumento(tel, estadoCuentaPDF(est),
-        'Estado de cuenta del lote ' + est.lote + ' al día de hoy.');
+        'Estado de cuenta ' + _acDel() + ' ' + _acUnidadDe(est.lote) + ' al día de hoy.');
       if (r.ok) mandados++;
       else Logger.log('Bot PDF ' + c + ': ' + r.error);
     } catch (e) { Logger.log('Bot PDF ' + c + ': ' + (e && e.message || e)); }
@@ -600,9 +621,9 @@ function _botPideComprobante(tel) {
   var cta = (typeof _ctaCobro === 'function') ? _ctaCobro() : null;
   var texto = 'Puede enviarnos la foto o el PDF del comprobante por aquí mismo y lo registramos.';
   if (cta && cta.numero) {
-    texto += '\n\nLa cuenta de la Asociación es: ' + cta.banco + ' · ' + cta.tipo +
+    texto += '\n\nLa cuenta de ' + _waNombreComunidad() + ' es: ' + cta.banco + ' · ' + cta.tipo +
              ' N.º ' + cta.numero + ' a nombre de ' + cta.titular +
-             '.\nEn la descripción, escriba su número de lote.';
+             '.\nEn la descripción, escriba su número de ' + _acUnidad() + '.';
   }
   enviarWhatsAppTexto(tel, texto);
   return { contesto: true, avisar: false };
@@ -632,7 +653,7 @@ function _botGuardarAdjunto(msg, info) {
     var blob = _waBajarMedia(media.id);
     if (!blob.ok) return blob;
     var ext = (String(blob.tipo || '').indexOf('pdf') >= 0) ? '.pdf' : '.jpg';
-    var nombre = 'WA_' + String(info.clave || 'sin-lote').replace(/[^\w-]/g, '') + '_' +
+    var nombre = 'WA_' + String(info.clave || 'sin-unidad').replace(/[^\w-]/g, '') + '_' +
       Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyyMMdd-HHmm') + ext;
     var f = _carpetaComprobantes().createFile(blob.blob.setName(nombre));
     try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}

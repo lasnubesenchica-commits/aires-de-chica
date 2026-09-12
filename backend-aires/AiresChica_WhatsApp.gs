@@ -44,6 +44,20 @@ function _waToken() { return String(_waProps().getProperty(WA_PROP_TOKEN) || '')
 function _waPhoneId() { return String(_waProps().getProperty(WA_PROP_PHONE) || '').trim(); }
 
 /**
+ * El nombre de esta comunidad, para los mensajes y las plantillas.
+ *
+ * Una copia recién creada todavía no lo tiene puesto. Antes que decirle a alguien
+ * «Consulta pendiente en el WhatsApp de .» se dice «de la administración»: feo, pero
+ * no confunde a nadie con el nombre de otro PH.
+ */
+function _waNombreComunidad() {
+  var n = '';
+  try { if (typeof CONFIG === 'object' && CONFIG && CONFIG.NEGOCIO) n = String(CONFIG.NEGOCIO); } catch (e) {}
+  if (!n) { try { n = String(_waProps().getProperty('AC_NEGOCIO') || ''); } catch (e) {} }
+  return n.trim() || 'la administración';
+}
+
+/**
  * Verificación del webhook (doGet).
  *
  * Meta llama una sola vez, al dar de alta la URL, con hub.mode=subscribe. Hay que
@@ -244,16 +258,21 @@ function _waAvisarAdmin(info, atendido) {
     var adjunto = (atendido && atendido.adjunto && atendido.adjunto.ok)
       ? '\nComprobante recibido: ' + atendido.adjunto.url : '';
 
+    var comunidad = _waNombreComunidad();
+    var unidadTxt = (typeof _acUnidadCap === 'function' ? _acUnidadCap() : 'Unidad') + ' ' + lote;
+
     var r = enviarWhatsAppTexto(adm,
-      'Consulta pendiente en el WhatsApp de la Asociación.\n\n' +
-      'Lote ' + lote + ' · ' + nombre + '\n' +
+      'Consulta pendiente en el WhatsApp de ' + comunidad + '.\n\n' +
+      unidadTxt + ' · ' + nombre + '\n' +
       'Escribió: ' + texto + adjunto + '\n\n' +
       'Para contestarle directamente: ' + enlace);
 
     // 131047 es exactamente «se cerró la ventana de 24 horas». Ahí sí toca plantilla.
+    // El adjunto no cabe: una plantilla sólo admite los valores que tiene definidos, y
+    // añadirle el enlace de Drive al texto lo dejaría cortado a los 300 caracteres.
     if (!r.ok && String(r.codigo) === '131047' && typeof enviarPlantillaWhatsApp === 'function') {
       r = enviarPlantillaWhatsApp(adm, 'consulta_pendiente',
-        [lote, nombre, texto, enlace], { nota: 'aviso-admin' });
+        [comunidad, unidadTxt, nombre, texto, enlace], { nota: 'aviso-admin' });
     }
     if (r.ok) res.avisados++;
     else res.fallos.push(adm + ': ' + r.error);

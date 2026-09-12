@@ -132,6 +132,9 @@ eval(rd('AiresChica_Cliente.gs'));   // la verja de módulos vive aquí
 eval(rd('AiresChica_Bot.gs'));
 
 PROPS.META_WHATSAPP_TOKEN = 'TOK'; PROPS.META_PHONE_ID = '55501';
+// Aires de Chicá llama «lote» a lo suyo. La palabra viene de la configuración de la
+// copia, no del código: al final del archivo se comprueba con otras dos.
+PROPS.AC_UNIDAD = 'lote';
 PROPS.META_ADMIN_WHATSAPP = '6981-2266';
 
 let n = 0;
@@ -404,6 +407,46 @@ correr(texto('50761112233', 'cuanto debo'));
 _botAtender = _at;
 ok(SALIDAS.some(s => s.payload.to === '50769812266'),
    'si el bot revienta, la administración se entera igual');
+
+console.log('\n── LA PALABRA DE LA UNIDAD SALE DE LA CONFIGURACIÓN ──');
+// Es lo que separa una copia vendible de la copia de Aires de Chicá con otro logo. A un
+// propietario de una torre que le hablen de «su lote» le dice, sin que nadie se lo
+// explique, que el sistema es de otro.
+PROPS.AC_UNIDAD = 'apartamento'; CACHE = {};
+correr(boton('50761112233', 'bot_saldo'));
+c = cuerpos();
+ok(/Apartamento 9/.test(c) && !/[Ll]ote/.test(c),
+   'en un edificio dice «Apartamento 9», y «lote» no aparece por ningún lado');
+
+// «casa» es femenina: si los artículos no concuerdan, el texto delata la plantilla.
+PROPS.AC_UNIDAD = 'casa'; CACHE = {};
+correr(texto('50762438455', 'cuanto debo'));
+c = cuerpos();
+ok(/más de una casa/.test(c), 'y concuerda el artículo: «más de una casa», no «más de un casa»');
+
+CACHE = {};
+correr(boton('50761112233', 'bot_comopago'));
+ok(/escriba \*casa 9\*/.test(cuerpos()), 'el paso del banco también la usa');
+
+// Sin la propiedad puesta, «unidad»: fea, pero no es falsa en ninguna comunidad, y
+// sobre todo no es el nombre de otro PH.
+delete PROPS.AC_UNIDAD; CACHE = {};
+correr(boton('50761112233', 'bot_saldo'));
+ok(/Unidad 9/.test(cuerpos()), 'y una copia sin configurar dice «Unidad 9», no «Lote 9»');
+PROPS.AC_UNIDAD = 'lote';
+
+console.log('\n── UNA COPIA SIN CORREO NO MANDA A NADIE AL BUZÓN DE OTRO PH ──');
+// Este correo estuvo escrito a mano en el código: admin@airesdechica.org.
+const _neg = CONFIG.REPLY_TO;
+CONFIG.REPLY_TO = ''; CONFIG.ADMIN_EMAIL = ''; CACHE = {};
+correr(texto('50769999999', 'hola'));
+c = cuerpos();
+ok(!/airesdechica/.test(c), 'a un desconocido no se le da el correo de Aires de Chicá: ' + c.slice(0, 90));
+ok(/la administración le contestará/.test(c), 'se le dice que le contestarán, que es lo que va a pasar');
+CONFIG.REPLY_TO = 'admin@ejemplo.org'; CACHE = {};
+correr(texto('50769999999', 'hola'));
+ok(/admin@ejemplo\.org/.test(cuerpos()), 'y con el correo puesto, se le da ese');
+CONFIG.REPLY_TO = _neg;
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

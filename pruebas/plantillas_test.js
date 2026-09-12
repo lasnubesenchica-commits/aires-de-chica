@@ -73,9 +73,29 @@ const cab = p.components.find(c => c.type === 'HEADER');
 ok(cab && cab.format === 'DOCUMENT' && cab.example.header_handle[0] === '4::handle',
    'el encabezado del estado de cuenta es un documento, con su ejemplo');
 const cue = p.components.find(c => c.type === 'BODY');
-ok(cue.example.body_text[0].length === 4,
-   'el cuerpo lleva sus cuatro ejemplos, envueltos en la lista que Meta espera');
-ok(p.components.some(c => c.type === 'FOOTER' && /Aires de Chicá/.test(c.text)), 'y el pie');
+ok(cue.example.body_text[0].length === 5,
+   'el cuerpo lleva un ejemplo por variable, envueltos en la lista que Meta espera');
+ok(!p.components.some(c => c.type === 'FOOTER'),
+   'y no manda pie: no admite variables, y lo que se escriba ahí lo leen los propietarios de TODOS los PH');
+
+console.log('\n── NINGUNA PLANTILLA NOMBRA A UNA COMUNIDAD ──');
+// Las plantillas se aprueban una vez para toda la cuenta de WhatsApp, que comparten
+// todas las comunidades. Una sola palabra de Aires de Chicá metida en un cuerpo se la
+// come el propietario de otro PH, y no hay forma de arreglarlo sin volver a revisión.
+const cuerpos = defs.map(d => d.cuerpo + ' ' + (d.encabezado && d.encabezado.texto || '')).join('\n');
+ok(!/Aires de Chic|airesdechica|Asociaci\u00f3n de Propietarios/i.test(cuerpos),
+   'ningún cuerpo ni encabezado nombra a Aires de Chicá');
+ok(!/\blotes?\b/i.test(cuerpos),
+   'ni dice «lote»: un edificio tiene apartamentos, y la palabra la compone quien llama');
+ok(defs.every(d => !d.pie), 'ninguna lleva pie');
+
+// El nombre del PH tiene que entrar por algún lado, y el único que queda es el cuerpo.
+['estado_cuenta_mensual', 'recordatorio_saldo', 'pago_registrado', 'comunicado_aviso',
+ 'consulta_pendiente'].forEach(n => {
+  const d = defs.find(x => x.nombre === n);
+  ok((d.ejemplos || []).indexOf('Aires de Chicá') >= 0,
+     n + ': la comunidad entra por variable, no escrita en el texto');
+});
 
 const com = defs.find(d => d.nombre === 'comunicado_aviso');
 const cabCom = _waPlantillaPayload(com, null).components.find(c => c.type === 'HEADER');

@@ -52,6 +52,7 @@ var AC_CLAVES_CLIENTE = [
   { k: 'MORA_DESDE',         req: false, desc: 'Primer mes que genera mora, AAAA-MM' },
   { k: 'DUE_DAY',            req: false, desc: 'Día de vencimiento; 0 = fin de mes' },
   { k: 'ANIO_ACTUAL',        req: true,  desc: 'Año fiscal en curso (número)' },
+  { k: 'UNIDAD',             req: false, desc: 'Cómo llama esta comunidad a su unidad: lote, apartamento, casa…' },
   { k: 'MODULOS',            req: false, desc: 'Módulos contratados, separados por coma; vacío = todos' }
 ];
 
@@ -72,6 +73,78 @@ function _acPad(txt, n) {
 function _acEsNumerica(k) {
   return ['CUOTA_BASE', 'CABANA_FEE', 'MORA_PCT', 'DUE_DAY', 'ANIO_ACTUAL'].indexOf(k) >= 0;
 }
+
+/* ─────────────── cómo se llama aquí una unidad ─────────────── */
+
+/**
+ * Aires de Chicá tiene lotes; una torre tiene apartamentos y un centro comercial,
+ * locales. La palabra sale en cada mensaje del bot y en cada plantilla, así que no
+ * puede estar escrita a mano: un propietario de un edificio al que le hablan de «su
+ * lote» sabe en el acto que le vendieron el sistema de otro.
+ *
+ * Por defecto «unidad», que es fea pero no es falsa en ninguna comunidad.
+ */
+function _acUnidad() {
+  var u = '';
+  try { if (typeof CONFIG === 'object' && CONFIG && CONFIG.UNIDAD) u = String(CONFIG.UNIDAD); } catch (e) {}
+  if (!u) {
+    try { u = String(PropertiesService.getScriptProperties().getProperty(AC_PREFIJO + 'UNIDAD') || ''); }
+    catch (e) {}
+  }
+  u = u.trim().toLowerCase();
+  return u || 'unidad';
+}
+
+/**
+ * Plural en español: vocal final pide «s», consonante pide «es».
+ * lote→lotes, casa→casas, apartamento→apartamentos, unidad→unidades, local→locales.
+ */
+function _acPlural(palabra) {
+  var p = String(palabra || '');
+  if (!p) return p;
+  return /[aeiouáéíóú]$/i.test(p) ? p + 's' : p + 'es';
+}
+
+function _acUnidades() { return _acPlural(_acUnidad()); }
+
+/** «Lote», para empezar una frase o un título. */
+function _acUnidadCap() {
+  var u = _acUnidad();
+  return u.charAt(0).toUpperCase() + u.slice(1);
+}
+
+/** «lote Q-9» — la forma en que se nombra una unidad concreta dentro de una frase. */
+function _acUnidadDe(clave) {
+  return _acUnidad() + ' ' + String(clave == null ? '' : clave);
+}
+
+/** «Lote Q-9» — la misma, cuando encabeza un mensaje o un título. */
+function _acUnidadDeCap(clave) {
+  return _acUnidadCap() + ' ' + String(clave == null ? '' : clave);
+}
+
+/**
+ * Género de la palabra, para que los artículos concuerden.
+ *
+ * «el lote» pero «la casa»; «ningún apartamento» pero «ninguna finca». Sin esto, la
+ * mitad de las comunidades leería mensajes mal escritos, que es justo lo que delata a
+ * un sistema copiado.
+ *
+ * La regla: termina en -a, o en -dad / -ción / -sión, es femenina. Cubre las que se
+ * usan de verdad —lote, apartamento, local, casa, quinta, finca, unidad— y falla en
+ * rarezas como «día». Si alguna comunidad llama a lo suyo con una excepción, se le
+ * pone otra palabra en AC_UNIDAD y listo.
+ */
+function _acUnidadFem() {
+  var u = _acUnidad();
+  return /(?:[aá]|dad|ci[oó]n|si[oó]n)$/i.test(u);
+}
+
+function _acEl()      { return _acUnidadFem() ? 'la'      : 'el'; }
+function _acUn()      { return _acUnidadFem() ? 'una'     : 'un'; }
+function _acNingun()  { return _acUnidadFem() ? 'ninguna' : 'ningún'; }
+/** «del lote Q-9» / «de la casa 14». */
+function _acDel()     { return _acUnidadFem() ? 'de la'   : 'del'; }
 
 /** Qué está puesto y qué falta en esta copia. */
 function verConfiguracionCliente() {

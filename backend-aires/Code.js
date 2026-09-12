@@ -64,6 +64,10 @@ var CONFIG = (function () {
     DUE_DAY:        0,                        // 0 = vence fin de mes
     ANIO_ACTUAL:    new Date().getFullYear(),
 
+    // Cómo llama esta comunidad a su unidad: lote, apartamento, casa, local.
+    // «unidad» es fea, pero no es falsa en ninguna.
+    UNIDAD:         'unidad',
+
     // Lo único que de verdad no cambia entre comunidades: son de Panamá.
     MONEDA:         'B/.',
     TZ:             'America/Panama'
