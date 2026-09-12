@@ -1280,6 +1280,7 @@ async function boot(){
   let st;
   try{ st = await jsonp('getAuthState'); }
   catch(e){ pantallaSinConexion(e); return; }
+  aplicarModulos(st.modulos);
   if(!st.hasPassword){ setupGate('setup'); return; }
   if(!TOKEN){ setupGate('login'); return; }
   // Un fallo de CONEXIÓN no es un problema de sesión: mandar al login confundía
@@ -1291,6 +1292,41 @@ async function boot(){
   try{ await renderDash({silencioso:true}); }
   catch(e){ if(!onAuthError(e)) pantallaSinConexion(e); }
 }
+// Qué pestaña pertenece a qué módulo. Las que no están aquí no dependen de ninguno:
+// el padrón, el registro y las opciones hacen falta se contrate lo que se contrate.
+const TAB_MODULO = {
+  dash:'financiero', gastos:'financiero', finanzas:'financiero',
+  comprob:'financiero', conc:'financiero',
+  comunic:'comunicaciones',
+  acceso:'acceso'
+};
+
+/**
+ * Esconde las pestañas de los módulos que esta comunidad no tiene.
+ *
+ * Es cortesía, no seguridad: el servidor ya rechaza esas acciones. Pero una pestaña
+ * que al tocarla contesta «ese módulo no está activo» es una mala primera impresión.
+ *
+ * Sin lista de módulos —un backend viejo, o una copia sin la propiedad puesta— no se
+ * esconde nada: que falte un dato no puede dejar a nadie sin su panel.
+ */
+function aplicarModulos(mods){
+  if(!Array.isArray(mods) || !mods.length) return;
+  let visiblePorDefecto = null;
+  [...document.querySelectorAll('#tabs button')].forEach(b=>{
+    const m = TAB_MODULO[b.dataset.tab];
+    const ok = !m || mods.indexOf(m) >= 0;
+    b.style.display = ok ? '' : 'none';
+    const sec = document.getElementById('tab-'+b.dataset.tab);
+    if(!ok && sec) sec.style.display='none';
+    if(ok && !visiblePorDefecto && b.dataset.tab!=='opts') visiblePorDefecto = b;
+  });
+  // Si la pestaña que arranca activa quedó escondida, el panel abriría en una sección
+  // invisible. Se pasa a la primera que sí se ve.
+  const activa = document.querySelector('#tabs button.active');
+  if((!activa || activa.style.display==='none') && visiblePorDefecto) visiblePorDefecto.click();
+}
+
 function pantallaSinConexion(e){
   const msg = (String(e)==='network'||String(e)==='timeout')
     ? 'No se pudo contactar el servidor. Puede ser la conexión o que Google Apps Script no respondiera a tiempo.'

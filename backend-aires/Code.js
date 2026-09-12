@@ -121,7 +121,14 @@ function doGet(e) {
 
   try {
     if (action === 'ping')           out = { ok: true, negocio: CONFIG.NEGOCIO, ts: new Date().toISOString() };
-    else if (action === 'getAuthState')    out = { ok: true, data: getAuthState() };
+    else if (action === 'getAuthState')    {
+      // Los módulos viajan con el estado de sesión porque es la primera llamada que
+      // hace el panel, siempre y sin token. Así puede esconder lo que esta comunidad
+      // no contrató antes de pintar nada.
+      var _as = getAuthState() || {};
+      if (typeof modulosActivos === 'function') _as.modulos = modulosActivos();
+      out = { ok: true, data: _as };
+    }
     else if (action === 'getPropuesta')     out = { ok: true, data: getPropuesta() };
     else if (action === 'getContrato')      out = { ok: true, data: getContrato() };
     else if (action === 'getComunicadoDoc')  out = { ok: true, data: getComunicadoDoc() };
