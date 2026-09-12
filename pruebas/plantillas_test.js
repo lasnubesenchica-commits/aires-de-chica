@@ -65,9 +65,9 @@ falla({ encabezado: { tipo: 'TEXT', texto: 'Hola {{1}}' } },
       /encabezado lleva variables/, 'variables en el encabezado');
 
 console.log('\n── LA FORMA QUE SE LE MANDA A META ──');
-const est = defs.find(d => d.nombre === 'estado_cuenta_mensual');
+const est = defs.find(d => d.nombre === 'lobby_estado_cuenta');
 let p = _waPlantillaPayload(est, '4::handle');
-ok(p.name === 'estado_cuenta_mensual' && p.language === 'es' && p.category === 'UTILITY',
+ok(p.name === 'lobby_estado_cuenta' && p.language === 'es' && p.category === 'UTILITY',
    'nombre, idioma y categoría');
 const cab = p.components.find(c => c.type === 'HEADER');
 ok(cab && cab.format === 'DOCUMENT' && cab.example.header_handle[0] === '4::handle',
@@ -90,17 +90,17 @@ ok(!/\blotes?\b/i.test(cuerpos),
 ok(defs.every(d => !d.pie), 'ninguna lleva pie');
 
 // El nombre del PH tiene que entrar por algún lado, y el único que queda es el cuerpo.
-['estado_cuenta_mensual', 'recordatorio_saldo', 'pago_registrado', 'comunicado_aviso',
- 'consulta_pendiente'].forEach(n => {
+['lobby_estado_cuenta', 'lobby_recordatorio_saldo', 'lobby_pago_registrado', 'lobby_comunicado',
+ 'lobby_consulta_pendiente'].forEach(n => {
   const d = defs.find(x => x.nombre === n);
   ok((d.ejemplos || []).indexOf('Aires de Chicá') >= 0,
      n + ': la comunidad entra por variable, no escrita en el texto');
 });
 
-const com = defs.find(d => d.nombre === 'comunicado_aviso');
+const com = defs.find(d => d.nombre === 'lobby_comunicado');
 const cabCom = _waPlantillaPayload(com, null).components.find(c => c.type === 'HEADER');
 ok(cabCom.format === 'TEXT' && !cabCom.example, 'el encabezado de texto va sin ejemplo');
-const rec = defs.find(d => d.nombre === 'recordatorio_saldo');
+const rec = defs.find(d => d.nombre === 'lobby_recordatorio_saldo');
 ok(!_waPlantillaPayload(rec, null).components.some(c => c.type === 'HEADER'),
    'y la que no lleva encabezado no manda uno vacío');
 
@@ -136,11 +136,11 @@ ok(subidas[1].headers.file_offset === '0' && /^OAuth /.test(subidas[1].headers.A
 console.log('\n── NO SE PISAN LAS QUE YA EXISTEN ──');
 SALIDAS = [];
 RUTAS[0] = { re: /message_templates\?/, code: 200,
-  body: JSON.stringify({ data: [{ name: 'pago_registrado', status: 'APPROVED' }] }) };
+  body: JSON.stringify({ data: [{ name: 'lobby_pago_registrado', status: 'APPROVED' }] }) };
 r = subirPlantillas();
 ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 4,
    'la que ya está aprobada no se vuelve a crear: se crean 4');
-ok(r.resultados.some(x => x.nombre === 'pago_registrado' && x.saltada),
+ok(r.resultados.some(x => x.nombre === 'lobby_pago_registrado' && x.saltada),
    'y se dice que se saltó, en vez de callarlo');
 
 console.log('\n── SI EL PDF DE EJEMPLO FALLA, LAS DEMÁS SIGUEN ──');
@@ -150,9 +150,9 @@ RUTAS[1] = { re: /\/uploads/, code: 400, body: '{"error":{"message":"Invalid app
 r = subirPlantillas();
 ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 4,
    'las que no llevan documento se suben igual');
-ok(r.resultados.some(x => x.nombre === 'estado_cuenta_mensual' && x.ok === false && /Invalid app id/.test(x.error)),
+ok(r.resultados.some(x => x.nombre === 'lobby_estado_cuenta' && x.ok === false && /Invalid app id/.test(x.error)),
    'y la del estado de cuenta dice por qué no: ' +
-   (r.resultados.find(x => x.nombre === 'estado_cuenta_mensual') || {}).error);
+   (r.resultados.find(x => x.nombre === 'lobby_estado_cuenta') || {}).error);
 RUTAS[1] = { re: /\/uploads/, code: 200, body: '{"id":"upload:SESION"}' };
 
 console.log('\n── UNA PLANTILLA INVÁLIDA DETIENE TODO ANTES DE LLAMAR A META ──');
@@ -174,8 +174,8 @@ PROPS.META_WABA_ID = '1580656143861626';
 
 console.log('\n── EL ESTADO DE LAS PLANTILLAS SE LEE ENTERO ──');
 RUTAS[0] = { re: /message_templates\?/, code: 200, body: JSON.stringify({ data: [
-  { name: 'estado_cuenta_mensual', language: 'es', status: 'APPROVED', category: 'UTILITY' },
-  { name: 'comunicado_aviso', language: 'es', status: 'REJECTED', category: 'MARKETING',
+  { name: 'lobby_estado_cuenta', language: 'es', status: 'APPROVED', category: 'UTILITY' },
+  { name: 'lobby_comunicado', language: 'es', status: 'REJECTED', category: 'MARKETING',
     rejected_reason: 'INVALID_FORMAT' } ] }) };
 const _log = console.log; let salida = [];
 const fmt = (...a) => {
@@ -191,6 +191,52 @@ const txt = salida.join('\n');
 ok(/APPROVED/.test(txt) && /REJECTED/.test(txt), 'muestra las dos');
 ok(/INVALID_FORMAT/.test(txt), 'y el motivo del rechazo, que es lo accionable');
 ok(/1 de 2 aprobadas/.test(txt), 'con la cuenta clara: ' + salida[salida.length - 1]);
+
+console.log('\n── RETIRAR LAS VIEJAS NO PUEDE DEJAR A NADIE SIN PODER ENVIAR ──');
+// Borrar una plantilla en Meta es irreversible y surte efecto en el acto. Retirar la
+// vieja antes de que su reemplazo esté aprobado dejaría a la comunidad sin estado de
+// cuenta del día 5 hasta que Meta aprobara, que puede tardar días.
+const capturar = () => { salida = []; console.log = (...a) => { salida.push(fmt(...a)); }; };
+const soltar  = () => { console.log = _log; return salida.join('\n'); };
+const enMeta  = lista => { RUTAS[0] = { re: /message_templates\?/, code: 200,
+                                        body: JSON.stringify({ data: lista }) }; };
+const borrados = () => SALIDAS.filter(x => (x.opt.method || '') === 'delete')
+                              .map(x => decodeURIComponent((/name=([^&]+)/.exec(x.url) || [])[1] || ''));
+
+// La vieja sigue viva y la nueva todavía en revisión.
+enMeta([{ name: 'estado_cuenta_mensual', status: 'APPROVED' },
+        { name: 'lobby_estado_cuenta',   status: 'PENDING'  }]);
+SALIDAS = []; capturar();
+let ret = retirarPlantillasViejas(true);
+let t2 = soltar();
+ok(borrados().length === 0 && ret.retiradas === 0,
+   'con el reemplazo en revisión no se borra nada, ni aunque se confirme');
+ok(/se queda/.test(t2) && /PENDING/.test(t2), 'y se dice por qué se queda: ' +
+   (/⏳[^\n]*/.exec(t2) || [''])[0]);
+
+// Ahora sí: la nueva está aprobada.
+enMeta([{ name: 'estado_cuenta_mensual', status: 'APPROVED' },
+        { name: 'lobby_estado_cuenta',   status: 'APPROVED' }]);
+SALIDAS = []; capturar();
+ret = retirarPlantillasViejas();
+t2 = soltar();
+ok(borrados().length === 0 && ret.seRetirarian === 1,
+   'sin confirmar sólo dice lo que haría: borrar es irreversible');
+ok(/retirarPlantillasViejas\(true\)/.test(t2), 'y dice cómo confirmarlo');
+
+SALIDAS = []; capturar();
+ret = retirarPlantillasViejas(true);
+soltar();
+ok(borrados().indexOf('estado_cuenta_mensual') >= 0 && ret.retiradas === 1,
+   'confirmando sí la borra: ' + borrados().join(', '));
+ok(borrados().indexOf('lobby_estado_cuenta') < 0, 'y no toca la nueva, que es la que quedó sirviendo');
+
+// Una vieja que ya no está en Meta no es un error: es el caso normal al repetirlo.
+enMeta([{ name: 'lobby_estado_cuenta', status: 'APPROVED' }]);
+SALIDAS = []; capturar();
+ret = retirarPlantillasViejas(true);
+ok(soltar().indexOf('ya no está en Meta') >= 0 && ret.retiradas === 0,
+   'volver a ejecutarlo cuando ya no quedan viejas no falla');
 
 console.log('\n── EL PDF DE MUESTRA NO LLEVA DATOS DE NADIE ──');
 const html = HtmlService.createHtmlOutput.toString();

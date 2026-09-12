@@ -271,7 +271,7 @@ function _waAvisarAdmin(info, atendido) {
     // El adjunto no cabe: una plantilla sólo admite los valores que tiene definidos, y
     // añadirle el enlace de Drive al texto lo dejaría cortado a los 300 caracteres.
     if (!r.ok && String(r.codigo) === '131047' && typeof enviarPlantillaWhatsApp === 'function') {
-      r = enviarPlantillaWhatsApp(adm, 'consulta_pendiente',
+      r = enviarPlantillaWhatsApp(adm, 'lobby_consulta_pendiente',
         [comunidad, unidadTxt, nombre, texto, enlace], { nota: 'aviso-admin' });
     }
     if (r.ok) res.avisados++;

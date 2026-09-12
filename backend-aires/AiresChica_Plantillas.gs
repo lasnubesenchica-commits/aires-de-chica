@@ -64,7 +64,7 @@ var WA_PIE = '';
 function _waPlantillas() {
   return [
     {
-      nombre: 'estado_cuenta_mensual',
+      nombre: 'lobby_estado_cuenta',
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'El envío del día 5. El PDF va en el encabezado, que es la única forma de ' +
@@ -85,7 +85,7 @@ function _waPlantillas() {
       pie: WA_PIE
     },
     {
-      nombre: 'recordatorio_saldo',
+      nombre: 'lobby_recordatorio_saldo',
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'Recordatorio de cuota pendiente. La cuenta de cobro va en variable a ' +
@@ -108,7 +108,7 @@ function _waPlantillas() {
       pie: WA_PIE
     },
     {
-      nombre: 'pago_registrado',
+      nombre: 'lobby_pago_registrado',
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'Confirmación de que un pago quedó acreditado. Es la que más tranquiliza: ' +
@@ -127,7 +127,7 @@ function _waPlantillas() {
       pie: WA_PIE
     },
     {
-      nombre: 'comunicado_aviso',
+      nombre: 'lobby_comunicado',
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'Comunicados de la administración. El enlace es el personal de cada ' +
@@ -150,7 +150,7 @@ function _waPlantillas() {
       pie: WA_PIE
     },
     {
-      nombre: 'consulta_pendiente',
+      nombre: 'lobby_consulta_pendiente',
       categoria: 'UTILITY',
       idioma: 'es',
       para: 'NO va a propietarios: avisa a la administración de una consulta que el ' +
@@ -432,6 +432,94 @@ function _waListarPlantillas() {
   }
 }
 
+/* ─────────────── retirar las plantillas de antes del producto ─────────────── */
+
+/**
+ * Las cinco primeras plantillas nombraban a Aires de Chicá en el pie y hablaban de
+ * «lotes». Sirvieron mientras había una sola comunidad; en la cuenta compartida del
+ * producto son un estorbo.
+ */
+var WA_PLANTILLAS_VIEJAS = {
+  'estado_cuenta_mensual': 'lobby_estado_cuenta',
+  'recordatorio_saldo':    'lobby_recordatorio_saldo',
+  'pago_registrado':       'lobby_pago_registrado',
+  'comunicado_aviso':      'lobby_comunicado',
+  'consulta_pendiente':    'lobby_consulta_pendiente'
+};
+
+/**
+ * Borra de Meta las plantillas viejas, UNA VEZ que su reemplazo está aprobado.
+ *
+ * Borrar una plantilla es irreversible y deja de poder enviarse en el acto. Por eso
+ * esto no borra nada por su cuenta: sin argumento sólo dice qué haría, y no toca una
+ * vieja mientras su reemplazo no esté APPROVED. Hacerlo al revés dejaría a la
+ * comunidad sin poder mandar el estado de cuenta del día 5 hasta que Meta aprobara,
+ * que puede tardar días.
+ */
+function retirarPlantillasViejas(confirmar) {
+  var r = _waListarPlantillas();
+  if (!r.ok) { console.log('✗ %s', r.error); return { ok: false }; }
+
+  var estado = {};
+  r.lista.forEach(function (p) { estado[p.name] = p.status; });
+
+  var listas = [], esperando = [], noEstan = [];
+  Object.keys(WA_PLANTILLAS_VIEJAS).forEach(function (vieja) {
+    var nueva = WA_PLANTILLAS_VIEJAS[vieja];
+    if (!estado[vieja]) { noEstan.push(vieja); return; }
+    if (estado[nueva] === 'APPROVED') listas.push({ vieja: vieja, nueva: nueva });
+    else esperando.push({ vieja: vieja, nueva: nueva, estado: estado[nueva] || 'sin subir' });
+  });
+
+  console.log('════ PLANTILLAS VIEJAS ════');
+  noEstan.forEach(function (v) { console.log('· %s — ya no está en Meta', v); });
+  esperando.forEach(function (x) {
+    console.log('⏳ %s — se queda: su reemplazo %s está en «%s»', x.vieja, x.nueva, x.estado);
+  });
+  listas.forEach(function (x) { console.log('%s %s — reemplazada por %s',
+    confirmar === true ? '→' : '·', x.vieja, x.nueva); });
+
+  if (!listas.length) {
+    console.log('\nNo hay ninguna que se pueda retirar todavía.');
+    return { ok: true, retiradas: 0, esperando: esperando.length };
+  }
+  if (confirmar !== true) {
+    console.log('\nSe pueden retirar %s. Borrarlas es irreversible.', listas.length);
+    console.log('Si estás de acuerdo: retirarPlantillasViejas(true)');
+    return { ok: true, retiradas: 0, seRetirarian: listas.length };
+  }
+
+  var waba = String(_waProps().getProperty(WA_PROP_WABA) || '').trim();
+  var tok = _waToken();
+  var hechas = 0;
+  console.log('');
+  listas.forEach(function (x) {
+    var res = _waBorrarPlantilla(waba, tok, x.vieja);
+    console.log(res.ok ? '✓ retirada %s' : '✗ %s — %s', x.vieja, res.error || '');
+    if (res.ok) hechas++;
+    Utilities.sleep(400);
+  });
+  console.log('\n%s retirada(s).', hechas);
+  return { ok: true, retiradas: hechas, esperando: esperando.length };
+}
+
+function _waBorrarPlantilla(waba, tok, nombre) {
+  try {
+    var r = UrlFetchApp.fetch(WA_GRAPH + '/' + waba + '/message_templates?name=' +
+      encodeURIComponent(nombre), {
+        method: 'delete', headers: { Authorization: 'Bearer ' + tok },
+        muteHttpExceptions: true });
+    var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    if (r.getResponseCode() !== 200) {
+      return { ok: false, error: (j.error && (j.error.error_user_msg || j.error.message)) ||
+                                 r.getContentText().slice(0, 200) };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
 /** En qué estado está cada plantilla. APPROVED es la única que sirve para enviar. */
 function verPlantillas() {
   var r = _waListarPlantillas();
@@ -476,7 +564,7 @@ function enviarPlantillaWhatsApp(telefono, plantilla, params, opts) {
   // completed» y parecía que había funcionado.
   if (!telefono || !plantilla) {
     console.log('Esta función manda UNA plantilla ya aprobada y necesita a quién y cuál.');
-    console.log('  enviarPlantillaWhatsApp("6981-2266", "recordatorio_saldo", [...])');
+    console.log('  enviarPlantillaWhatsApp("6981-2266", "lobby_recordatorio_saldo", [...])');
     console.log('');
     console.log('Si lo que quieres es mandarlas a revisión, elige «subirPlantillas» en el');
     console.log('desplegable de arriba. Para verlas antes, «verTextoPlantillas».');
