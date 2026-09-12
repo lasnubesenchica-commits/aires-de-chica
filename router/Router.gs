@@ -188,6 +188,69 @@ function _anotar(d) {
 
 /* ─────────────── administración, desde el editor ─────────────── */
 
+/**
+ * Formulario de alta. Se rellena, se ejecuta altaDePH(), y se vuelve a vaciar.
+ *
+ * El botón «Ejecutar» del editor no sabe pasar argumentos, así que registrarPH(a,b,c)
+ * no se puede llamar desde ahí. Y la pantalla de propiedades del script es una
+ * interfaz frágil para esto: la URL de un despliegue son ochenta caracteres que no
+ * pueden ir mal ni en un carácter.
+ *
+ * Nada de aquí se lee durante el funcionamiento normal: el ruteo vive en las
+ * propiedades. Esto sólo lo mira altaDePH(), y sólo cuando alguien la ejecuta a mano.
+ *
+ * Vacíalo después. El repositorio no tiene por qué llevar la URL de nadie: quien
+ * tenga una de esas URL puede mandarle un webhook falso a esa comunidad.
+ */
+var R_ALTA = {
+  // verifyToken: '',      // sólo la primera vez, para dar de alta el webhook en Meta
+  // phoneId:     '',      // el phone_number_id que da Meta. NO es el número.
+  // url:         '',      // https://script.google.com/macros/s/…/exec de esa comunidad
+  // nombre:      ''
+};
+
+/**
+ * Escribe lo que haya en R_ALTA. Sin argumentos, para que el editor pueda ejecutarla.
+ *
+ * Con R_ALTA vacío no toca nada: esta función vive en el mismo desplegable que todas
+ * las demás y se puede abrir sin querer.
+ */
+function altaDePH() {
+  var a = R_ALTA || {};
+  var hizo = false;
+
+  if (a.verifyToken) {
+    _rProps().setProperty(R_PROP_VERIFY, String(a.verifyToken).trim());
+    console.log('✓ Frase de verificación guardada (%s caracteres).',
+                String(a.verifyToken).trim().length);
+    hizo = true;
+  }
+
+  if (a.phoneId || a.url) {
+    var r = registrarPH(a.phoneId, a.url, a.nombre);
+    if (!r.ok) return r;
+    hizo = true;
+  }
+
+  if (!hizo) {
+    console.log('R_ALTA está vacío, así que no se escribió nada.');
+    console.log('');
+    console.log('Rellénalo en Router.gs y vuelve a ejecutar. Por ejemplo:');
+    console.log('  var R_ALTA = {');
+    console.log('    phoneId: "1351030198084248",');
+    console.log('    url:     "https://script.google.com/macros/s/AKfy…/exec",');
+    console.log('    nombre:  "PH Las Palmas"');
+    console.log('  };');
+    console.log('');
+    console.log('Para ver cómo está ahora: diagnosticarRouter()');
+    return { ok: false };
+  }
+
+  console.log('');
+  console.log('Ahora vacía R_ALTA. El dato ya está en las propiedades.');
+  return { ok: true };
+}
+
 /** Da de alta o actualiza una comunidad. */
 function registrarPH(phoneId, url, nombre) {
   phoneId = String(phoneId || '').trim();

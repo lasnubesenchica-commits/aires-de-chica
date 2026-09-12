@@ -145,5 +145,36 @@ ok(r.__texto === '{"ok":true}' && ENVIOS.length === 1,
    'la bitácora es opcional: sin ella se reparte igual y queda el registro de ejecución');
 PROPS.ROUTER_SHEET_ID = 'HOJA1';
 
+console.log('\n── EL ALTA DESDE EL EDITOR ──');
+// El botón «Ejecutar» no pasa argumentos: registrarPH(a,b,c) no se puede llamar desde
+// el desplegable. altaDePH() sí — y por eso también se puede abrir sin querer.
+ok(Object.keys(R_ALTA).length === 0,
+   'R_ALTA viaja vacío en el repositorio: no lleva la URL de ninguna comunidad');
+
+PROPS.RUTEO_JSON = JSON.stringify({ '111': { url: URL_A, nombre: 'Aires de Chicá' } });
+PROPS.META_VERIFY_TOKEN = 'frase-del-router';
+capturar(); let ra = altaDePH(); let ta = soltar();
+ok(ra.ok === false && PROPS.META_VERIFY_TOKEN === 'frase-del-router' &&
+   Object.keys(JSON.parse(PROPS.RUTEO_JSON)).length === 1,
+   'ejecutarla con R_ALTA vacío no escribe ni borra nada');
+ok(/vacío/.test(ta) && /diagnosticarRouter/.test(ta),
+   'y dice qué hacer: ' + ta.split('\n')[0]);
+
+R_ALTA = { verifyToken: 'otra-frase', phoneId: '555',
+           url: 'https://script.google.com/macros/s/EEEE/exec', nombre: 'PH Coronado' };
+capturar(); ra = altaDePH(); soltar();
+ok(ra.ok === true && PROPS.META_VERIFY_TOKEN === 'otra-frase', 'guarda la frase de verificación');
+ok(JSON.parse(PROPS.RUTEO_JSON)['555'].nombre === 'PH Coronado', 'y registra la comunidad');
+post({ object: 'whatsapp_business_account', entry: [entrada('555', 'hola')] });
+ok(ENVIOS.length === 1 && /EEEE/.test(ENVIOS[0].url), 'sus mensajes ya se reparten');
+
+// Una URL mal pegada no puede quedar registrada: los webhooks de esa comunidad se
+// perderían sin que nadie se entere hasta que alguien se queje.
+R_ALTA = { phoneId: '666', url: 'script.google.com/macros/s/FFFF/exec', nombre: 'PH Malo' };
+capturar(); ra = altaDePH(); soltar();
+ok(ra.ok === false && !JSON.parse(PROPS.RUTEO_JSON)['666'],
+   'una URL mal pegada se rechaza también por esta puerta');
+R_ALTA = {};
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
