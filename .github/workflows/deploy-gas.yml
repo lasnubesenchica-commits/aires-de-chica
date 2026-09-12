@@ -7,6 +7,10 @@ on:
       - 'backend-aires/**'
       - 'clientes.json'
       - 'scripts/deploy-gas.js'
+      # Las pruebas y este mismo archivo también: un cambio en la barrera tiene que
+      # volver a pasar por la barrera.
+      - 'pruebas/**'
+      - '.github/workflows/deploy-gas.yml'
   workflow_dispatch:
     inputs:
       solo:
