@@ -1001,39 +1001,76 @@ function _accLeerVisitaTexto(texto) {
   }
 }
 
-/**
- * Lee una cédula fotografiada.
- *
- * Aquí NO hay con qué contrastar: el modelo es el que lee, y no existe un texto del
- * guardia donde comprobar lo que devolvió. Por eso la respuesta al guardia repite
- * siempre lo que se leyó y dice que salió de la foto — él tiene el documento en la
- * mano y le cuesta un segundo desmentirlo. Un sistema que lee mal en silencio es peor
- * que uno que no lee.
- */
-function _accLeerCedulaFoto(blob, tipo) {
-  var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
-  if (!key) return null;
-  var mime = String(tipo || (blob && blob.getContentType && blob.getContentType()) || 'image/jpeg');
-  if (mime.indexOf('image/') !== 0) return null;
+/* ─────────────── leer el documento de la foto ─────────────── */
 
+// El primer intento va con el modelo barato, que es el que resuelve la inmensa mayoría:
+// una cédula del Tribunal Electoral, derecha y enfocada, la lee sin despeinarse. El
+// segundo sólo corre cuando el primero salió flojo, así que se paga en los casos
+// difíciles y no en los setenta que entran bien cada día.
+var ACC_MODELO_CEDULA   = (typeof ANTHROPIC_MODEL !== 'undefined') ? ANTHROPIC_MODEL : 'claude-haiku-4-5';
+var ACC_MODELO_CEDULA_2 = 'claude-sonnet-4-6';
+var ACC_CONFIANZA_MIN   = 0.75;
+
+/**
+ * ¿Esta lectura hay que dudarla?
+ *
+ * La confianza que declara el modelo no basta: un documento que no esperaba puede
+ * leerlo mal y quedarse convencido. Se miran además la FORMA de lo leído, que es lo
+ * que delató el caso real que rompió esto — una permanencia provisional girada 90°
+ * volvió como «PERLA PERLA», dos veces la misma palabra, y con el número sin un cero.
+ * Un nombre así no existe, y comprobarlo no cuesta nada.
+ */
+function _accLecturaFloja(j) {
+  if (!j) return true;
+  if ((Number(j.confianza) || 0) < ACC_CONFIANZA_MIN) return true;
+
+  var nombre = String(j.visitante || '').trim();
+  var numero = String(j.cedula || '').trim();
+  if (!nombre || !numero) return true;
+  if (!/\d/.test(numero)) return true;                       // un documento sin dígitos no es un documento
+
+  var palabras = nombre.split(/\s+/).filter(function (p) { return p.length > 1; });
+  if (!palabras.length) return true;
+  var distintas = {};
+  palabras.forEach(function (p) { distintas[p.toLowerCase()] = true; });
+  // «PERLA PERLA»: repetir la misma palabra no es un nombre, es el modelo atascado.
+  if (Object.keys(distintas).length < 2) return true;
+  return false;
+}
+
+/** Una pasada del modelo sobre la foto. Devuelve el JSON crudo o null. */
+function _accPasadaCedula(b64, mime, modelo, key) {
   try {
-    var b64 = Utilities.base64Encode(blob.getBytes());
     var r = UrlFetchApp.fetch(ANTHROPIC_URL, {
       method: 'post', contentType: 'application/json',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       payload: JSON.stringify({
-        model: ANTHROPIC_MODEL, max_tokens: 200,
+        model: modelo, max_tokens: 300,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
           { type: 'text', text:
-            'Es la foto de un documento de identidad, normalmente una cédula panameña. ' +
+            'Un guardia de una garita en Panamá fotografió el documento de identidad de ' +
+            'alguien que quiere entrar. Puede ser:\n' +
+            '- una cédula del Tribunal Electoral de Panamá (número tipo 8-743-456, con guiones);\n' +
+            '- un carné de residente o de PERMANENCIA PROVISIONAL del Servicio Nacional de ' +
+            'Migración, que llevan los extranjeros: el número suele ser una cifra corrida y ' +
+            'SIN guiones, y en el carné aparecen además la nacionalidad y el pasaporte;\n' +
+            '- un pasaporte;\n' +
+            '- una licencia de conducir.\n' +
+            'La foto puede estar GIRADA de lado o boca abajo, con reflejos o sombras: gírala ' +
+            'mentalmente y léela igual.\n\n' +
             'Responde ÚNICAMENTE con un JSON con esta forma exacta, sin explicar nada:\n' +
-            '{"esCedula":true|false,"visitante":"","cedula":"","confianza":0.0}\n' +
-            '- esCedula: true sólo si de verdad es un documento de identidad o pasaporte.\n' +
-            '- visitante: el nombre completo tal como está impreso.\n' +
-            '- cedula: el número, con sus guiones, tal como está impreso.\n' +
-            '- confianza: de 0 a 1, qué tan seguro estás de haber leído bien el número.\n' +
-            'Si la foto está borrosa o cortada, baja la confianza en vez de adivinar.' }
+            '{"esCedula":true|false,"tipoDoc":"","visitante":"","cedula":"","confianza":0.0}\n' +
+            '- esCedula: true sólo si de verdad es un documento de identidad.\n' +
+            '- tipoDoc: "cedula", "permanencia", "pasaporte", "licencia" u "otro".\n' +
+            '- visitante: el nombre completo tal como está impreso, con sus apellidos.\n' +
+            '- cedula: el número identificador principal, copiado DÍGITO A DÍGITO tal como ' +
+            'está impreso. Si lleva guiones, con sus guiones; si no lleva, sin ellos. No le ' +
+            'añadas ni le quites ceros para que se parezca a otro formato.\n' +
+            '- confianza: de 0 a 1, qué tan seguro estás de haber leído bien el número Y el ' +
+            'nombre. Si hay reflejo, la foto está girada, borrosa o cortada, o el formato no ' +
+            'te resulta familiar, BAJA la confianza en vez de adivinar. Una lectura dudosa ' +
+            'declarada como dudosa sirve; una lectura mala declarada como buena, no.' }
         ] }]
       }),
       muteHttpExceptions: true
@@ -1042,15 +1079,51 @@ function _accLeerCedulaFoto(blob, tipo) {
     var data = JSON.parse(r.getContentText());
     var txt = '';
     (data.content || []).forEach(function (c) { if (c.type === 'text') txt += String(c.text || ''); });
-    var j = (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
-    if (!j || !j.esCedula) return null;
-    return { visitante: String(j.visitante || '').trim(),
-             cedula: String(j.cedula || '').trim(),
-             confianza: Number(j.confianza) || 0, deFoto: true };
+    return (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
   } catch (e) {
-    Logger.log('Acceso: Claude falló leyendo la cédula — ' + (e && e.message || e));
+    Logger.log('Acceso: falló la lectura del documento con ' + modelo + ' — ' + (e && e.message || e));
     return null;
   }
+}
+
+/**
+ * Lee un documento de identidad fotografiado.
+ *
+ * Aquí NO hay con qué contrastar: el modelo es el que lee, y no existe un texto del
+ * guardia donde comprobar lo que devolvió. De ahí las tres defensas:
+ *
+ *   1. La respuesta al guardia REPITE siempre lo leído y dice que salió de la foto. Él
+ *      tiene el documento en la mano y le cuesta un segundo desmentirlo.
+ *   2. Si la lectura sale floja —poca confianza, o con una forma que no es la de un
+ *      nombre— se repite con un modelo mejor antes de darla por buena.
+ *   3. Si después de eso sigue floja, se marca `floja` y el guardia recibe un aviso de
+ *      que NO se confíe y lo teclee. Leer mal en silencio es peor que no leer.
+ */
+function _accLeerCedulaFoto(blob, tipo) {
+  var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
+  if (!key) return null;
+  var mime = String(tipo || (blob && blob.getContentType && blob.getContentType()) || 'image/jpeg');
+  if (mime.indexOf('image/') !== 0) return null;
+
+  var b64;
+  try { b64 = Utilities.base64Encode(blob.getBytes()); }
+  catch (e) { return null; }
+
+  var j = _accPasadaCedula(b64, mime, ACC_MODELO_CEDULA, key);
+  var reintento = false;
+  if (_accLecturaFloja(j) && ACC_MODELO_CEDULA_2 && ACC_MODELO_CEDULA_2 !== ACC_MODELO_CEDULA) {
+    var j2 = _accPasadaCedula(b64, mime, ACC_MODELO_CEDULA_2, key);
+    // La segunda sólo gana si es mejor. Si también sale floja, se queda la que haya.
+    if (j2 && (!_accLecturaFloja(j2) || !j)) { j = j2; }
+    reintento = true;
+  }
+
+  if (!j || !j.esCedula) return null;
+  return { visitante: String(j.visitante || '').trim(),
+           cedula: String(j.cedula || '').trim(),
+           tipoDoc: String(j.tipoDoc || '').trim().toLowerCase(),
+           confianza: Number(j.confianza) || 0,
+           floja: _accLecturaFloja(j), reintento: reintento, deFoto: true };
 }
 
 /* ─────────────── la conversación con el guardia ─────────────── */
@@ -1125,13 +1198,23 @@ function _botGuardia(tel, garita, msg) {
     estado: (hallado && hallado.firme) ? 'preautorizada' : 'pendiente',
     autorizadoPor: (hallado && hallado.firme) ? ('Permiso de ' + deQuien) : '',
     fotoUrl: fotoUrl,
-    notas: datos.deFoto ? 'Cédula leída de una foto.' : ''
+    notas: datos.deFoto
+      ? ('Documento leído de una foto' + (datos.tipoDoc ? ' (' + datos.tipoDoc + ')' : '') +
+         (datos.floja ? ' — LECTURA DUDOSA, sin confirmar por el guardia.' : '.'))
+      : ''
   });
 
   var quien = String(datos.visitante || '').trim() || 'Sin nombre';
   var ced = String(datos.cedula || '').trim();
-  var leido = quien + (ced ? '\nCédula ' + ced : '') +
-              (datos.deFoto ? '\n_Leído de la foto — confírmelo con el documento._' : '');
+  var leido = quien + (ced ? '\n' + _accEtiquetaDoc(datos.tipoDoc) + ' ' + ced : '');
+  if (datos.floja) {
+    // Se pone ARRIBA de todo y en mayúsculas. Un guardia lee la primera línea y actúa;
+    // una advertencia al final del mensaje no la lee nadie a las nueve de la noche.
+    leido = '⚠️ *NO ME FÍO DE ESTA LECTURA.* Teclee usted el nombre y el número.\n\n' + leido +
+            '\n_Es lo que creí leer, y puede estar mal._';
+  } else if (datos.deFoto) {
+    leido += '\n_Leído de la foto — confírmelo con el documento._';
+  }
 
   // 4) La respuesta. Lo único que abre sin preguntar es una cédula que casa.
   if (hallado && hallado.firme) {
@@ -1160,6 +1243,22 @@ function _botGuardia(tel, garita, msg) {
   return { contesto: true, avisar: true };
 }
 
+/**
+ * Cómo se llama el número que se leyó.
+ *
+ * Decirle «Cédula 1045031» a un carné de permanencia provisional es llamarlo por un
+ * nombre que no es, y el guardia —que tiene el documento delante— se queda sin saber
+ * si el sistema entendió qué le mandó.
+ */
+function _accEtiquetaDoc(tipoDoc) {
+  var t = String(tipoDoc || '').toLowerCase();
+  if (t === 'permanencia') return 'Carné de permanencia';
+  if (t === 'pasaporte')   return 'Pasaporte';
+  if (t === 'licencia')    return 'Licencia';
+  if (t === 'otro')        return 'Documento';
+  return 'Cédula';
+}
+
 /** «L-14 · Judith Araúz», o la clave a secas si no está en el padrón. */
 function _accDeQuien(clave) {
   var p = (typeof _findProp === 'function') ? _findProp(clave) : null;
@@ -1173,19 +1272,27 @@ function _accVigencia(a) {
   return ' Vigente hasta el ' + _fechaCorta(a.hasta) + '.';
 }
 
+var ACC_CARPETA_FOTOS = 'Documentos de visitantes';
+
 /**
- * Guarda la foto de la cédula en Drive y devuelve su enlace.
+ * Guarda la foto del documento en Drive y devuelve su enlace.
  *
- * Va a la misma carpeta que los comprobantes si está configurada. Si no hay carpeta,
- * NO se guarda y no pasa nada: la visita queda anotada igual. Perder la foto es
- * molesto; perder el registro de quién entró, no.
+ * En SU PROPIA carpeta, no en la de los comprobantes. Un comprobante es de un
+ * propietario que sí firmó con la asociación; la foto del documento de un visitante es
+ * de un tercero que no firmó nada y que además se borra a los 90 días. Mezclarlas
+ * significa que quien tenga acceso a la contabilidad ve los documentos de identidad de
+ * todo el que pasó por la garita, y que el borrado automático tenga que ir a buscar
+ * entre archivos que no debe tocar.
+ *
+ * La carpeta se crea sola la primera vez. Si Drive falla, NO se guarda y no pasa nada:
+ * la visita queda anotada igual. Perder la foto es molesto; perder el registro de quién
+ * entró, no.
  */
 function _accGuardarFoto(blob) {
   try {
-    var id = (typeof CONFIG !== 'undefined' && CONFIG.VOUCHER_FOLDER_ID) || '';
-    if (!id) return '';
-    var carpeta = DriveApp.getFolderById(id);
-    var f = carpeta.createFile(blob.setName('cedula-' + new Date().getTime() + '.jpg'));
+    var it = DriveApp.getFoldersByName(ACC_CARPETA_FOTOS);
+    var carpeta = it.hasNext() ? it.next() : DriveApp.createFolder(ACC_CARPETA_FOTOS);
+    var f = carpeta.createFile(blob.setName('doc-' + new Date().getTime() + '.jpg'));
     return f.getUrl();
   } catch (e) {
     Logger.log('Acceso: no se pudo guardar la foto — ' + (e && e.message || e));

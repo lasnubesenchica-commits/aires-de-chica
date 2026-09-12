@@ -99,11 +99,12 @@ global.getPropietarios = () => PADRON.slice();
 
 // ── el WhatsApp de mentira: se guarda lo que se le habría mandado al guardia ──
 let ENVIADO, CLAUDE;
-const reiniciarWA = () => { ENVIADO = []; };
+const reiniciarWA = () => { ENVIADO = []; MODELOS = []; };
 global.enviarWhatsAppTexto = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
 global._waEnviarBotones = (tel, texto, botones) => { ENVIADO.push({ tel, texto, botones }); return { ok: true }; };
 global._botBoton = (id, titulo) => ({ type: 'reply', reply: { id, title: titulo } });
-global._waBajarMedia = () => ({ ok: true, blob: { getBytes: () => [1, 2, 3], getContentType: () => 'image/jpeg' }, tipo: 'image/jpeg' });
+global._waBajarMedia = () => ({ ok: true, tipo: 'image/jpeg', blob: {
+  getBytes: () => [1, 2, 3], getContentType: () => 'image/jpeg', setName() { return this; } } });
 global._acUn = () => 'un';
 
 // Claude de mentira. CLAUDE es lo que se quiere que «devuelva» el modelo; poniéndolo a
@@ -112,10 +113,21 @@ global.ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 global.ANTHROPIC_MODEL = 'claude-haiku-4-5';
 global._anthropicKey = () => (CLAUDE === null ? '' : 'sk-prueba');
 global._parseJsonLoose = t => { try { return JSON.parse(t); } catch (e) { return null; } };
-global.UrlFetchApp = { fetch: () => ({
-  getResponseCode: () => 200,
-  getContentText: () => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(CLAUDE) }] })
-}) };
+// CLAUDE puede ser un objeto —el modelo contesta siempre lo mismo— o una lista, y
+// entonces cada llamada se lleva el siguiente: así se prueba el reintento con el modelo
+// bueno, que es lo que distingue una lectura mala de una lectura mala DETECTADA.
+let MODELOS = [];
+global.UrlFetchApp = { fetch: (url, opt) => {
+  let p = {}; try { p = JSON.parse((opt || {}).payload || '{}'); } catch (e) {}
+  MODELOS.push(p.model);
+  const r = Array.isArray(CLAUDE) ? (CLAUDE[MODELOS.length - 1] || CLAUDE[CLAUDE.length - 1]) : CLAUDE;
+  return { getResponseCode: () => 200,
+           getContentText: () => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(r) }] }) };
+} };
+global.DriveApp = Object.assign(global.DriveApp || {}, {
+  getFoldersByName: () => ({ hasNext: () => false }),
+  createFolder: () => ({ createFile: b => ({ getUrl: () => 'https://drive/foto' }) })
+});
 global.Utilities.base64Encode = () => 'AAAA';
 
 const _log = console.log;
@@ -571,6 +583,70 @@ _botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'image', ima
 ok(/No pude leer esa foto/.test(hablo().texto),
    'y si la foto no es una cédula, se pide el dato escrito en vez de inventarse una lectura');
 ok(_sheetRows('Visitas').length === 0, 'sin poder leer nada, no se anota una visita en blanco');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * El caso Georgina: una lectura mala tiene que salir marcada como mala
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Pasó de verdad en la primera prueba en la garita. La foto era un carné de
+ * PERMANENCIA PROVISIONAL de una nicaragüense —no una cédula del Tribunal Electoral—
+ * y encima estaba girada 90°. El modelo devolvió «PERLA PERLA» y el número 104531,
+ * cuando el impreso decía 1045031. Se comió un cero y se inventó el nombre, y el
+ * sistema lo presentó como un dato.
+ */
+const foto = () => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' }, { type: 'image', image: { id: 'M1' } }); };
+
+console.log('\n── UNA LECTURA CON FORMA DE DISPARATE NO SE DA POR BUENA ──');
+ok(_accLecturaFloja({ esCedula: true, visitante: 'PERLA PERLA', cedula: '104531', confianza: 0.95 }),
+   'repetir la misma palabra no es un nombre, por muy seguro que diga estar el modelo');
+ok(_accLecturaFloja({ esCedula: true, visitante: 'Joslyn Alonso Lopez', cedula: '8-743-456', confianza: 0.4 }),
+   'y una confianza baja también basta, aunque el nombre tenga buena pinta');
+ok(!_accLecturaFloja({ esCedula: true, visitante: 'Joslyn Alonso Lopez Albelo', cedula: '8-743-456', confianza: 0.95 }),
+   'la lectura buena de verdad pasa sin ruido');
+ok(_accLecturaFloja({ esCedula: true, visitante: 'Georgina Vanesa Martinez', cedula: 'ILEGIBLE', confianza: 0.9 }),
+   'un número sin un solo dígito no es un número de documento');
+
+console.log('\n── UNA LECTURA FLOJA SE REINTENTA CON UN MODELO MEJOR ──');
+reiniciar();
+CLAUDE = [ { esCedula: true, visitante: 'PERLA PERLA', cedula: '104531', confianza: 0.9 },
+           { esCedula: true, tipoDoc: 'permanencia', visitante: 'Georgina Vanesa Martinez Calero',
+             cedula: '1045031', confianza: 0.92 } ];
+foto();
+ok(MODELOS.length === 2 && MODELOS[0] !== MODELOS[1],
+   'se pregunta dos veces, y la segunda a otro modelo: ' + MODELOS.join(' → '));
+ok(/Georgina Vanesa Martinez Calero/.test(hablo().texto),
+   'y gana la segunda lectura, que es la buena');
+ok(/1045031/.test(hablo().texto) && !/\b104531\b/.test(hablo().texto),
+   'con el número completo, sin el cero que se comió la primera');
+ok(/Carné de permanencia/.test(hablo().texto),
+   'y se le llama por lo que es: un carné de permanencia no es una cédula');
+ok(!/NO ME FÍO/.test(hablo().texto), 'resuelto el problema, no se le da la lata al guardia');
+
+console.log('\n── SI NI ASÍ SE LEE BIEN, SE DICE QUE NO SE CONFÍE ──');
+// Es el caso que de verdad importa: leer mal en silencio, en una garita, es peor que
+// no leer. La advertencia va ARRIBA: un guardia lee la primera línea y actúa.
+reiniciar();
+CLAUDE = { esCedula: true, visitante: 'PERLA PERLA', cedula: '104531', confianza: 0.9 };
+foto();
+ok(/NO ME FÍO DE ESTA LECTURA/.test(hablo().texto),
+   'se avisa de que la lectura no es de fiar: ' + hablo().texto.split('\n')[0]);
+ok(hablo().texto.indexOf('NO ME FÍO') < hablo().texto.indexOf('PERLA'),
+   'y el aviso va ANTES del dato, no escondido al final del mensaje');
+ok(/[Tt]eclee usted/.test(hablo().texto), 'con qué hacer: teclearlo él');
+ok(_sheetRows('Visitas').length === 1 && /LECTURA DUDOSA/.test(_sheetRows('Visitas')[0].notas),
+   'y la bitácora guarda que ese dato entró sin confirmar: ' + _sheetRows('Visitas')[0].notas);
+
+console.log('\n── LAS FOTOS DE DOCUMENTOS NO VIVEN CON LOS COMPROBANTES ──');
+// Un comprobante es de un propietario que sí firmó con la asociación. El documento de
+// un visitante es de un tercero que no firmó nada y que se borra a los 90 días.
+reiniciar();
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Joslyn Alonso Lopez Albelo',
+           cedula: '8-743-456', confianza: 0.95 };
+foto();
+ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto', 'la foto se guarda');
+ok(ACC_CARPETA_FOTOS !== '' && !/comprobante|voucher/i.test(ACC_CARPETA_FOTOS),
+   'en su propia carpeta, no en la de los comprobantes: ' + ACC_CARPETA_FOTOS);
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
