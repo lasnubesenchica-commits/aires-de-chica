@@ -257,6 +257,21 @@ function _botAtender(info, msg) {
   // necesita ver lo nuevo.
   if (_botSilenciado(tel)) return { contesto: false, avisar: true, motivo: 'silenciado tras pasar a un humano' };
 
+  // El guardia va ANTES que todo lo demás, y a propósito.
+  //
+  // Su número puede estar además en el padrón —al arrancar un piloto lo normal es que el
+  // administrador ponga el suyo— y entonces el puesto manda sobre la vivienda: quien
+  // escribe desde la garita está trabajando, no consultando su cuota. El panel avisa de
+  // ese choque para que nadie lo descubra una noche cualquiera.
+  //
+  // Y va antes de _botAccion() porque para un guardia una foto es una CÉDULA, no un
+  // comprobante de pago.
+  if (typeof esGuardia === 'function' &&
+      (typeof moduloActivo !== 'function' || moduloActivo('acceso'))) {
+    var garita = esGuardia(tel);
+    if (garita) return _botGuardia(tel, garita, msg);
+  }
+
   var accion = _botAccion(msg);
 
   // Un número que aparece en unidades de dueños distintos no recibe cifras. Contestarle a

@@ -830,3 +830,394 @@ function getAccesoData(clave) {
     purgaInstalada: !!purga
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LA LLEGADA · el guardia anuncia un visitante
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * El guardia escribió primero, así que todo esto ocurre DENTRO de la ventana de 24
+ * horas de WhatsApp: se le puede contestar con texto y con botones sin ninguna
+ * plantilla aprobada. La plantilla hace falta para lo OTRO —escribirle al residente,
+ * que no ha escrito— y eso es la fase 4.
+ *
+ * ── La regla, la misma que en el resto del bot ───────────────────────────────
+ * El modelo entiende; el código responde. Claude saca el nombre y la cédula del
+ * mensaje o de la foto; el código busca en la hoja y compone la respuesta.
+ *
+ * Y hay un candado más que en el resto del bot: de lo que Claude devuelve leyendo un
+ * TEXTO, no se usa nada que no aparezca en lo que el guardia escribió. Una cédula
+ * inventada en una garita es alguien entrando con el permiso de otro, y a esa hora
+ * nadie lo va a verificar.
+ *
+ * ── Qué NO hace ──────────────────────────────────────────────────────────────
+ * No abre nada por su cuenta cuando la coincidencia es floja. Si el permiso guardado
+ * trae cédula y la cédula casa, dice que puede pasar. Si sólo casa el nombre, LO DICE
+ * y la decisión se la deja al guardia, que tiene el documento en la mano. Y si no hay
+ * permiso, dice que no hay permiso: todavía no puede preguntarle a la casa, y fingir
+ * que está preguntando sería peor que callarse.
+ */
+
+/**
+ * Deja anotada una visita. Se registra SIEMPRE, se autorice o no.
+ *
+ * Una visita rechazada o sin respuesta es justo la que después hace falta poder
+ * mirar. Guardar sólo las que entraron dejaría la bitácora contando media historia.
+ */
+function registrarVisita(d) {
+  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  d = d || {};
+  var visitante = String(d.visitante || '').trim();
+  var cedula = String(d.cedula || '').trim();
+  if (!visitante && !cedula) throw new Error('Una visita necesita al menos el nombre o la cédula.');
+
+  var clave = String(d.clave || '').trim();
+  var prop = (clave && typeof _findProp === 'function') ? _findProp(clave) : null;
+  var estado = ACC_ESTADOS.indexOf(String(d.estado || '')) >= 0 ? String(d.estado) : 'pendiente';
+  var quien = String(d.autorizadoPor || '');
+
+  var fila = [ _accId('VI'), new Date(), clave,
+               (prop ? String(prop.lote || '') : String(d.lote || '')),
+               visitante, cedula, String(d.motivo || ''), String(d.vehiculo || ''),
+               String(d.guardia || ''), estado, quien, (quien ? new Date() : ''),
+               String(d.fotoUrl || ''), '', '', String(d.notas || ''), new Date() ];
+  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS).appendRow(fila);
+
+  _reg('visita.registra', { entidad: 'visita', clave: clave, propietario: visitante,
+    detalle: estado + (cedula ? ' · cédula ' + cedula : ' · sin cédula') +
+             (quien ? ' · ' + quien : '') });
+  return { ok: true, id: fila[0], estado: estado, clave: clave, visitante: visitante, cedula: cedula };
+}
+
+/**
+ * De un lote a su clave. Devuelve '' si no es una sola.
+ *
+ * El lote 14 de este padrón tiene CUATRO propietarios distintos. Elegir uno al azar
+ * para colgarle la visita sería inventarse un dato; con más de uno se devuelve vacío y
+ * la autorización se busca en todas las unidades, que es lo que ya sabe hacer.
+ */
+function _accClavePorLote(lote) {
+  var buscado = String(lote || '').trim().toUpperCase().replace(/^(LOTE|CASA)\s*/i, '');
+  if (!buscado) return '';
+  var hallados = [];
+  try {
+    (getPropietarios() || []).forEach(function (p) {
+      if (String(p.lote || '').trim().toUpperCase() === buscado) hallados.push(p.clave);
+      else if (String(p.clave || '').trim().toUpperCase() === buscado) hallados.push(p.clave);
+    });
+  } catch (e) {}
+  var unicos = hallados.filter(function (c, i) { return hallados.indexOf(c) === i; });
+  return unicos.length === 1 ? unicos[0] : '';
+}
+
+/**
+ * ¿Esto que devolvió el modelo estaba de verdad en lo que escribió el guardia?
+ *
+ * Se compara sin tildes, sin mayúsculas y sin puntuación, igual que _accNombre. Que el
+ * modelo devuelva «Juan Pérez» donde el guardia tecleó «juan perez» no es inventarse
+ * nada: es escribirlo bien, y así es como conviene que quede en la bitácora. Lo que no
+ * puede colarse son letras que no estaban.
+ */
+function _accVieneDelTexto(valor, texto) {
+  var limpiar = function (s) {
+    return String(s == null ? '' : s).toLowerCase()
+      .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+      .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/ñ/g, 'n')
+      .replace(/[^a-z0-9]/g, '');
+  };
+  var v = limpiar(valor);
+  return !!v && limpiar(texto).indexOf(v) >= 0;
+}
+
+/**
+ * Cédulas panameñas tal como se escriben: 8-123-456, E-8-12345, N-19-1234, 4-AV-12,
+ * PE-123-456. También un pasaporte suelto, que es lo que trae un extranjero.
+ */
+function _accCedulaEnTexto(texto) {
+  var m = /\b((?:[A-Z]{1,2}-)?\d{1,2}-[A-Z0-9]{1,6}-\d{1,6})\b/i.exec(String(texto || ''));
+  return m ? m[1].toUpperCase() : '';
+}
+
+/**
+ * Saca nombre y cédula de lo que escribió el guardia.
+ *
+ * Claude entiende el español real de una garita —«viene juan perez cedula 8-123-456
+ * pa la 14», sin tildes y con faltas— pero NADA de lo que devuelve se usa si no
+ * aparece en el mensaje. Si el modelo se inventa una cédula, se descarta y se cae a
+ * la expresión regular, que sólo puede encontrar lo que está escrito.
+ *
+ * Sin clave de API funciona igual, peor: la cédula por expresión regular y el nombre
+ * por lo que quede. Una garita no puede quedarse sin sistema porque Anthropic tenga
+ * un mal día.
+ */
+function _accLeerVisitaTexto(texto) {
+  var t = String(texto || '').trim();
+  var base = { visitante: '', cedula: _accCedulaEnTexto(t), lote: '', motivo: '', vehiculo: '' };
+  if (!t) return base;
+
+  var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
+  if (!key) return base;
+
+  try {
+    var r = UrlFetchApp.fetch(ANTHROPIC_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({
+        model: ANTHROPIC_MODEL, max_tokens: 200,
+        system:
+          'Un guardia de una garita en Panamá anuncia por WhatsApp a un visitante que ' +
+          'acaba de llegar. Extrae los datos y responde ÚNICAMENTE con un JSON con esta ' +
+          'forma exacta, sin explicar nada:\n' +
+          '{"visitante":"","cedula":"","lote":"","motivo":"","vehiculo":""}\n' +
+          'Reglas:\n' +
+          '- visitante: el nombre de quien llega, tal como está escrito. "" si no lo dice.\n' +
+          '- cedula: la cédula o pasaporte, con sus guiones, tal como está escrito. "" si no.\n' +
+          '- lote: el lote, casa o apartamento al que va (ej. "14", "H-43B"). "" si no lo dice.\n' +
+          '- motivo: a qué viene, en dos o tres palabras. "" si no lo dice.\n' +
+          '- vehiculo: placa, color o modelo si lo menciona. "" si no.\n' +
+          'NO inventes nada. Si un dato no está en el mensaje, déjalo vacío.',
+        messages: [{ role: 'user', content: t.slice(0, 600) }]
+      }),
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() !== 200) return base;
+    var data = JSON.parse(r.getContentText());
+    var txt = '';
+    (data.content || []).forEach(function (c) { if (c.type === 'text') txt += String(c.text || ''); });
+    var j = (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
+    if (!j) return base;
+
+    // El candado: cada campo se acepta sólo si estaba en el mensaje del guardia.
+    var out = { visitante: '', cedula: base.cedula, lote: '', motivo: '', vehiculo: '' };
+    ['visitante', 'cedula', 'lote', 'motivo', 'vehiculo'].forEach(function (k) {
+      var v = String(j[k] || '').trim();
+      if (v && _accVieneDelTexto(v, t)) out[k] = v;
+    });
+    // Si el modelo no dio cédula pero la expresión regular sí, manda la regular.
+    if (!out.cedula) out.cedula = base.cedula;
+    return out;
+  } catch (e) {
+    Logger.log('Acceso: Claude falló leyendo el anuncio — ' + (e && e.message || e));
+    return base;
+  }
+}
+
+/**
+ * Lee una cédula fotografiada.
+ *
+ * Aquí NO hay con qué contrastar: el modelo es el que lee, y no existe un texto del
+ * guardia donde comprobar lo que devolvió. Por eso la respuesta al guardia repite
+ * siempre lo que se leyó y dice que salió de la foto — él tiene el documento en la
+ * mano y le cuesta un segundo desmentirlo. Un sistema que lee mal en silencio es peor
+ * que uno que no lee.
+ */
+function _accLeerCedulaFoto(blob, tipo) {
+  var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
+  if (!key) return null;
+  var mime = String(tipo || (blob && blob.getContentType && blob.getContentType()) || 'image/jpeg');
+  if (mime.indexOf('image/') !== 0) return null;
+
+  try {
+    var b64 = Utilities.base64Encode(blob.getBytes());
+    var r = UrlFetchApp.fetch(ANTHROPIC_URL, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({
+        model: ANTHROPIC_MODEL, max_tokens: 200,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
+          { type: 'text', text:
+            'Es la foto de un documento de identidad, normalmente una cédula panameña. ' +
+            'Responde ÚNICAMENTE con un JSON con esta forma exacta, sin explicar nada:\n' +
+            '{"esCedula":true|false,"visitante":"","cedula":"","confianza":0.0}\n' +
+            '- esCedula: true sólo si de verdad es un documento de identidad o pasaporte.\n' +
+            '- visitante: el nombre completo tal como está impreso.\n' +
+            '- cedula: el número, con sus guiones, tal como está impreso.\n' +
+            '- confianza: de 0 a 1, qué tan seguro estás de haber leído bien el número.\n' +
+            'Si la foto está borrosa o cortada, baja la confianza en vez de adivinar.' }
+        ] }]
+      }),
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() !== 200) return null;
+    var data = JSON.parse(r.getContentText());
+    var txt = '';
+    (data.content || []).forEach(function (c) { if (c.type === 'text') txt += String(c.text || ''); });
+    var j = (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
+    if (!j || !j.esCedula) return null;
+    return { visitante: String(j.visitante || '').trim(),
+             cedula: String(j.cedula || '').trim(),
+             confianza: Number(j.confianza) || 0, deFoto: true };
+  } catch (e) {
+    Logger.log('Acceso: Claude falló leyendo la cédula — ' + (e && e.message || e));
+    return null;
+  }
+}
+
+/* ─────────────── la conversación con el guardia ─────────────── */
+
+var ACC_BOT_SI = 'acc_si_';      // el guardia dejó pasar
+var ACC_BOT_NO = 'acc_no_';      // el guardia no dejó pasar
+
+/**
+ * Todo lo que el bot le contesta a un guardia.
+ *
+ * Devuelve el mismo `{contesto, avisar}` que el resto del bot, para que el aviso a la
+ * administración siga funcionando igual.
+ */
+function _botGuardia(tel, garita, msg) {
+  var tipo = String(msg.type || '');
+
+  // 1) ¿Viene a cerrar una visita que el sistema ya le había puesto en duda?
+  if (tipo === 'interactive' || tipo === 'button') {
+    var i = msg.interactive || {};
+    var b = i.button_reply || i.list_reply || {};
+    var id = String(b.id || (msg.button && msg.button.payload) || '');
+    if (id.indexOf(ACC_BOT_SI) === 0 || id.indexOf(ACC_BOT_NO) === 0) {
+      var paso = id.indexOf(ACC_BOT_SI) === 0;
+      var visitaId = id.slice(ACC_BOT_SI.length);
+      resolverVisita(visitaId, paso ? 'autorizada' : 'rechazada', garita.nombre);
+      enviarWhatsAppTexto(tel, paso
+        ? 'Anotado: entró. Queda en la bitácora a su nombre.'
+        : 'Anotado: no entró. Queda en la bitácora a su nombre.');
+      return { contesto: true, avisar: false };
+    }
+  }
+
+  // 2) Los datos del visitante, de la foto o del texto.
+  var datos = null, fotoUrl = '';
+  if (tipo === 'image') {
+    var media = _waBajarMedia((msg.image || {}).id);
+    if (media.ok) {
+      datos = _accLeerCedulaFoto(media.blob, media.tipo);
+      fotoUrl = _accGuardarFoto(media.blob);
+    }
+    if (!datos) {
+      enviarWhatsAppTexto(tel,
+        'No pude leer esa foto. Mándeme el nombre y la cédula escritos, por ejemplo:\n' +
+        '«Juan Pérez 8-123-456 va a la ' + _acUnidad() + ' 14».');
+      return { contesto: true, avisar: true };
+    }
+  } else if (tipo === 'text') {
+    datos = _accLeerVisitaTexto((msg.text && msg.text.body) || '');
+  } else {
+    enviarWhatsAppTexto(tel,
+      'Por aquí puede anunciar una visita: mándeme la foto de la cédula, o el nombre y la ' +
+      'cédula escritos.');
+    return { contesto: true, avisar: true };
+  }
+
+  if (!String(datos.visitante || '').trim() && !String(datos.cedula || '').trim()) {
+    enviarWhatsAppTexto(tel,
+      'No entendí a quién anuncia. Mándeme el nombre y la cédula, por ejemplo:\n' +
+      '«Juan Pérez 8-123-456 va a la ' + _acUnidad() + ' 14».');
+    return { contesto: true, avisar: false };
+  }
+
+  // 3) ¿Hay un permiso dejado de antemano?
+  var clave = _accClavePorLote(datos.lote);
+  var hallado = autorizacionVigente(clave, datos, new Date());
+  var deQuien = hallado ? _accDeQuien(hallado.autorizacion.clave) : '';
+
+  var visita = registrarVisita({
+    clave: hallado ? hallado.autorizacion.clave : clave,
+    lote: datos.lote, visitante: datos.visitante, cedula: datos.cedula,
+    motivo: datos.motivo, vehiculo: datos.vehiculo, guardia: garita.nombre,
+    estado: (hallado && hallado.firme) ? 'preautorizada' : 'pendiente',
+    autorizadoPor: (hallado && hallado.firme) ? ('Permiso de ' + deQuien) : '',
+    fotoUrl: fotoUrl,
+    notas: datos.deFoto ? 'Cédula leída de una foto.' : ''
+  });
+
+  var quien = String(datos.visitante || '').trim() || 'Sin nombre';
+  var ced = String(datos.cedula || '').trim();
+  var leido = quien + (ced ? '\nCédula ' + ced : '') +
+              (datos.deFoto ? '\n_Leído de la foto — confírmelo con el documento._' : '');
+
+  // 4) La respuesta. Lo único que abre sin preguntar es una cédula que casa.
+  if (hallado && hallado.firme) {
+    enviarWhatsAppTexto(tel,
+      '✅ PUEDE PASAR\n\n' + leido + '\n\nTiene permiso dejado por ' + deQuien + '.' +
+      _accVigencia(hallado.autorizacion));
+    return { contesto: true, avisar: false };
+  }
+
+  if (hallado) {
+    _waEnviarBotones(tel,
+      '⚠️ COINCIDE EL NOMBRE, NO LA CÉDULA\n\n' + leido + '\n\n' + deQuien + ' dejó permiso para ' +
+      'alguien con ese nombre, pero sin cédula anotada, así que no puedo asegurar que sea la ' +
+      'misma persona. Usted tiene el documento: decida y déjelo anotado.',
+      [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
+       _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')]);
+    return { contesto: true, avisar: true };
+  }
+
+  _waEnviarBotones(tel,
+    '⛔ SIN PERMISO PREVIO\n\n' + leido + '\n\nNo hay ninguna autorización dejada para esta ' +
+    'persona. Todavía no puedo preguntarle a la casa desde aquí: llame usted por el medio de ' +
+    'siempre y déjelo anotado.',
+    [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
+     _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')]);
+  return { contesto: true, avisar: true };
+}
+
+/** «L-14 · Judith Araúz», o la clave a secas si no está en el padrón. */
+function _accDeQuien(clave) {
+  var p = (typeof _findProp === 'function') ? _findProp(clave) : null;
+  if (!p) return String(clave || 'la unidad');
+  return (p.lote ? p.lote + ' · ' : '') + (p.nombre || clave);
+}
+
+/** « Vigente hasta el 31/12/2026.» o cadena vacía. */
+function _accVigencia(a) {
+  if (!a || !a.hasta) return '';
+  return ' Vigente hasta el ' + _fechaCorta(a.hasta) + '.';
+}
+
+/**
+ * Guarda la foto de la cédula en Drive y devuelve su enlace.
+ *
+ * Va a la misma carpeta que los comprobantes si está configurada. Si no hay carpeta,
+ * NO se guarda y no pasa nada: la visita queda anotada igual. Perder la foto es
+ * molesto; perder el registro de quién entró, no.
+ */
+function _accGuardarFoto(blob) {
+  try {
+    var id = (typeof CONFIG !== 'undefined' && CONFIG.VOUCHER_FOLDER_ID) || '';
+    if (!id) return '';
+    var carpeta = DriveApp.getFolderById(id);
+    var f = carpeta.createFile(blob.setName('cedula-' + new Date().getTime() + '.jpg'));
+    return f.getUrl();
+  } catch (e) {
+    Logger.log('Acceso: no se pudo guardar la foto — ' + (e && e.message || e));
+    return '';
+  }
+}
+
+/**
+ * Cierra una visita con lo que decidió el guardia.
+ *
+ * Lo que se anota es lo que PASÓ, no lo que el sistema recomendó: si el guardia dejó
+ * entrar a alguien sin permiso, eso es justo lo que la bitácora tiene que decir.
+ */
+function resolverVisita(id, estado, guardia) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador de la visita.');
+  if (ACC_ESTADOS.indexOf(String(estado)) < 0) throw new Error('Estado desconocido: ' + estado);
+
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iEs = h.indexOf('estado'),
+      iPor = h.indexOf('autorizadoPor'), iEn = h.indexOf('autorizadoEn');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== id) continue;
+    sh.getRange(r + 1, iEs + 1).setValue(estado);
+    sh.getRange(r + 1, iPor + 1).setValue('Guardia · ' + String(guardia || ''));
+    sh.getRange(r + 1, iEn + 1).setValue(new Date());
+    _reg('visita.resuelve', { entidad: 'visita', clave: String(vals[r][h.indexOf('clave')] || ''),
+      propietario: String(vals[r][h.indexOf('visitante')] || ''),
+      detalle: estado + ' · lo decidió el guardia de ' + String(guardia || '') });
+    return { ok: true, id: id, estado: estado };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}

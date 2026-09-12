@@ -97,6 +97,27 @@ global._acUnidad = () => 'lote';
 global._acPlural = p => (/[aeiou]$/i.test(p) ? p + 's' : p + 'es');
 global.getPropietarios = () => PADRON.slice();
 
+// ── el WhatsApp de mentira: se guarda lo que se le habría mandado al guardia ──
+let ENVIADO, CLAUDE;
+const reiniciarWA = () => { ENVIADO = []; };
+global.enviarWhatsAppTexto = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
+global._waEnviarBotones = (tel, texto, botones) => { ENVIADO.push({ tel, texto, botones }); return { ok: true }; };
+global._botBoton = (id, titulo) => ({ type: 'reply', reply: { id, title: titulo } });
+global._waBajarMedia = () => ({ ok: true, blob: { getBytes: () => [1, 2, 3], getContentType: () => 'image/jpeg' }, tipo: 'image/jpeg' });
+global._acUn = () => 'un';
+
+// Claude de mentira. CLAUDE es lo que se quiere que «devuelva» el modelo; poniéndolo a
+// null se prueba el camino sin clave de API, que es el que corre si Anthropic falla.
+global.ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+global.ANTHROPIC_MODEL = 'claude-haiku-4-5';
+global._anthropicKey = () => (CLAUDE === null ? '' : 'sk-prueba');
+global._parseJsonLoose = t => { try { return JSON.parse(t); } catch (e) { return null; } };
+global.UrlFetchApp = { fetch: () => ({
+  getResponseCode: () => 200,
+  getContentText: () => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(CLAUDE) }] })
+}) };
+global.Utilities.base64Encode = () => 'AAAA';
+
 const _log = console.log;
 const capturar = () => { SALIDA = []; console.log = (...a) => {
   let i = 1; SALIDA.push(String(a[0]).replace(/%s/g, () => String(a[i++]))); }; };
@@ -445,6 +466,111 @@ _accHojas();
 HOJAS.Garita.push(['GA9', 'Garita tecleada a mano', '6981-2266', '', 'si', '', new Date()]);
 ok(getAccesoData('').avisos.some(a => /Ana Rosa Tejada/.test(a.texto)),
    'un «6981-2266» tecleado a mano choca igual con el «+50769812266» del padrón');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * La llegada: el guardia anuncia a alguien
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const hablo = () => ENVIADO[ENVIADO.length - 1] || { texto: '', botones: null };
+const anuncia = (texto) => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' }, { type: 'text', text: { body: texto } }); };
+
+console.log('\n── DE LO QUE DEVUELVE EL MODELO, SÓLO SE USA LO QUE ESTABA EN EL MENSAJE ──');
+// El candado que más importa de todo el módulo. Una cédula inventada en una garita es
+// alguien entrando con el permiso de otro, y a esa hora nadie lo va a verificar.
+reiniciar(); reiniciarWA();
+CLAUDE = { visitante: 'Juan Pérez', cedula: '9-999-999', lote: '' };   // ← esa cédula NO se escribió
+let leido = _accLeerVisitaTexto('viene juan perez con cedula 8-123-456');
+ok(leido.cedula === '8-123-456',
+   'una cédula que el modelo se inventó se descarta y manda la que está escrita: ' + leido.cedula);
+ok(leido.visitante === 'Juan Pérez', 'el nombre, que sí estaba, se acepta');
+
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '14' };
+leido = _accLeerVisitaTexto('viene juan perez con cedula 8-123-456');
+ok(leido.visitante === '',
+   'y un NOMBRE inventado también se descarta, no sólo la cédula: ' + JSON.stringify(leido.visitante));
+ok(leido.lote === '', 'y un lote que nadie mencionó tampoco pasa');
+
+CLAUDE = null;   // sin clave de API, o Anthropic caído
+leido = _accLeerVisitaTexto('juan perez 8-123-456 va a la 14');
+ok(leido.cedula === '8-123-456',
+   'sin Claude la garita sigue funcionando: la cédula sale por expresión regular');
+
+console.log('\n── UNA CÉDULA QUE CASA ABRE; UN NOMBRE QUE CASA, NO ──');
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-456' });
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '' };
+anuncia('Luis Mendoza 8-123-456');
+ok(/PUEDE PASAR/.test(hablo().texto), 'con la cédula anotada y coincidiendo, puede pasar');
+ok(hablo().botones === null, 'y no se le pregunta nada al guardia: no hay nada que decidir');
+ok(_sheetRows('Visitas')[0].estado === 'preautorizada', 'la visita queda como preautorizada');
+
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza' });   // sin cédula
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '' };
+anuncia('Luis Mendoza 8-123-456');
+ok(/COINCIDE EL NOMBRE, NO LA CÉDULA/.test(hablo().texto),
+   'con permiso sólo por nombre, el sistema NO abre solo: ' + hablo().texto.split('\n')[0]);
+ok(hablo().botones && hablo().botones.length === 2,
+   'le deja la decisión al guardia, que tiene el documento en la mano');
+ok(_sheetRows('Visitas')[0].estado === 'pendiente',
+   'y la visita NO se marca autorizada mientras él no conteste: ' + _sheetRows('Visitas')[0].estado);
+
+console.log('\n── SIN PERMISO SE DICE QUE NO HAY PERMISO ──');
+// Y no «estoy preguntando a la casa». Todavía no se le puede escribir al residente
+// —falta que Meta apruebe la plantilla— y fingir que se está preguntando, en una
+// garita, es peor que callarse.
+reiniciar();
+CLAUDE = { visitante: 'Un Desconocido', cedula: '7-111-222', lote: '' };
+anuncia('Un Desconocido 7-111-222');
+ok(/SIN PERMISO PREVIO/.test(hablo().texto), 'se dice claro que no hay autorización');
+ok(!/pregunt[áa]ndole|estoy preguntando|le consulto/i.test(hablo().texto),
+   'y no se promete una consulta que el sistema todavía no puede hacer');
+ok(/llame usted/i.test(hablo().texto), 'se le dice qué hacer mientras tanto');
+ok(_sheetRows('Visitas').length === 1,
+   'la visita sin permiso queda anotada IGUAL: la que no entró es justo la que después ' +
+   'hace falta poder mirar');
+
+console.log('\n── LA BITÁCORA ANOTA LO QUE PASÓ, NO LO QUE EL SISTEMA RECOMENDÓ ──');
+let vid = _sheetRows('Visitas')[0].id;
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: 'acc_si_' + vid, title: 'Lo dejé pasar' } } });
+let v0 = _sheetRows('Visitas')[0];
+ok(v0.estado === 'autorizada',
+   'el guardia dejó entrar a alguien sin permiso y eso es lo que queda escrito: ' + v0.estado);
+ok(/Guardia · Garita principal/.test(String(v0.autorizadoPor)),
+   'con su nombre, no el de una autorización que no existía: ' + v0.autorizadoPor);
+ok(/bitácora/i.test(hablo().texto), 'y se le confirma que quedó anotado');
+
+console.log('\n── UN LOTE CON VARIOS DUEÑOS NO SE RESUELVE A DEDO ──');
+// El lote 14 de este padrón tiene cuatro propietarios. Colgarle la visita a uno al azar
+// sería inventarse un dato.
+reiniciar();
+PADRON.push({ clave: 'L-14b', nombre: 'Otro Dueño del 14', celular: '', lote: '14' });
+PADRON[1].lote = '14';
+ok(_accClavePorLote('14') === '', 'con cuatro dueños devuelve vacío y se busca en todas las unidades');
+PADRON[0].lote = '9';
+ok(_accClavePorLote('9') === 'Q-9', 'un lote de un solo dueño sí resuelve: ' + _accClavePorLote('9'));
+
+console.log('\n── LA FOTO DE LA CÉDULA SE LEE, Y SE DICE QUE SE LEYÓ ──');
+// Aquí no hay con qué contrastar: el modelo es el que lee. Por eso la respuesta repite
+// lo leído y avisa de dónde salió — el guardia tiene el documento y le cuesta un segundo
+// desmentirlo.
+reiniciar(); reiniciarWA();
+CLAUDE = { esCedula: true, visitante: 'Pedro Ruiz', cedula: '8-777-888', confianza: 0.9 };
+_botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'image', image: { id: 'M1' } });
+ok(/Pedro Ruiz/.test(hablo().texto) && /8-777-888/.test(hablo().texto),
+   'se le repite al guardia lo que se leyó');
+ok(/Leído de la foto/.test(hablo().texto), 'y se le dice que salió de la foto, para que lo confirme');
+ok(_sheetRows('Visitas')[0].visitante === 'Pedro Ruiz', 'la visita queda anotada con ese nombre');
+
+reiniciar(); reiniciarWA();
+CLAUDE = { esCedula: false };
+_botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'image', image: { id: 'M1' } });
+ok(/No pude leer esa foto/.test(hablo().texto),
+   'y si la foto no es una cédula, se pide el dato escrito en vez de inventarse una lectura');
+ok(_sheetRows('Visitas').length === 0, 'sin poder leer nada, no se anota una visita en blanco');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

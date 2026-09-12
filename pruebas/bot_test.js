@@ -448,5 +448,47 @@ correr(texto('50769999999', 'hola'));
 ok(/admin@ejemplo\.org/.test(cuerpos()), 'y con el correo puesto, se le da ese');
 CONFIG.REPLY_TO = _neg;
 
+console.log('\n── EL GUARDIA MANDA SOBRE EL RESIDENTE ──');
+// El caso del piloto, y no es raro: el número de la garita está ADEMÁS en el padrón,
+// porque al arrancar el administrador pone el suyo. Quien escribe desde la garita está
+// trabajando, no consultando su cuota — si el bot le contestara su saldo, el módulo de
+// acceso sencillamente no existiría para él.
+//
+// Aquí se prueba el ENRUTADO, que vive en el bot. Lo que el guardia hace una vez dentro
+// está probado en acceso_test.js contra el módulo de verdad.
+let alGuardia = null;
+global.esGuardia = tel => (String(tel).replace(/\D/g, '') === '50769812266'
+  ? { nombre: 'Garita principal', celular: '+50769812266' } : null);
+global._botGuardia = (tel, garita, msg) => {
+  alGuardia = { tel: tel, garita: garita, tipo: msg.type };
+  return { contesto: true, avisar: false };
+};
+PROPS.AC_MODULOS = 'financiero,acceso'; CACHE = {}; CLAUDE = 'saldo';
+
+// 6981-2266 es el celular de L-5 en este padrón: pide su saldo, y lo tiene.
+correr(texto('50769812266', 'cuanto debo?'));
+ok(alGuardia && alGuardia.tipo === 'text',
+   'un número que es garita Y está en el padrón va al flujo del guardia');
+ok(!/B\/\. 45/.test(cuerpos()),
+   'y NO recibe su saldo, aunque lo haya pedido y lo tenga: ' + cuerpos().slice(0, 60));
+
+alGuardia = null; CACHE = {};
+correr(imagen('50769812266'));
+ok(alGuardia && alGuardia.tipo === 'image',
+   'una foto suya es una CÉDULA, no un comprobante: no llega a pasar por _botAccion()');
+ok(!DRIVE.length, 'así que no se guarda como comprobante de pago ni se avisa de uno');
+
+alGuardia = null; CACHE = {};
+correr(texto('50761112233', 'cuanto debo?'));
+ok(alGuardia === null && /B\/\. 245/.test(cuerpos()),
+   'a un residente que no es guardia no le cambia nada: sigue recibiendo su saldo');
+
+// Un PH que no contrató el acceso no tiene garitas, y el desvío no debe ni existir.
+alGuardia = null; PROPS.AC_MODULOS = 'financiero'; CACHE = {};
+correr(texto('50769812266', 'cuanto debo?'));
+ok(alGuardia === null && /B\/\. 45/.test(cuerpos()),
+   'sin el módulo de acceso contratado, ese mismo número vuelve a ser un residente');
+delete PROPS.AC_MODULOS; CACHE = {};
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
