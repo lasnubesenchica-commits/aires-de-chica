@@ -12,9 +12,9 @@
       "nombre": "Router de WhatsApp",
       "gasDir": "router",
       "scriptId": "",
-      "deploymentId": "",
+      "deploymentId": "AKfycbyFsZ9EdL3YKPlKNsSGWb66NSlsguEqErQrojUzX6TFkWEymNFBZEwEYOA7qhS-IpVy",
       "activo": false,
-      "nota": "Crear el proyecto en Apps Script, pegar aqui su scriptId y deploymentId, y poner activo en true."
+      "nota": "Falta el scriptId del proyecto: Configuracion del proyecto, empieza por 1. Con el puesto, activo pasa a true."
     }
   ]
 }
