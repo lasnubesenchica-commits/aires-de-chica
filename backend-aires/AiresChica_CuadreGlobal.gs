@@ -18,23 +18,11 @@
  *   3. Los 0.20 de intereses que el banco abonó el 31/08 y que no estaban en
  *      ninguna parte.
  *
- * ── Qué NO arregla, a propósito ──────────────────────────────────────────────
- * Banco General queda en −217.00 y «Por rendir» en −311.00. Las dos son
- * imposibles en la realidad y siguen ahí porque la explicación todavía no existe:
- *
- *   · Los 500.00 de la apertura del 18/08. El 07/09 se reclasificaron de Banco
- *     General a «Por rendir» con la nota «en agosto no hubo ningún débito de
- *     500.00 en Banco General». La administración dice que sí salieron de Banco
- *     General, quizá vía su cuenta personal. Hasta ver el movimiento, se quedan
- *     donde están.
- *
- *   · Doraida sacó de Banco General 500.00 + 3,000.00 + 3,233.69 = 6,733.69, y el
- *     sistema dice que por esa cuenta pasaron 6,016.69 en total. Faltan 717.00.
- *
- * Dejarlos en negativo es feo y es deliberado: el balance está diciendo «aquí
- * falta una explicación», y falta. Taparlo con un ajuste inventado lo volvería
- * invisible, y si esos 717.00 resultan ser cuotas de 2026 sin registrar, habría
- * propietarios que pagaron saliendo como morosos para siempre.
+ * Al terminar esto, Banco General queda en −217.00 y «Por rendir» en −311.00. Las
+ * dos son imposibles en la realidad, y las arregla la SEGUNDA función de este
+ * archivo, registrarFondoDeLaAdministracion(), que va aparte a propósito: ésta son
+ * hechos del estado de cuenta, aquélla es una afirmación sobre lo que alguien tenía
+ * hace nueve meses y no debía correr hasta que esa persona la confirmara.
  *
  * ── La comprobación ──────────────────────────────────────────────────────────
  * Al terminar, el saldo de Global al 31/08/2026 tiene que ser EXACTAMENTE 2,908.20,
@@ -180,12 +168,11 @@ function cuadrarGlobalBank() {
              'registraron 0.20 de intereses. Saldo al 31/08 = 2,908.20, igual al banco.' });
 
   console.log('');
-  console.log('Pendiente, y NO lo toca esta función:');
-  console.log('  Banco General queda en %s y «Por rendir» en %s.',
+  console.log('Falta la segunda parte, y NO la hace esta función:');
+  console.log('  Banco General queda en %s y «Por rendir» en %s. Las dos son',
     _cgSaldoCuenta(CG_BG).toFixed(2), _cgSaldoCuenta('por-rendir').toFixed(2));
-  console.log('  Faltan 717.00 de ingresos en Banco General: Doraida sacó 6,733.69 de');
-  console.log('  esa cuenta y el sistema dice que por ahí pasaron 6,016.69. Hace falta');
-  console.log('  el estado de cuenta de Banco General para saber de dónde salieron.');
+  console.log('  imposibles: son el fondo que la administración ya tenía y que el libro');
+  console.log('  nunca registró. Lo arregla registrarFondoDeLaAdministracion().');
 
   return { ok: true, saldo: saldo, hechos: hechos };
 }
@@ -252,4 +239,173 @@ function verCuadreGlobal() {
     CG_SALDO_ESPERADO.toFixed(2));
   console.log('');
   console.log('Ya aplicado: %s', _cgProps().getProperty(CG_PROP) || 'no');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SEGUNDA PARTE · El fondo que la administración ya tenía
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Antes de que existiera este sistema, la administración llevaba el dinero de la
+ * asociación en sus cuentas personales. Cuando el libro arranca, esa plata ya
+ * estaba ahí — igual que Banco General arranca con 2,852.01 — pero la cuenta «Por
+ * rendir» se creó con fondo inicial 0.00. De ahí salen los dos saldos negativos.
+ *
+ * ── Lo que pasó de verdad ────────────────────────────────────────────────────
+ *   · La administración tenía 592.00 de la asociación en sus cuentas personales.
+ *   · Usó 500.00 para abrir Global Bank el 18/08. La glosa del banco lo confirma:
+ *     «TRANSFERENCIA DE 30102226924 DORAIDA CASTILLO apertura de». Salió de una
+ *     cuenta suya, pero el dinero era de la asociación.
+ *   · El 08/09 transfirió 3,233.69 a Global. Banco General sólo tenía 3,016.69:
+ *     completó los 217.00 que faltaban con lo que ella tenía.
+ *   · El 31/08 entraron 189.00 de cuotas a sus cuentas personales.
+ *   · Le quedan 64.00, y están pendientes de transferir. Ella lo confirma.
+ *
+ *       592.00 − 500.00 − 217.00 + 189.00 = 64.00
+ *
+ * ── Por qué creo que es correcto ─────────────────────────────────────────────
+ * Los 592.00 se dedujeron para llegar a las cifras que trae la administración, así
+ * que esa parte es circular y no prueba nada por sí sola.
+ *
+ * Lo que NO se ajustó es esto: al partir el traspaso del 08/09 en sus dos partes
+ * reales, Banco General cierra en CERO EXACTO sin tocarle el fondo inicial.
+ *
+ *     2,852.01 + 27,901.95 cobros − 24,737.27 gastos
+ *              − 3,000.00 (31/08) − 3,016.69 (08/09) = 0.00
+ *
+ * Eso cae solo. Con cualquier otra explicación esa cuenta quedaría descuadrada, y
+ * por eso la función se comprueba contra ese cero y no contra los 592.00.
+ *
+ * Uso:  registrarFondoDeLaAdministracion()    después de cuadrarGlobalBank()
+ *       rollbackFondoDeLaAdministracion()
+ */
+
+var FA_PROP     = 'AC_FONDO_ADMIN';
+var FA_CUENTA   = 'por-rendir';
+var FA_FONDO    = 592.00;    // lo que tenía en sus cuentas al arrancar el libro
+
+/** El traspaso del 08/09, que en realidad fueron dos. */
+var FA_TRASPASO = { id: 'T1789229047131-925', anio: 2026, mes: 9, dia: 8,
+                    total: 3233.69, referencia: 'SE TRANSFIERE FONDOS A CTA GLOBAL BANK' };
+var FA_DE_BANCO = 3016.69;   // lo que quedaba en Banco General: lo vacía exacto
+var FA_DE_MANOS = 217.00;    // lo que puso ella para completar
+var FA_ID_MANOS = 'FA26-T1';
+
+var FA_ESPERADO_BG = 0.00;   // Banco General tiene que cerrar en cero
+var FA_ESPERADO_PR = 64.00;  // y a la administración le quedan 64.00
+
+function registrarFondoDeLaAdministracion() {
+  ensureSheets();
+
+  if (!_cgProps().getProperty(CG_PROP)) {
+    console.log('Primero hay que correr cuadrarGlobalBank().');
+    console.log('Sin eso, el traspaso de 154.80 y las dos cuotas de Thayra y Berrío');
+    console.log('siguen mal puestas, y las comprobaciones de aquí no pueden dar.');
+    return { ok: false };
+  }
+  if (_cgProps().getProperty(FA_PROP)) {
+    console.log('Esto ya se aplicó el %s.', _cgProps().getProperty(FA_PROP));
+    console.log('Para rehacerlo: rollbackFondoDeLaAdministracion()');
+    return { ok: false, yaAplicado: true };
+  }
+
+  console.log('════ EL FONDO DE LA ADMINISTRACIÓN ════');
+
+  // 1. Lo que ya tenía cuando arranca el libro.
+  var cta = cuentaPorId(FA_CUENTA);
+  if (!cta) { console.log('✗ No existe la cuenta %s.', FA_CUENTA); return { ok: false }; }
+  _faGuardarFondo(cta, FA_FONDO);
+  console.log('✓ Fondo inicial de «%s»: %s → %s',
+    cta.nombre, _round2(cta.fondoInicial).toFixed(2), FA_FONDO.toFixed(2));
+
+  // 2. El traspaso del 08/09 se parte en sus dos mitades reales.
+  try {
+    eliminarTraspaso(FA_TRASPASO.id);
+    var fecha = new Date(FA_TRASPASO.anio, FA_TRASPASO.mes - 1, FA_TRASPASO.dia, 12, 0, 0);
+    registrarTraspaso({ id: FA_TRASPASO.id, fecha: fecha, de: CG_BG, a: CG_GLOBAL,
+      monto: FA_DE_BANCO, referencia: FA_TRASPASO.referencia,
+      notas: 'Lo que quedaba en Banco General. Los ' + FA_DE_MANOS.toFixed(2) +
+             ' restantes de la transferencia de ' + FA_TRASPASO.total.toFixed(2) +
+             ' los completó la administración con fondos que tenía.' });
+    registrarTraspaso({ id: FA_ID_MANOS, fecha: fecha, de: FA_CUENTA, a: CG_GLOBAL,
+      monto: FA_DE_MANOS, referencia: 'Completa la transferencia del 08/09',
+      notas: 'Banco General tenía ' + FA_DE_BANCO.toFixed(2) + ' y la transferencia fue de ' +
+             FA_TRASPASO.total.toFixed(2) + '. La diferencia salió de lo que la ' +
+             'administración tenía de la asociación en sus cuentas personales.' });
+    console.log('✓ El traspaso de %s se parte: %s de Banco General y %s de la administración.',
+      FA_TRASPASO.total.toFixed(2), FA_DE_BANCO.toFixed(2), FA_DE_MANOS.toFixed(2));
+  } catch (e) {
+    console.log('✗ No se pudo partir el traspaso: %s', e && e.message || e);
+    console.log('  Ejecuta rollbackFondoDeLaAdministracion() antes de reintentar.');
+    return { ok: false };
+  }
+
+  // La comprobación. El cero de Banco General es la que manda: no se ajustó para
+  // que diera, cae solo al partir el traspaso.
+  var bg = _cgSaldoCuenta(CG_BG), pr = _cgSaldoCuenta(FA_CUENTA);
+  var cuadraBG = Math.abs(bg - FA_ESPERADO_BG) < 0.005;
+  var cuadraPR = Math.abs(pr - FA_ESPERADO_PR) < 0.005;
+  console.log('');
+  console.log('Banco General : %s   (tiene que cerrar en %s)', bg.toFixed(2), FA_ESPERADO_BG.toFixed(2));
+  console.log('Por rendir    : %s   (lo que la administración confirma tener: %s)',
+    pr.toFixed(2), FA_ESPERADO_PR.toFixed(2));
+  console.log(cuadraBG && cuadraPR ? '✓ CUADRA' : '✗ NO CUADRA');
+
+  if (!(cuadraBG && cuadraPR)) {
+    console.log('');
+    console.log('No se marca como aplicado. Ejecuta rollbackFondoDeLaAdministracion().');
+    return { ok: false, bancoGeneral: bg, porRendir: pr };
+  }
+
+  _cgProps().setProperty(FA_PROP, _fechaCorta(_today()));
+  _reg('cuenta.edita', { entidad: 'cuenta', clave: FA_CUENTA, propietario: cta.nombre,
+    campo: 'fondoInicial', antes: _round2(cta.fondoInicial).toFixed(2), despues: FA_FONDO.toFixed(2),
+    detalle: 'La administración llevaba el dinero de la asociación en sus cuentas ' +
+             'personales antes de que existiera este libro. De ahí salieron los 500.00 ' +
+             'de la apertura de Global y los ' + FA_DE_MANOS.toFixed(2) + ' que completaron ' +
+             'el traspaso del 08/09. Le quedan ' + FA_ESPERADO_PR.toFixed(2) + ', pendientes de transferir.' });
+
+  console.log('');
+  console.log('Banco General se puede dar por cerrada. A la administración le quedan');
+  console.log('%s pendientes de transferir; cuando los deposite, se registra como un', FA_ESPERADO_PR.toFixed(2));
+  console.log('traspaso de «Por rendir» a Global Bank y la cuenta queda en cero.');
+  return { ok: true, bancoGeneral: bg, porRendir: pr };
+}
+
+/** guardarCuenta pide la fila entera: si se le pasa sólo el fondo, borra el resto. */
+function _faGuardarFondo(cta, fondo) {
+  guardarCuenta({
+    id: cta.id, nombre: cta.nombre, banco: cta.banco, tipo: cta.tipo, numero: cta.numero,
+    titular: cta.titular, clase: cta.clase, activa: cta.activa, esCobro: cta.esCobro,
+    orden: cta.orden, notas: cta.notas,
+    alias: (cta.alias || []).join(', '),
+    fondoInicial: fondo
+  });
+}
+
+function rollbackFondoDeLaAdministracion() {
+  ensureSheets();
+  if (!_cgProps().getProperty(FA_PROP)) {
+    console.log('Esto no está aplicado, pero se limpia igual por si quedó a medias.');
+  }
+  console.log('════ DESHACIENDO EL FONDO DE LA ADMINISTRACIÓN ════');
+
+  var cta = cuentaPorId(FA_CUENTA);
+  if (cta) { _faGuardarFondo(cta, 0); console.log('✓ Fondo inicial de «%s» vuelve a 0.00', cta.nombre); }
+
+  [FA_TRASPASO.id, FA_ID_MANOS].forEach(function (id) {
+    try { eliminarTraspaso(id); } catch (e) {}
+  });
+  try {
+    registrarTraspaso({ id: FA_TRASPASO.id,
+      fecha: new Date(FA_TRASPASO.anio, FA_TRASPASO.mes - 1, FA_TRASPASO.dia, 12, 0, 0),
+      de: CG_BG, a: CG_GLOBAL, monto: FA_TRASPASO.total,
+      referencia: FA_TRASPASO.referencia,
+      notas: 'Repuesto entero por rollbackFondoDeLaAdministracion el ' + _fechaCorta(_today()) });
+    console.log('✓ El traspaso vuelve a ser uno solo de %s', FA_TRASPASO.total.toFixed(2));
+  } catch (e) { console.log('✗ traspaso: %s', e && e.message || e); }
+
+  _cgProps().deleteProperty(FA_PROP);
+  console.log('\nBanco General: %s   Por rendir: %s',
+    _cgSaldoCuenta(CG_BG).toFixed(2), _cgSaldoCuenta(FA_CUENTA).toFixed(2));
+  return { ok: true };
 }
