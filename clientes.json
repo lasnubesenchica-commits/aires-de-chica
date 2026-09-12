@@ -11,10 +11,8 @@
       "id": "router",
       "nombre": "Router de WhatsApp",
       "gasDir": "router",
-      "scriptId": "",
-      "deploymentId": "AKfycbyFsZ9EdL3YKPlKNsSGWb66NSlsguEqErQrojUzX6TFkWEymNFBZEwEYOA7qhS-IpVy",
-      "activo": false,
-      "nota": "Falta el scriptId del proyecto: Configuracion del proyecto, empieza por 1. Con el puesto, activo pasa a true."
+      "scriptId": "1TGUN9U69RkwBmaSJA0cn03-wKj11POl1fGf6pJt3MDxe-EmcujHhnsuO",
+      "deploymentId": "AKfycbyFsZ9EdL3YKPlKNsSGWb66NSlsguEqErQrojUzX6TFkWEymNFBZEwEYOA7qhS-IpVy"
     }
   ]
 }

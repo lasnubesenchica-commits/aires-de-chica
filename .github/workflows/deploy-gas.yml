@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'backend-aires/**'
+      - 'router/**'
       - 'clientes.json'
       - 'scripts/deploy-gas.js'
       # Las pruebas y este mismo archivo también: un cambio en la barrera tiene que
