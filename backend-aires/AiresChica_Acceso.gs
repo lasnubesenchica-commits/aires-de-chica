@@ -460,3 +460,193 @@ function diagnosticarAcceso() {
   return { ok: true, activo: true, garitas: garitas.length, unidadesConContactos: unidades,
            purgaInstalada: !!purga };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * AUTORIZACIONES · el pre-registro y la búsqueda
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Una autorización es un permiso que el residente deja puesto ANTES de que el
+ * visitante llegue: «el jueves viene Juan Pérez», «el jardinero entra los martes».
+ * Cuando el visitante se presenta, el sistema busca aquí antes de molestar a nadie.
+ *
+ * ── Por qué la cédula manda sobre el nombre ──────────────────────────────────
+ * Si el residente registró la cédula, tiene que coincidir la cédula. «Juan Pérez»
+ * hay muchos, y el guardia tiene el documento en la mano: comparar nombres cuando
+ * existe un número que comparar sería regalar la entrada.
+ *
+ * Cuando el residente sólo dejó el nombre —que es lo normal, casi nadie sabe la
+ * cédula de quien va a visitarlo— se compara por nombre y la respuesta lo DICE.
+ * El guardia merece saber si la coincidencia fue firme o floja.
+ */
+
+var ACC_DIAS_SEMANA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];   // getDay(): 0 = domingo
+
+/**
+ * Cédula comparable: sin espacios, guiones ni puntos, en mayúsculas.
+ *
+ * En Panamá la misma cédula se escribe «8-123-456», «8 123 456» y «08-0123-0456»
+ * según quién la teclee. Comparar en crudo haría que el jardinero de siempre
+ * quedara fuera por un guion.
+ */
+function _accCedula(v) {
+  return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/** Nombre comparable: sin tildes, sin dobles espacios, en minúsculas. */
+function _accNombre(v) {
+  return String(v == null ? '' : v).toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** Fecha al mediodía local, para que ningún desfase la mueva de día. */
+function _accDia(v) {
+  if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12, 0, 0);
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '').trim());
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+}
+
+function getAutorizaciones(clave) {
+  _accSheet(ACC_SH.AUTORIZ, ACC_COL_AUTORIZ);
+  var filtro = String(clave == null ? '' : clave).trim();
+  return _sheetRows(ACC_SH.AUTORIZ)
+    .filter(function (r) { return !filtro || String(r.clave).trim() === filtro; })
+    .map(function (r) {
+      return {
+        id: String(r.id || ''), clave: String(r.clave || '').trim(),
+        lote: String(r.lote || '').trim(),
+        visitante: String(r.visitante || '').trim(), cedula: String(r.cedula || '').trim(),
+        desde: _accDia(r.desde), hasta: _accDia(r.hasta),
+        recurrente: _accSi(r.recurrente),
+        dias: String(r.dias || '').toUpperCase().split(/[,\s]+/).filter(function (x) { return !!x; }),
+        creadoPor: String(r.creadoPor || ''),
+        activo: !(String(r.activo).trim().toLowerCase() === 'no'),
+        notas: String(r.notas || '')
+      };
+    });
+}
+
+/**
+ * Deja puesto un permiso. `desde` vacío significa desde hoy.
+ *
+ * `hasta` vacío es un permiso SIN vencimiento, que es lo que hace falta para el
+ * jardinero de todos los martes. Tiene su riesgo y por eso el diagnóstico los
+ * cuenta aparte: un permiso que nadie recuerda haber dado es la forma más común
+ * de que una comunidad pierda el control de quién entra.
+ */
+function guardarAutorizacion(d) {
+  _accSheet(ACC_SH.AUTORIZ, ACC_COL_AUTORIZ);
+  d = d || {};
+  var clave = String(d.clave || '').trim();
+  var visitante = String(d.visitante || '').trim();
+  if (!clave) throw new Error('Falta la unidad que autoriza.');
+  if (!visitante) throw new Error('Falta el nombre del visitante.');
+
+  var desde = _accDia(d.desde) || _accDia(new Date());
+  var hasta = d.hasta ? _accDia(d.hasta) : null;
+  if (d.hasta && !hasta) throw new Error('La fecha «hasta» no se entiende. Se espera AAAA-MM-DD.');
+  if (hasta && hasta.getTime() < desde.getTime()) {
+    throw new Error('La autorización terminaría antes de empezar: revisa las fechas.');
+  }
+
+  var recurrente = (d.recurrente === true || _accSi(d.recurrente));
+  var dias = String(d.dias || '').toUpperCase().split(/[,\s]+/)
+    .filter(function (x) { return ACC_DIAS_SEMANA.indexOf(x) >= 0; });
+  if (recurrente && !dias.length) {
+    throw new Error('Una autorización recurrente necesita días: L, M, X, J, V, S o D.');
+  }
+
+  var id = String(d.id || '').trim();
+  var sh = _accSheet(ACC_SH.AUTORIZ, ACC_COL_AUTORIZ);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+
+  var prop = (typeof _findProp === 'function') ? _findProp(clave) : null;
+  var fila = [ id || _accId('AU'), clave, (prop ? String(prop.lote || '') : String(d.lote || '')),
+               visitante, String(d.cedula || '').trim(), desde, (hasta || ''),
+               (recurrente ? 'si' : 'no'), dias.join(','),
+               String(d.creadoPor || ''),
+               (d.activo === false || String(d.activo).trim().toLowerCase() === 'no') ? 'no' : 'si',
+               String(d.notas || ''), new Date() ];
+
+  var row = -1;
+  if (id) for (var r = 1; r < vals.length; r++) if (String(vals[r][iId]).trim() === id) { row = r; break; }
+  if (row >= 0) {
+    fila[12] = vals[row][h.indexOf('creado')] || new Date();
+    sh.getRange(row + 1, 1, 1, ACC_COL_AUTORIZ.length).setValues([fila]);
+  } else {
+    sh.appendRow(fila);
+  }
+
+  _reg(id ? 'autorizacion.edita' : 'autorizacion.alta', {
+    entidad: 'autorizacion', clave: clave, propietario: visitante,
+    detalle: (recurrente ? 'Recurrente ' + dias.join(',') : 'Puntual') +
+             ' · desde ' + _fechaCorta(desde) + (hasta ? ' hasta ' + _fechaCorta(hasta) : ' SIN vencimiento') +
+             (d.cedula ? ' · cédula ' + d.cedula : ' · sin cédula')
+  });
+  return { ok: true, id: fila[0] };
+}
+
+function eliminarAutorizacion(id) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador de la autorización.');
+  var sh = _accSheet(ACC_SH.AUTORIZ, ACC_COL_AUTORIZ);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iCl = h.indexOf('clave'), iVi = h.indexOf('visitante');
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][iId]).trim() === id) {
+      var cl = String(vals[r][iCl] || ''), vi = String(vals[r][iVi] || '');
+      sh.deleteRow(r + 1);
+      _reg('autorizacion.baja', { entidad: 'autorizacion', clave: cl, propietario: vi,
+        detalle: 'Autorización retirada (' + id + ')' });
+      return { ok: true, id: id };
+    }
+  }
+  throw new Error('No se encontró la autorización ' + id + '.');
+}
+
+/**
+ * ¿Este visitante tiene permiso para esta unidad, en este momento?
+ *
+ * Devuelve la autorización y CÓMO coincidió, o null. Quien llama tiene que poder
+ * decirle al guardia si el permiso era firme —cédula contra cédula— o flojo.
+ *
+ * Si no se pasa `clave`, busca en todas las unidades: el guardia normalmente tiene
+ * la cédula pero no sabe a qué casa va el visitante.
+ */
+function autorizacionVigente(clave, visita, cuando) {
+  visita = visita || {};
+  var dia = _accDia(cuando) || _accDia(new Date());
+  var cedBuscada = _accCedula(visita.cedula);
+  var nomBuscado = _accNombre(visita.visitante || visita.nombre);
+  if (!cedBuscada && !nomBuscado) return null;
+
+  var candidatas = getAutorizaciones(clave).filter(function (a) {
+    if (!a.activo) return false;
+    if (a.desde && dia.getTime() < a.desde.getTime()) return false;
+    if (a.hasta && dia.getTime() > a.hasta.getTime()) return false;
+    if (a.recurrente && a.dias.length &&
+        a.dias.indexOf(ACC_DIAS_SEMANA[dia.getDay()]) < 0) return false;
+    return true;
+  });
+
+  // La cédula manda. Sólo si la autorización no la tiene se compara por nombre.
+  var porCedula = null, porNombre = null;
+  candidatas.forEach(function (a) {
+    var suCed = _accCedula(a.cedula);
+    if (suCed) {
+      if (cedBuscada && suCed === cedBuscada && !porCedula) porCedula = a;
+      return;   // con cédula registrada, el nombre no basta
+    }
+    if (nomBuscado && _accNombre(a.visitante) === nomBuscado && !porNombre) porNombre = a;
+  });
+
+  if (porCedula) return { autorizacion: porCedula, coincidencia: 'cedula', firme: true };
+  if (porNombre) return { autorizacion: porNombre, coincidencia: 'nombre', firme: false };
+  return null;
+}

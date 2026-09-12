@@ -246,5 +246,80 @@ ok(r.activo === false && /NO contratado/.test(txt),
    'y si la comunidad no contrató el módulo, no finge que funciona');
 global.moduloActivo = () => true;
 
+console.log('\n── EL PRE-REGISTRO ──');
+reiniciar();
+const hoy  = new Date();
+const masD = n => { const f = new Date(hoy); f.setDate(f.getDate() + n); return f; };
+const iso  = f => f.getFullYear() + '-' + ('0'+(f.getMonth()+1)).slice(-2) + '-' + ('0'+f.getDate()).slice(-2);
+
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-456',
+                      desde: iso(hoy), hasta: iso(masD(3)), creadoPor: 'Ana Rosa' });
+ok(getAutorizaciones('Q-9').length === 1, 'queda registrada');
+falla(() => guardarAutorizacion({ clave: 'Q-9' }), /nombre del visitante/, 'sin visitante no se guarda');
+falla(() => guardarAutorizacion({ visitante: 'X' }), /unidad/, 'sin unidad tampoco');
+falla(() => guardarAutorizacion({ clave: 'Q-9', visitante: 'X', desde: iso(masD(5)), hasta: iso(hoy) }),
+      /antes de empezar/, 'una vigencia al revés se rechaza');
+falla(() => guardarAutorizacion({ clave: 'Q-9', visitante: 'Jardinero', recurrente: 'si' }),
+      /necesita días/, 'una recurrente sin días, también');
+
+console.log('\n── LA CÉDULA MANDA SOBRE EL NOMBRE ──');
+let v = autorizacionVigente('Q-9', { cedula: '8-123-456', visitante: 'Luis Mendoza' });
+ok(v && v.coincidencia === 'cedula' && v.firme === true, 'con la cédula correcta, coincidencia firme');
+ok(autorizacionVigente('Q-9', { cedula: '8 123 456' }).coincidencia === 'cedula',
+   'escrita con espacios en vez de guiones es la misma cédula');
+ok(autorizacionVigente('Q-9', { cedula: '08-0123-0456' }) === null,
+   'pero una cédula distinta no entra, aunque se parezca');
+// Lo importante: si la autorización TIENE cédula, el nombre solo no abre la puerta.
+ok(autorizacionVigente('Q-9', { visitante: 'Luis Mendoza' }) === null,
+   'un desconocido que dice llamarse Luis Mendoza NO entra: la autorización lleva cédula');
+
+console.log('\n── CUANDO EL RESIDENTE SÓLO DEJÓ EL NOMBRE ──');
+// Es el caso normal: casi nadie sabe la cédula de quien va a visitarlo.
+guardarAutorizacion({ clave: 'Q-9', visitante: 'María Núñez', desde: iso(hoy), hasta: iso(masD(1)) });
+v = autorizacionVigente('Q-9', { visitante: 'maria nunez' });
+ok(v && v.coincidencia === 'nombre' && v.firme === false,
+   'coincide por nombre sin tildes ni mayúsculas, y se marca como NO firme');
+ok(v.firme === false, 'para que el guardia sepa que la coincidencia fue floja');
+
+console.log('\n── LA VIGENCIA SE RESPETA ──');
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-456',
+                      desde: iso(hoy), hasta: iso(masD(2)) });
+ok(autorizacionVigente('Q-9', { cedula: '8-123-456' }, masD(1)) !== null, 'dentro del plazo, entra');
+ok(autorizacionVigente('Q-9', { cedula: '8-123-456' }, masD(5)) === null, 'pasado el plazo, no');
+ok(autorizacionVigente('Q-9', { cedula: '8-123-456' }, masD(-1)) === null, 'y antes de empezar, tampoco');
+
+console.log('\n── EL JARDINERO DE LOS MARTES ──');
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Jardinero', cedula: '4-777-888',
+                      recurrente: 'si', dias: 'M', desde: iso(masD(-30)) });
+// M = martes en ACC_DIAS_SEMANA (D L M X J V S). Se busca el próximo de cada día.
+const proximo = n => { const f = new Date(hoy); f.setDate(f.getDate() + ((n - f.getDay() + 7) % 7)); return f; };
+ok(autorizacionVigente('Q-9', { cedula: '4-777-888' }, proximo(2)) !== null, 'el martes entra');
+ok(autorizacionVigente('Q-9', { cedula: '4-777-888' }, proximo(4)) === null, 'el jueves no');
+ok(getAutorizaciones('Q-9')[0].hasta === null, 'y es un permiso sin vencimiento, que es lo que hace falta');
+
+console.log('\n── EL GUARDIA NO SABE A QUÉ CASA VA ──');
+// Tiene la cédula en la mano pero no la unidad. Sin clave, se busca en todas.
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9',  visitante: 'Luis Mendoza', cedula: '8-123-456', desde: iso(hoy) });
+guardarAutorizacion({ clave: 'L-14', visitante: 'Otro Señor',   cedula: '9-000-111', desde: iso(hoy) });
+v = autorizacionVigente('', { cedula: '9-000-111' });
+ok(v && v.autorizacion.clave === 'L-14', 'la encuentra y dice a qué unidad va: ' + (v && v.autorizacion.clave));
+ok(autorizacionVigente('Q-9', { cedula: '9-000-111' }) === null,
+   'pero preguntando por la unidad equivocada NO aparece');
+
+console.log('\n── UNA AUTORIZACIÓN RETIRADA DEJA DE VALER ──');
+const au = getAutorizaciones('Q-9')[0];
+guardarAutorizacion({ id: au.id, clave: 'Q-9', visitante: au.visitante, cedula: au.cedula,
+                      desde: iso(hoy), activo: 'no' });
+ok(autorizacionVigente('Q-9', { cedula: '8-123-456' }) === null, 'desactivada, no abre');
+eliminarAutorizacion(getAutorizaciones('L-14')[0].id);
+ok(getAutorizaciones('L-14').length === 0, 'y se puede eliminar del todo');
+
+console.log('\n── SIN NADA QUE COMPARAR NO SE INVENTA UNA COINCIDENCIA ──');
+ok(autorizacionVigente('Q-9', {}) === null, 'sin cédula ni nombre, null');
+ok(autorizacionVigente('Q-9', { cedula: '', visitante: '  ' }) === null, 'y con los dos en blanco, igual');
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
