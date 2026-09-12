@@ -185,7 +185,9 @@ function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title:
  * hasta que la administración quiera ese flujo abierto.
  */
 function _botSecciones() {
-  return [
+  // Cada fila declara el módulo que necesita. Un PH que sólo contrató el financiero no
+  // debe ver «Último comunicado» en el menú, ni poder llegar a él escribiendo.
+  return _botFiltrarPorModulo([
     { title: 'Mi cuenta', rows: [
       { id: 'bot_saldo',    title: 'Mi saldo',               description: 'Cuánto debe hoy su lote' },
       { id: 'bot_pagos',    title: 'Mis últimos pagos',      description: 'Los pagos que le tenemos registrados' },
@@ -200,7 +202,27 @@ function _botSecciones() {
       { id: 'bot_datos',    title: 'Mis datos',              description: 'El correo y el celular que tenemos suyos' },
       { id: 'bot_humano',   title: 'Hablar con alguien',     description: 'Le contesta la administración' }
     ] }
-  ];
+  ]);
+}
+
+// Qué módulo necesita cada opción. Las que no están aquí no dependen de ninguno.
+var BOT_MODULO_DE = {
+  bot_saldo: 'financiero', bot_pagos: 'financiero', bot_detalle: 'financiero',
+  bot_cuota: 'financiero', bot_comopago: 'financiero', bot_comprobante: 'financiero',
+  bot_comunicado: 'comunicaciones'
+};
+
+function _botModuloDe(id) { return BOT_MODULO_DE[String(id)] || ''; }
+
+/** Deja fuera las opciones de módulos que esta copia no tiene, y las secciones vacías. */
+function _botFiltrarPorModulo(secciones) {
+  if (typeof moduloActivo !== 'function') return secciones;
+  return secciones.map(function (s) {
+    return { title: s.title, rows: s.rows.filter(function (r) {
+      var m = _botModuloDe(r.id);
+      return !m || moduloActivo(m);
+    }) };
+  }).filter(function (s) { return s.rows.length; });
 }
 
 /** El saldo, compuesto por el código. Sin adornos y sin prometer nada. */
@@ -258,6 +280,10 @@ function _botAtender(info, msg) {
 
   var quien = identificarPorCelular(tel);
   var claves = (quien.claves && quien.claves.length) ? quien.claves : [info.clave];
+
+  // Escribir «cuánto debo» no puede saltarse lo que el menú no ofrece.
+  var _m = _botModuloDe(accion);
+  if (_m && typeof moduloActivo === 'function' && !moduloActivo(_m)) return _botPasaAHumano(tel);
 
   if (accion === 'bot_opciones') return _botOpciones(tel);
   if (accion === 'bot_saldo') return _botContestaSaldo(tel, claves);

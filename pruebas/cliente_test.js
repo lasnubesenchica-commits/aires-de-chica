@@ -38,7 +38,9 @@ const soltar = () => { console.log = _log; return salida.join('\n'); };
 const cargar = () => eval(bloque + '\n' + cliente +
   '\n({ CONFIG: CONFIG, verConfiguracionCliente: verConfiguracionCliente,' +
   '   configurarCliente: configurarCliente,' +
-  '   AC_CLAVES_CLIENTE: AC_CLAVES_CLIENTE })');
+  '   AC_CLAVES_CLIENTE: AC_CLAVES_CLIENTE, modulosActivos: modulosActivos,' +
+  '   moduloActivo: moduloActivo, _moduloDeAccion: _moduloDeAccion,' +
+  '   _moduloBloquea: _moduloBloquea, AC_MODULOS_TODOS: AC_MODULOS_TODOS })');
 
 console.log('── UNA COPIA SIN CONFIGURAR NO HEREDA A NADIE ──');
 PROPS = {};
@@ -141,7 +143,8 @@ ok(!/%-?\d*s/.test(txt),
 // en la 21 — da igual que la clave se llame NEGOCIO o COMPROBANTES_EMAIL.
 // Sólo las filas de claves: el resumen de abajo también empieza por ✗ y colaba.
 const filas = txt.split('\n').filter(l => /^[✓·✗] [A-Z_]+ /.test(l));
-ok(filas.length === 19 && filas.every(l => l[20] === ' ' && l[21] && l[21] !== ' '),
+ok(filas.length === m.AC_CLAVES_CLIENTE.length &&
+   filas.every(l => l[20] === ' ' && l[21] && l[21] !== ' '),
    'los valores arrancan todos en la misma columna, con clave corta o larga');
 ok(r.faltan.indexOf('SHEET_ID') >= 0, 'y enumera lo obligatorio que falta: ' + r.faltan.length + ' claves');
 
@@ -151,6 +154,48 @@ const req = m.AC_CLAVES_CLIENTE.filter(c => c.req).map(c => c.k);
   .forEach(k => ok(req.indexOf(k) >= 0, k + ' es obligatoria'));
 ok(m.AC_CLAVES_CLIENTE.every(c => ['MONEDA','TZ'].indexOf(c.k) < 0),
    'moneda y zona horaria no son por cliente: son de Panamá y no cambian entre comunidades');
+
+console.log('\n── LOS MÓDULOS, SIN PONER, ESTÁN TODOS ──');
+PROPS = {}; m = cargar();
+ok(m.modulosActivos().join() === 'financiero,comunicaciones,acceso',
+   'la comunidad que ya venía funcionando no se queda sin nada por una propiedad que nadie escribió');
+
+console.log('\n── CON MÓDULOS PUESTOS, MANDA LA LISTA ──');
+PROPS = { AC_MODULOS: 'financiero' }; m = cargar();
+ok(m.moduloActivo('financiero') && !m.moduloActivo('comunicaciones') && !m.moduloActivo('acceso'),
+   'sólo el que dice la propiedad');
+PROPS = { AC_MODULOS: 'Financiero, Comunicaciones' }; m = cargar();
+ok(m.moduloActivo('financiero') && m.moduloActivo('comunicaciones'),
+   'con espacios y mayúsculas, como lo escribiría cualquiera');
+PROPS = { AC_MODULOS: 'financiero;acceso' }; m = cargar();
+ok(m.moduloActivo('acceso') && !m.moduloActivo('comunicaciones'), 'y con punto y coma');
+PROPS = { AC_MODULOS: 'inventado, otro' }; m = cargar();
+ok(m.modulosActivos().length === 3,
+   'una lista con sólo nombres que no existen deja todo activo: es un error de dedos, ' +
+   'y dejar a un cliente sin sistema por eso es peor que dejarlo de más');
+
+console.log('\n── LA VERJA ──');
+PROPS = { AC_MODULOS: 'financiero' }; m = cargar();
+ok(m._moduloBloquea('registrarPago') === null, 'lo del módulo contratado pasa');
+ok(/comunicaciones/.test(m._moduloBloquea('enviarComunicado') || ''),
+   'lo de otro módulo se bloquea y se dice cuál: ' + m._moduloBloquea('enviarComunicado'));
+ok(m._moduloBloquea('ping') === null && m._moduloBloquea('getAuthState') === null,
+   'entrar al sistema nunca se bloquea');
+ok(m._moduloBloquea('getPropietarios') === null,
+   'ni el padrón, que lo necesitan todos los módulos');
+ok(m._moduloBloquea('getConfig') === null && m._moduloBloquea('guardarConfig') === null,
+   'ni la configuración');
+ok(m._moduloBloquea('verComunicado') !== null,
+   'la página pública de un comunicado también pasa por la verja: es una URL, no un botón');
+ok(m._moduloBloquea('getVisitas') !== null && m._moduloBloquea('registrarVisita') !== null,
+   'y el módulo de acceso no nace abierto, aunque sus acciones todavía no existan');
+
+console.log('\n── UNA ACCIÓN SIN CLASIFICAR CAE EN EL MÓDULO BASE ──');
+ok(m._moduloDeAccion('accionQueNadieClasifico') === 'financiero',
+   'así una acción nueva queda disponible para quien tiene el sistema, no bloqueada sin motivo');
+PROPS = { AC_MODULOS: 'comunicaciones' }; m = cargar();
+ok(m._moduloBloquea('accionQueNadieClasifico') !== null,
+   'y para quien no lo tiene, cerrada');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

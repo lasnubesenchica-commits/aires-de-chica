@@ -105,6 +105,13 @@ function doGet(e) {
     if (_waV) return _waV;
   }
 
+  // La verja de módulos. Va antes de todo despacho —incluidas las páginas públicas de
+  // comunicados— porque esconder un botón en el panel no impide llamar a la acción.
+  if (typeof _moduloBloquea === 'function') {
+    var _mb = _moduloBloquea(action);
+    if (_mb) return _reply({ ok: false, error: _mb }, p.callback);
+  }
+
   // Páginas públicas de comunicados: devuelven HTML, no JSON, y no llevan token de
   // panel — el enlace ya trae el token personal del propietario (ver
   // AiresChica_Comunicados.gs). Van antes del try/JSON porque no comparten formato.
@@ -171,6 +178,11 @@ function doPost(e) {
   if (typeof _whatsappHandleWebhook === 'function') {
     var _waR = _whatsappHandleWebhook(data);
     if (_waR) return _waR;
+  }
+
+  if (typeof _moduloBloquea === 'function') {
+    var _mbP = _moduloBloquea(action);
+    if (_mbP) return _reply({ ok: false, error: _mbP }, null);
   }
 
   try {

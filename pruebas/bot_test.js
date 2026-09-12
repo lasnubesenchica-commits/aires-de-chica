@@ -128,6 +128,7 @@ const rd = f => fs.readFileSync(path.join(GS, f), 'utf8');
 eval(rd('AiresChica_Celulares.gs'));
 eval(rd('AiresChica_WhatsApp.gs'));
 eval(rd('AiresChica_Plantillas.gs'));
+eval(rd('AiresChica_Cliente.gs'));   // la verja de módulos vive aquí
 eval(rd('AiresChica_Bot.gs'));
 
 PROPS.META_WHATSAPP_TOKEN = 'TOK'; PROPS.META_PHONE_ID = '55501';
@@ -365,6 +366,35 @@ CLAUDE_LLAMADAS = 0; CACHE = {};
 correr(texto('50761112233', 'menu'));
 ok(SALIDAS[0].payload.interactive.type === 'list' && CLAUDE_LLAMADAS === 0,
    '«menú» es una orden, no una frase: abre la lista sin pasar por el modelo');
+
+console.log('\n── EL MENÚ SE ARMA CON LOS MÓDULOS CONTRATADOS ──');
+PROPS.AC_MODULOS = 'financiero'; CACHE = {}; CLAUDE = 'saludo';
+correr(texto('50761112233', 'buenas'));
+let ids = [].concat.apply([], menu().action.sections.map(x => x.rows)).map(f => f.id);
+ok(ids.indexOf('bot_comunicado') < 0,
+   'sin el módulo de comunicaciones no aparece «Último comunicado»: ' + ids.join(' '));
+ok(ids.indexOf('bot_saldo') >= 0 && ids.indexOf('bot_humano') >= 0,
+   'y lo del módulo que sí tiene, más lo que no depende de ninguno, se queda');
+ok(menu().action.sections.every(s => s.rows.length),
+   'sin secciones vacías: «La comunidad» desaparece entera si se queda sin filas');
+
+PROPS.AC_MODULOS = 'comunicaciones'; CACHE = {};
+correr(texto('50761112233', 'buenas'));
+ids = [].concat.apply([], menu().action.sections.map(x => x.rows)).map(f => f.id);
+ok(ids.indexOf('bot_saldo') < 0 && ids.indexOf('bot_pagos') < 0,
+   'al revés, sin el financiero no se ofrecen saldo ni pagos');
+ok(ids.indexOf('bot_comunicado') >= 0, 'y el comunicado sí');
+
+console.log('\n── ESCRIBIR NO SALTA LA VERJA ──');
+PROPS.AC_MODULOS = 'comunicaciones'; CACHE = {}; CLAUDE = 'saldo';
+correr(texto('50761112233', 'cuanto debo?'));
+ok(!/B\/\. 245/.test(cuerpos()),
+   'pedir el saldo por escrito en un PH sin módulo financiero no lo entrega');
+ok(SALIDAS.some(s => s.payload.to === '50769812266'), 'se pasa a una persona');
+delete PROPS.AC_MODULOS;
+CACHE = {}; CLAUDE = 'saldo';
+correr(texto('50761112233', 'cuanto debo?'));
+ok(/B\/\. 245/.test(cuerpos()), 'y sin la propiedad puesta, todo sigue funcionando como antes');
 
 console.log('\n── UN FALLO DEL BOT NO DEJA EL MENSAJE SIN ATENDER ──');
 CACHE = {};
