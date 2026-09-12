@@ -55,6 +55,18 @@ var AC_CLAVES_CLIENTE = [
 
 function _acClaveProp(k) { return AC_PREFIJO + k; }
 
+/**
+ * Rellena a la derecha hasta n caracteres.
+ *
+ * console.log de Apps Script sólo sustituye «%s» a secas: un «%-18s» sale impreso tal
+ * cual y los argumentos se corren de sitio. El relleno hay que hacerlo a mano.
+ */
+function _acPad(txt, n) {
+  var s = String(txt === undefined || txt === null ? '' : txt);
+  while (s.length < n) s += ' ';
+  return s;
+}
+
 function _acEsNumerica(k) {
   return ['CUOTA_BASE', 'CABANA_FEE', 'MORA_PCT', 'DUE_DAY', 'ANIO_ACTUAL'].indexOf(k) >= 0;
 }
@@ -73,7 +85,7 @@ function verConfiguracionCliente() {
       enCodigo.push(c.k);
       if (c.req) faltan.push(c.k);
     }
-    console.log('%s %-18s %s   [%s]', puesta ? '✓' : '·', c.k,
+    console.log('%s %s %s   [%s]', puesta ? '✓' : '·', _acPad(c.k, 18),
       (valor === '' || valor === undefined) ? '(vacío)' : valor, origen);
   });
 
@@ -102,7 +114,7 @@ function configurarCliente(datos) {
     console.log('  configurarCliente({ NEGOCIO: "PH Las Palmas", SHEET_ID: "...", CUENTA_NUM: "..." })');
     console.log('\nClaves que admite:');
     AC_CLAVES_CLIENTE.forEach(function (c) {
-      console.log('  %-18s %s%s', c.k, c.desc, c.req ? '  (obligatoria)' : '');
+      console.log('  %s %s%s', _acPad(c.k, 18), c.desc, c.req ? '  (obligatoria)' : '');
     });
     return { ok: false };
   }

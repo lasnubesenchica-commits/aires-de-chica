@@ -18,12 +18,15 @@ const bloque = fuente.slice(fuente.indexOf('var CONFIG = (function'),
                             fuente.indexOf('\n})();\n') + 7);
 const cliente = fs.readFileSync(RUTA + 'AiresChica_Cliente.gs', 'utf8');
 
-// console.log de Apps Script sustituye %s; hay que imitarlo para poder afirmar sobre el texto.
+// El console.log de Apps Script, imitado con exactitud: sustituye «%s» a secas y NADA
+// más. Un «%-18s» sale impreso literal y los argumentos sobrantes se pegan al final.
+// El falso anterior aceptaba el relleno y por eso dejó pasar un informe ilegible.
 const fmt = (...a) => {
+  if (a.length < 2) return a.map(String).join(' ');
   let i = 1;
-  return a.length > 1 && /%[sd-]/.test(String(a[0]))
-    ? String(a[0]).replace(/%-?\d*[sd]/g, () => String(a[i++]))
-    : a.map(String).join(' ');
+  const txt = String(a[0]).replace(/%s/g, () => (i < a.length ? String(a[i++]) : '%s'));
+  const sobran = a.slice(i).map(String);
+  return sobran.length ? txt + ' ' + sobran.join(' ') : txt;
 };
 let salida = [];
 const _log = console.log;
@@ -120,6 +123,13 @@ PROPS = { AC_NEGOCIO: 'PH Las Palmas' }; m = cargar();
 capturar(); r = m.verConfiguracionCliente(); txt = soltar();
 ok(/✓ NEGOCIO/.test(txt) && /PH Las Palmas/.test(txt), 'marca con ✓ lo que viene de propiedades');
 ok(/· SHEET_ID/.test(txt) && /CÓDIGO/.test(txt), 'y señala lo que todavía sale del código');
+ok(!/%-?\d*s/.test(txt),
+   'y ningún marcador de formato sale impreso: Apps Script sólo entiende «%s» a secas');
+// La clave ocupa 18 caracteres desde la posición 2, así que el valor empieza siempre
+// en la 21 — da igual que la clave se llame NEGOCIO o COMPROBANTES_EMAIL.
+const filas = txt.split('\n').filter(l => /^[✓·] /.test(l));
+ok(filas.length === 19 && filas.every(l => l[20] === ' ' && l[21] && l[21] !== ' '),
+   'los valores arrancan todos en la misma columna, con clave corta o larga');
 ok(r.faltan.indexOf('SHEET_ID') >= 0, 'y enumera lo obligatorio que falta: ' + r.faltan.length + ' claves');
 
 console.log('\n── LAS OBLIGATORIAS SON LAS QUE ROMPEN COBROS O ENVÍOS ──');
