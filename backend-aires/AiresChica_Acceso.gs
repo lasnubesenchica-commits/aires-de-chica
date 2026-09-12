@@ -1038,7 +1038,15 @@ function _accLecturaFloja(j) {
   return false;
 }
 
-/** Una pasada del modelo sobre la foto. Devuelve el JSON crudo o null. */
+/**
+ * Una pasada del modelo sobre la foto. Devuelve el JSON crudo o null.
+ *
+ * DEJA RASTRO DE CADA FORMA DE FALLAR. La primera versión devolvía null en cuatro
+ * sitios distintos sin decir nada, y cuando falló de verdad en la garita no había
+ * manera de saber cuál de los cuatro había sido: si Anthropic contestó un error, si
+ * contestó algo que no era JSON, o si dijo que la foto no era un documento. Un null
+ * mudo convierte cualquier diagnóstico en adivinanza.
+ */
 function _accPasadaCedula(b64, mime, modelo, key) {
   try {
     var r = UrlFetchApp.fetch(ANTHROPIC_URL, {
@@ -1075,15 +1083,47 @@ function _accPasadaCedula(b64, mime, modelo, key) {
       }),
       muteHttpExceptions: true
     });
-    if (r.getResponseCode() !== 200) return null;
-    var data = JSON.parse(r.getContentText());
+    var codigo = r.getResponseCode();
+    var cuerpo = r.getContentText();
+    if (codigo !== 200) {
+      _accApunte('HTTP ' + codigo + ' con ' + modelo + ' — ' + String(cuerpo).slice(0, 300));
+      return null;
+    }
+    var data = JSON.parse(cuerpo);
     var txt = '';
     (data.content || []).forEach(function (c) { if (c.type === 'text') txt += String(c.text || ''); });
-    return (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
+    var j = (typeof _parseJsonLoose === 'function') ? _parseJsonLoose(txt) : null;
+    if (!j) {
+      _accApunte(modelo + ' no devolvió JSON. Dijo: ' + String(txt).slice(0, 300));
+      return null;
+    }
+    _accApunte(modelo + ' leyó: ' + JSON.stringify(j));
+    return j;
   } catch (e) {
-    Logger.log('Acceso: falló la lectura del documento con ' + modelo + ' — ' + (e && e.message || e));
+    _accApunte('excepción con ' + modelo + ' — ' + (e && e.message || e));
     return null;
   }
+}
+
+/**
+ * Deja un apunte de lo que pasó al leer un documento, en el registro y a mano.
+ *
+ * A mano —una propiedad del script— porque el registro de ejecuciones sólo se ve si
+ * uno estaba mirando cuando ocurrió, y un fallo en la garita ocurre de noche. Se
+ * guardan los últimos apuntes y los lee diagnosticarLecturaCedula() desde el editor.
+ */
+var ACC_APUNTES_PROP = 'ACC_LECTURA_APUNTES';
+
+function _accApunte(msg) {
+  var linea = new Date().toISOString().slice(11, 19) + ' · ' + msg;
+  try { Logger.log('Acceso: ' + msg); } catch (e) {}
+  try {
+    var props = (typeof _waProps === 'function') ? _waProps() : PropertiesService.getScriptProperties();
+    var previo = String(props.getProperty(ACC_APUNTES_PROP) || '');
+    // Sólo los últimos, y cortos: una propiedad del script no es un archivo de registro.
+    var lineas = (previo ? previo.split('\n') : []).concat([linea]).slice(-12);
+    props.setProperty(ACC_APUNTES_PROP, lineas.join('\n').slice(-8000));
+  } catch (e) {}
 }
 
 /**
@@ -1101,13 +1141,13 @@ function _accPasadaCedula(b64, mime, modelo, key) {
  */
 function _accLeerCedulaFoto(blob, tipo) {
   var key = (typeof _anthropicKey === 'function') ? _anthropicKey() : '';
-  if (!key) return null;
+  if (!key) { _accApunte('no hay ANTHROPIC_API_KEY: no se puede leer ninguna foto.'); return null; }
   var mime = String(tipo || (blob && blob.getContentType && blob.getContentType()) || 'image/jpeg');
-  if (mime.indexOf('image/') !== 0) return null;
+  if (mime.indexOf('image/') !== 0) { _accApunte('el adjunto no es una imagen, es ' + mime); return null; }
 
   var b64;
   try { b64 = Utilities.base64Encode(blob.getBytes()); }
-  catch (e) { return null; }
+  catch (e) { _accApunte('no se pudo codificar la imagen — ' + (e && e.message || e)); return null; }
 
   var j = _accPasadaCedula(b64, mime, ACC_MODELO_CEDULA, key);
   var reintento = false;
@@ -1118,7 +1158,11 @@ function _accLeerCedulaFoto(blob, tipo) {
     reintento = true;
   }
 
-  if (!j || !j.esCedula) return null;
+  if (!j) { _accApunte('ninguna de las pasadas devolvió nada legible.'); return null; }
+  if (!j.esCedula) {
+    _accApunte('el modelo dice que la foto NO es un documento de identidad: ' + JSON.stringify(j));
+    return null;
+  }
   return { visitante: String(j.visitante || '').trim(),
            cedula: String(j.cedula || '').trim(),
            tipoDoc: String(j.tipoDoc || '').trim().toLowerCase(),
@@ -1160,9 +1204,13 @@ function _botGuardia(tel, garita, msg) {
   var datos = null, fotoUrl = '';
   if (tipo === 'image') {
     var media = _waBajarMedia((msg.image || {}).id);
+    if (!media.ok) _accApunte('no se pudo bajar la foto de WhatsApp — ' + (media.error || ''));
     if (media.ok) {
-      datos = _accLeerCedulaFoto(media.blob, media.tipo);
+      // La foto se guarda ANTES de leerla, y su id queda apuntado. Si la lectura falla,
+      // diagnosticarLecturaCedula() puede volver a intentarlo sobre la misma imagen: la
+      // URL que da WhatsApp caduca en minutos y sin esto el caso se pierde.
       fotoUrl = _accGuardarFoto(media.blob);
+      datos = _accLeerCedulaFoto(media.blob, media.tipo);
     }
     if (!datos) {
       enviarWhatsAppTexto(tel,
@@ -1288,16 +1336,76 @@ var ACC_CARPETA_FOTOS = 'Documentos de visitantes';
  * la visita queda anotada igual. Perder la foto es molesto; perder el registro de quién
  * entró, no.
  */
+var ACC_ULTIMA_FOTO_PROP = 'ACC_ULTIMA_FOTO';
+
 function _accGuardarFoto(blob) {
   try {
     var it = DriveApp.getFoldersByName(ACC_CARPETA_FOTOS);
     var carpeta = it.hasNext() ? it.next() : DriveApp.createFolder(ACC_CARPETA_FOTOS);
     var f = carpeta.createFile(blob.setName('doc-' + new Date().getTime() + '.jpg'));
+    try {
+      var props = (typeof _waProps === 'function') ? _waProps() : PropertiesService.getScriptProperties();
+      props.setProperty(ACC_ULTIMA_FOTO_PROP, f.getId());
+    } catch (e2) {}
     return f.getUrl();
   } catch (e) {
-    Logger.log('Acceso: no se pudo guardar la foto — ' + (e && e.message || e));
+    _accApunte('no se pudo guardar la foto en Drive — ' + (e && e.message || e));
     return '';
   }
+}
+
+/**
+ * Por qué no se leyó la última foto. Se ejecuta desde el editor, sin argumentos.
+ *
+ * Imprime los apuntes de lo que pasó y, si la foto se llegó a guardar, la vuelve a
+ * pasar por los dos modelos enseñando la respuesta de cada uno. Sin esto, un fallo de
+ * noche en la garita sólo deja «No pude leer esa foto» y a nadie a quien preguntarle.
+ */
+function diagnosticarLecturaCedula() {
+  console.log('════ LECTURA DE DOCUMENTOS ════');
+
+  var props;
+  try { props = (typeof _waProps === 'function') ? _waProps() : PropertiesService.getScriptProperties(); }
+  catch (e) { props = null; }
+
+  console.log('Modelo 1 (siempre) : %s', ACC_MODELO_CEDULA);
+  console.log('Modelo 2 (si falla): %s', ACC_MODELO_CEDULA_2);
+  console.log('Confianza mínima   : %s', ACC_CONFIANZA_MIN);
+  console.log('Clave de Anthropic : %s',
+    ((typeof _anthropicKey === 'function') && _anthropicKey()) ? 'puesta' : '✗ FALTA');
+
+  var apuntes = props ? String(props.getProperty(ACC_APUNTES_PROP) || '') : '';
+  console.log('');
+  console.log('── qué pasó en los últimos intentos ──');
+  console.log(apuntes || '(no hay apuntes: todavía no se ha intentado leer ninguna foto)');
+
+  var id = props ? String(props.getProperty(ACC_ULTIMA_FOTO_PROP) || '') : '';
+  if (!id) {
+    console.log('');
+    console.log('No hay ninguna foto guardada que reintentar. Mándale una al bot desde la');
+    console.log('garita y vuelve a ejecutar esto.');
+    return { ok: true, apuntes: apuntes, foto: '' };
+  }
+
+  console.log('');
+  console.log('── reintento sobre la última foto guardada ──');
+  var blob;
+  try { blob = DriveApp.getFileById(id).getBlob(); }
+  catch (e) {
+    console.log('✗ No se pudo abrir la foto %s — %s', id, (e && e.message || e));
+    return { ok: false, error: String(e) };
+  }
+
+  var key = _anthropicKey();
+  var b64 = Utilities.base64Encode(blob.getBytes());
+  var mime = blob.getContentType() || 'image/jpeg';
+  [ACC_MODELO_CEDULA, ACC_MODELO_CEDULA_2].forEach(function (m) {
+    var j = _accPasadaCedula(b64, mime, m, key);
+    console.log('%s → %s', m, j ? JSON.stringify(j) : 'nada (mira los apuntes de arriba)');
+    if (j) console.log('    ¿floja? %s', _accLecturaFloja(j) ? 'SÍ, no se daría por buena' : 'no');
+  });
+
+  return { ok: true, foto: id };
 }
 
 /**

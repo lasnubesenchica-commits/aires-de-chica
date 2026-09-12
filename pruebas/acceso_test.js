@@ -126,8 +126,14 @@ global.UrlFetchApp = { fetch: (url, opt) => {
 } };
 global.DriveApp = Object.assign(global.DriveApp || {}, {
   getFoldersByName: () => ({ hasNext: () => false }),
-  createFolder: () => ({ createFile: b => ({ getUrl: () => 'https://drive/foto' }) })
+  createFolder: () => ({ createFile: b => ({ getUrl: () => 'https://drive/foto', getId: () => 'FILE1' }) })
 });
+
+let PROPS = {};
+global.PropertiesService = { getScriptProperties: () => ({
+  getProperty: k => (PROPS[k] === undefined ? null : PROPS[k]),
+  setProperty: (k, v) => { PROPS[k] = v; } }) };
+const apuntes = () => String(PROPS.ACC_LECTURA_APUNTES || '');
 global.Utilities.base64Encode = () => 'AAAA';
 
 const _log = console.log;
@@ -647,6 +653,46 @@ foto();
 ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto', 'la foto se guarda');
 ok(ACC_CARPETA_FOTOS !== '' && !/comprobante|voucher/i.test(ACC_CARPETA_FOTOS),
    'en su propia carpeta, no en la de los comprobantes: ' + ACC_CARPETA_FOTOS);
+
+console.log('\n── UN FALLO AL LEER TIENE QUE DEJAR RASTRO ──');
+// El fallo de verdad en la garita no se pudo diagnosticar porque la lectura devolvía
+// null en cuatro sitios distintos y ninguno decía nada. «No pude leer esa foto» no
+// distingue entre que Anthropic contestara un error, que contestara algo que no era
+// JSON, o que dijera que la foto no es un documento — y son tres arreglos distintos.
+reiniciar(); reiniciarWA(); PROPS = {};
+CLAUDE = { esCedula: false, visitante: '', cedula: '' };
+foto();
+ok(/NO es un documento/.test(apuntes()),
+   'cuando el modelo dice que no es un documento, queda apuntado: ' + apuntes().slice(12, 70));
+
+PROPS = {}; reiniciarWA();
+const _fetch = global.UrlFetchApp.fetch;
+global.UrlFetchApp.fetch = () => ({ getResponseCode: () => 400,
+  getContentText: () => '{"error":{"message":"model not found"}}' });
+foto();
+ok(/HTTP 400/.test(apuntes()) && /model not found/.test(apuntes()),
+   'y si Anthropic contesta un error, se guarda el código Y lo que dijo: ' + apuntes().slice(12, 80));
+ok(apuntes().indexOf(ACC_MODELO_CEDULA) >= 0 && apuntes().indexOf(ACC_MODELO_CEDULA_2) >= 0,
+   'y cada modelo deja su propio apunte, para saber si falló uno o los dos');
+ok(/ninguna de las pasadas/.test(apuntes()),
+   'con una línea final que lo resume, que es la que explica el «no pude leer esa foto»');
+
+PROPS = {}; reiniciarWA();
+global.UrlFetchApp.fetch = () => ({ getResponseCode: () => 200,
+  getContentText: () => JSON.stringify({ content: [{ type: 'text', text: 'Claro, aquí tienes:' }] }) });
+foto();
+ok(/no devolvió JSON/.test(apuntes()),
+   'y si contesta prosa en vez de JSON, también se distingue: ' + apuntes().slice(12, 70));
+global.UrlFetchApp.fetch = _fetch;
+
+PROPS = {}; reiniciarWA();
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Joslyn Alonso Lopez Albelo',
+           cedula: '8-743-456', confianza: 0.95 };
+foto();
+ok(PROPS.ACC_ULTIMA_FOTO === 'FILE1',
+   'la foto se apunta para poder reintentarla: la URL de WhatsApp caduca en minutos');
+ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto',
+   'y se guarda antes de leerla, para que un fallo de lectura no se lleve también la imagen');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
