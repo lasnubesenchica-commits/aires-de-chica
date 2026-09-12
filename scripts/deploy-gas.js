@@ -13,6 +13,10 @@
  * Requiere (GitHub Secrets del repo):
  *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
  *
+ * Una copia puede pedir otra credencial con la clave «credencial» de clientes.json:
+ * "credencial": "BC" busca GOOGLE_REFRESH_TOKEN_BC. Hace falta porque un editor de
+ * otro dominio puede subir código pero no mover el despliegue.
+ *
  * Uso:
  *   node scripts/deploy-gas.js                  todas las copias activas
  *   node scripts/deploy-gas.js --solo aires     sólo esa
@@ -64,14 +68,57 @@ function leerClientes(raiz, solo) {
   return { gasDir, clientes };
 }
 
-function getAuth() {
-  const { google } = require('googleapis');
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env;
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
-    throw new Error('Faltan variables: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN');
+/**
+ * Qué variables de entorno usa una credencial.
+ *
+ * Sin sufijo, las de siempre. Con sufijo —la clave «credencial» de clientes.json— se
+ * busca GOOGLE_REFRESH_TOKEN_<SUF>, y el id y el secreto caen en los de siempre si no
+ * hay unos propios: normalmente es la MISMA aplicación OAuth autorizada por otra
+ * cuenta de Google, y sólo cambia el token.
+ */
+function variablesDeCredencial(sufijo) {
+  const s = String(sufijo || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  if (!s) {
+    return { id: 'GOOGLE_CLIENT_ID', secreto: 'GOOGLE_CLIENT_SECRET', token: 'GOOGLE_REFRESH_TOKEN' };
   }
-  const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
-  auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
+  return { id: 'GOOGLE_CLIENT_ID_' + s, secreto: 'GOOGLE_CLIENT_SECRET_' + s,
+           token: 'GOOGLE_REFRESH_TOKEN_' + s, sufijo: s };
+}
+
+/**
+ * La credencial con la que se despliega una copia.
+ *
+ * Hace falta más de una porque Google impone algo que no se arregla compartiendo el
+ * proyecto: un editor de otro dominio puede subir código y crear versiones, pero NO
+ * mover el despliegue a la versión nueva —«Only users in the same domain as the script
+ * owner may deploy this script»—. Así que cada proyecto se despliega con una cuenta de
+ * su propio dominio, y clientes.json dice cuál.
+ */
+function credencialDe(sufijo, env) {
+  env = env || process.env;
+  const v = variablesDeCredencial(sufijo);
+  const token = env[v.token];
+  // El id y el secreto sí caen en los de siempre; el token NO puede caer en otro,
+  // porque desplegaría con la cuenta equivocada y el síntoma sería un despliegue que
+  // dice que funcionó y no cambió nada.
+  const id = env[v.id] || (v.sufijo ? env.GOOGLE_CLIENT_ID : undefined);
+  const secreto = env[v.secreto] || (v.sufijo ? env.GOOGLE_CLIENT_SECRET : undefined);
+
+  if (!token) throw new Error(`Falta ${v.token} en los secretos del repositorio`);
+  if (!id || !secreto) {
+    throw new Error(`Faltan ${v.id} y ${v.secreto} (ni los de siempre sirven de respaldo)`);
+  }
+  return { id, secreto, token };
+}
+
+// Separada de credencialDe a propósito: las pruebas no tienen googleapis instalado
+// —el job de pruebas del Action no hace npm install— y elegir mal la credencial es
+// justo lo que hay que poder comprobar.
+function getAuth(sufijo) {
+  const { google } = require('googleapis');
+  const c = credencialDe(sufijo);
+  const auth = new google.auth.OAuth2(c.id, c.secreto);
+  auth.setCredentials({ refresh_token: c.token });
   return auth;
 }
 
@@ -189,11 +236,31 @@ async function main(opciones) {
     return { seco: true, clientes: clientes.map((c) => c.id) };
   }
 
-  const api = opciones.api || require('googleapis').google.script({ version: 'v1', auth: getAuth() });
+  // Una conexión por credencial, no por copia: veinte comunidades de la misma cuenta
+  // no tienen por qué pedir veinte tokens.
+  const conexiones = {};
+  const apiPara = opciones.apiPara || ((c) => {
+    if (opciones.api) return opciones.api;
+    const suf = String(c.credencial || '');
+    if (!conexiones[suf]) {
+      conexiones[suf] = require('googleapis').google.script({ version: 'v1', auth: getAuth(suf) });
+    }
+    return conexiones[suf];
+  });
 
   const resultados = [];
   for (const c of clientes) {
     console.log(`\n── ${c.nombre || c.id} (${c.scriptId})`);
+    let api;
+    try {
+      api = apiPara(c);
+    } catch (e) {
+      // Una credencial que falta es un fallo de esa copia, no de todas: el resto se
+      // sigue desplegando y el resumen dice cuál se quedó fuera.
+      console.log(`    ✗ ${e.message}`);
+      resultados.push({ id: c.id, ok: false, error: e.message });
+      continue;
+    }
     resultados.push(await desplegarCliente(api, c, porDir[c.gasDir || gasDir]));
   }
 
@@ -212,5 +279,6 @@ async function main(opciones) {
 if (require.main === module) {
   main().catch((err) => { console.error('\nError:', err.message); process.exit(1); });
 } else {
-  module.exports = { leerClientes, readGasFiles, desplegarCliente, main };
+  module.exports = { leerClientes, readGasFiles, desplegarCliente, main,
+                     getAuth, variablesDeCredencial, credencialDe };
 }

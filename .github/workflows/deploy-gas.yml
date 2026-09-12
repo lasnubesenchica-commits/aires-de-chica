@@ -46,6 +46,9 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          # El router vive en otra cuenta de Google. Un editor de otro dominio puede
+          # subirle código, pero no mover su despliegue, así que lleva su propio token.
+          GOOGLE_REFRESH_TOKEN_BC: ${{ secrets.GOOGLE_REFRESH_TOKEN_BC }}
         run: |
           if [ -n "${{ github.event.inputs.solo }}" ]; then
             node scripts/deploy-gas.js --solo "${{ github.event.inputs.solo }}"

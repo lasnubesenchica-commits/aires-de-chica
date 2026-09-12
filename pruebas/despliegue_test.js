@@ -145,7 +145,57 @@ api = apiFalso(null);
 res = await callar(() => D.main({ raiz, api, argv: ['--seco'], esperaMs: 0 }));
 ok(res.seco === true && api.llamadas.length === 0, 'con --seco no se llama a Google ni una vez');
 
+console.log('\n── CADA COPIA CON LA CREDENCIAL DE SU DOMINIO ──');
+// Google no deja mover un despliegue desde otra cuenta aunque seas editor del
+// proyecto: «Only users in the same domain as the script owner may deploy this
+// script». Compartirlo no basta; hace falta una credencial por dominio.
+let v = D.variablesDeCredencial('');
+ok(v.token === 'GOOGLE_REFRESH_TOKEN', 'sin sufijo, las variables de siempre');
+v = D.variablesDeCredencial('BC');
+ok(v.token === 'GOOGLE_REFRESH_TOKEN_BC' && v.id === 'GOOGLE_CLIENT_ID_BC',
+   'con sufijo, las suyas: ' + v.token);
+ok(D.variablesDeCredencial('bc-1').token === 'GOOGLE_REFRESH_TOKEN_BC_1',
+   'el sufijo se normaliza, para que «bc-1» y «BC_1» no sean dos secretos distintos');
+
+const ENV_BASE = { GOOGLE_CLIENT_ID: 'id-base', GOOGLE_CLIENT_SECRET: 'secreto-base',
+                   GOOGLE_REFRESH_TOKEN: 'tok-aires', GOOGLE_REFRESH_TOKEN_BC: 'tok-balanceclip' };
+
+let cr = D.credencialDe('BC', ENV_BASE);
+ok(cr.id === 'id-base',
+   'el id y el secreto caen en los de siempre: suele ser la MISMA app OAuth, autorizada por otra cuenta');
+ok(cr.token === 'tok-balanceclip',
+   'pero el token es el suyo, que es lo que decide con qué cuenta se despliega');
+ok(D.credencialDe('', ENV_BASE).token === 'tok-aires', 'y sin sufijo, el de siempre');
+
+// El token NO cae en el de siempre: desplegaría con la cuenta equivocada, y el
+// síntoma sería un despliegue que dice que funcionó y no cambió nada.
+let sinToken = '';
+try { D.credencialDe('BC', { ...ENV_BASE, GOOGLE_REFRESH_TOKEN_BC: '' }); }
+catch (e) { sinToken = e.message; }
+ok(/GOOGLE_REFRESH_TOKEN_BC/.test(sinToken) && !/tok-aires/.test(sinToken),
+   'si falta su token se planta y dice cuál, en vez de usar el de otra cuenta: ' + sinToken);
+
+console.log('\n── UNA CREDENCIAL QUE FALTA NO DETIENE A LAS DEMÁS ──');
+const raizCred = raizCon({ gasDir: 'backend-aires', clientes: [
+  { id: 'aires', nombre: 'Aires', scriptId: 'S-AIRES', deploymentId: 'D-AIRES' },
+  { id: 'router', nombre: 'Router', scriptId: 'S-ROUTER', deploymentId: 'D-ROUTER',
+    credencial: 'BC' } ] }, 'cred');
+const apiCred = apiFalso();
+r = null;
+try {
+  await callar(() => D.main({ raiz: raizCred, esperaMs: 0, apiPara: (c) => {
+    if (c.credencial) throw new Error('Falta GOOGLE_REFRESH_TOKEN_BC en los secretos del repositorio');
+    return apiCred;
+  } }));
+} catch (e) { r = e.resultados; }
+ok(!!r && r.length === 2, 'se intentan las dos');
+ok(r.find(x => x.id === 'aires').ok === true, 'la que sí tiene credencial se despliega igual');
+ok(r.find(x => x.id === 'router').ok === false &&
+   /GOOGLE_REFRESH_TOKEN_BC/.test(r.find(x => x.id === 'router').error),
+   'y la que no, falla sola y dice qué secreto falta');
+ok(apiCred.llamadas.every(l => l.scriptId !== 'S-ROUTER'),
+   'al router no se le manda ni una petición con la credencial equivocada');
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
-
 })();
