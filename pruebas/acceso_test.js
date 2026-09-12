@@ -411,5 +411,40 @@ ok(d.sinContactos.length === 2 && d.sinContactos.every(s => s.clave !== 'Q-9'),
    'Q-9 sale de la lista de pendientes al cargarle un contacto que autoriza');
 ok(d.purgaInstalada === true, 'y el panel sabe que la purga quedó instalada');
 
+console.log('\n── UN NÚMERO QUE ES GARITA Y RESIDENTE A LA VEZ SE DICE ──');
+// El caso del piloto: el administrador pone su propio número como garita para probar,
+// y ese número ya está en el padrón. Es legítimo mientras se prueba —no se bloquea—
+// pero tiene una consecuencia que nadie relacionaría solo: esGuardia() gana, y a ese
+// número el bot deja de contestarle su estado de cuenta.
+reiniciar();
+guardarGarita({ nombre: 'Garita principal', celular: '6981-2266' });   // = celular de Q-9
+d = getAccesoData('');
+ok(d.avisos.some(a => /también el de/.test(a.texto) && /Ana Rosa Tejada/.test(a.texto)),
+   'el panel dice de quién es el número y qué va a pasar: ' +
+   (d.avisos.filter(a => /también el de/.test(a.texto))[0] || {}).texto);
+ok(esGuardia('+50769812266') !== null,
+   'y no se bloquea: sigue siendo garita, porque probar así es legítimo');
+
+reiniciar();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-9999' });
+ok(!getAccesoData('').avisos.some(a => /también el de/.test(a.texto)),
+   'con un número que no es de nadie más, no se avisa nada');
+
+reiniciar();
+guardarContacto({ clave: 'L-14', nombre: 'El cuidador', celular: '6555-4444', autoriza: 'si' });
+guardarGarita({ nombre: 'Garita trasera', celular: '6555-4444' });
+ok(getAccesoData('').avisos.some(a => /El cuidador/.test(a.texto)),
+   'el choque también se busca contra los contactos de acceso, no sólo contra el padrón');
+
+// Escrito distinto en cada sitio, que es como llega de verdad. guardarGarita normaliza
+// lo que pasa por él, pero la administración teclea filas DIRECTAMENTE en la hoja —el
+// módulo cuenta con ello en esGuardia()— y ahí el número queda como lo escribieron. Si
+// el choque se comparara en crudo, esa fila lo escondería.
+reiniciar();
+_accHojas();
+HOJAS.Garita.push(['GA9', 'Garita tecleada a mano', '6981-2266', '', 'si', '', new Date()]);
+ok(getAccesoData('').avisos.some(a => /Ana Rosa Tejada/.test(a.texto)),
+   'un «6981-2266» tecleado a mano choca igual con el «+50769812266» del padrón');
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

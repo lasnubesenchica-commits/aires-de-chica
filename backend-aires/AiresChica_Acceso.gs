@@ -311,6 +311,50 @@ function esGuardia(telefono) {
   return encontrado;
 }
 
+/** El número tal como lo compara el sistema, venga escrito como venga. */
+function _accTel(v) {
+  var n = (typeof normalizarCelular === 'function') ? normalizarCelular(v) : null;
+  return (n && n.ok) ? n.e164 : String(v || '').replace(/\D/g, '');
+}
+
+/**
+ * Garitas cuyo número es ADEMÁS el de un residente.
+ *
+ * Pasa de verdad, y no es un error de nadie: al arrancar un piloto lo normal es que
+ * el administrador ponga su propio número como garita para probar, y ese número ya
+ * está en el padrón.
+ *
+ * El problema es que entonces es dos cosas a la vez, y esGuardia() se consulta
+ * primero: mientras dure, a ese número el sistema lo trata como GUARDIA y deja de
+ * contestarle su estado de cuenta. Quien lo sufra no va a relacionar una cosa con la
+ * otra. Por eso se avisa desde el panel y desde el diagnóstico, en vez de dejar que
+ * se descubra una noche cualquiera.
+ *
+ * No se bloquea: es una decisión legítima mientras se prueba. Sólo tiene que estar
+ * a la vista.
+ */
+function _accGaritasDeResidente() {
+  var suyos = {};
+  try {
+    (getPropietarios() || []).forEach(function (p) {
+      var t = _accTel(p.celular);
+      if (t) suyos[t] = (p.lote ? p.lote + ' · ' : '') + (p.nombre || p.clave);
+    });
+  } catch (e) {}
+  getContactos('').forEach(function (c) {
+    var t = _accTel(c.celular);
+    if (t && !suyos[t]) suyos[t] = c.nombre + ' (' + c.clave + ')';
+  });
+
+  var choques = [];
+  getGarita().forEach(function (g) {
+    if (!g.activo) return;
+    var t = _accTel(g.celular);
+    if (t && suyos[t]) choques.push({ garita: g.nombre, celular: g.celular, quien: suyos[t] });
+  });
+  return choques;
+}
+
 /* ─────────────── Ley 81: las fotos de cédula no se quedan ─────────────── */
 
 /**
@@ -453,6 +497,10 @@ function diagnosticarAcceso() {
     conFoto, purga ? 'instalado' : '✗ SIN INSTALAR');
 
   console.log('');
+  _accGaritasDeResidente().forEach(function (ch) {
+    console.log('· «%s» usa el número de %s. Mientras sea garita, a ese número el sistema', ch.garita, ch.quien);
+    console.log('  lo trata como GUARDIA y deja de contestarle su estado de cuenta.');
+  });
   if (!garitas.length) console.log('· Sin garita registrada, ningún guardia puede usar el sistema: guardarGarita().');
   if (!unidades)       console.log('· Sin contactos, cada visita cae al celular del padrón, que no siempre es quien está en la casa.');
   if (!purga)          console.log('· Ley 81: instala el borrado automático de fotos con instalarBorradoDeFotos().');
@@ -751,6 +799,12 @@ function getAccesoData(clave) {
     avisos.push({ tipo: 'aviso', texto: sinContactos.length + ' ' + _acPlural(_acUnidad()) +
       ' sin contactos de acceso. Sus visitas se preguntarán al celular del padrón, que es el de cobro.' });
   }
+  _accGaritasDeResidente().forEach(function (ch) {
+    avisos.push({ tipo: 'aviso', texto: 'El número de «' + ch.garita + '» (' + ch.celular +
+      ') es también el de ' + ch.quien + '. Mientras esté puesto como garita, el sistema lo ' +
+      'trata como GUARDIA: a ese número deja de contestarle su estado de cuenta.' });
+  });
+
   var sinVencer = autorizaciones.filter(function (a) { return a.activo && !a.hasta; }).length;
   if (sinVencer) {
     avisos.push({ tipo: 'aviso', texto: sinVencer + ' autorización(es) sin fecha de vencimiento. ' +
