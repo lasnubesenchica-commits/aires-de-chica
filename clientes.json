@@ -12,9 +12,9 @@
       "nombre": "Router de WhatsApp",
       "gasDir": "router",
       "scriptId": "1TGUN9U69RkwBmaSJA0cn03-wKj11POl1fGf6pJt3MDxe-EmcujHhnsuO",
-      "deploymentId": "AKfycbyFsZ9EdL3YKPlKNsSGWb66NSlsguEqErQrojUzX6TFkWEymNFBZEwEYOA7qhS-IpVy",
+      "deploymentId": "AKfycbyzWhFujexdnphAJfYLwAkj_3oQrVYCd4rsCJykW1nfnCnQBYnHRpvVc8HXkEffZeKv",
       "credencial": "BC",
-      "nota": "Vive en la cuenta de BalanceClip. Compartirlo como editor no basta: Google no deja mover el despliegue desde otro dominio."
+      "nota": "Vive en la cuenta de BalanceClip: por eso lleva credencial propia. La implementacion es la segunda; la primera nacio con un esqueleto y su punto de entrada se quedo sin acceso anonimo aunque el dialogo dijera Anyone."
     }
   ]
 }
