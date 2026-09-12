@@ -35,8 +35,8 @@ defs.forEach(d => {
   const males = _waValidarPlantilla(d);
   ok(males.length === 0, d.nombre + (males.length ? ' → ' + males.join('; ') : ''));
 });
-ok(defs.length === 5, 'son cinco: estado de cuenta, recordatorio, pago, comunicado y el aviso interno');
-ok(defs.filter(d => d.categoria === 'UTILITY').length === 5, 'todas como UTILITY');
+ok(defs.length === 6, 'son seis: las cinco de cobros y comunicación, más la autorización de visita');
+ok(defs.filter(d => d.categoria === 'UTILITY').length === 6, 'todas como UTILITY');
 
 console.log('\n── EL VALIDADOR DETECTA DE VERDAD CADA REGLA ──');
 const base = { nombre: 'x', categoria: 'UTILITY', idioma: 'es', cuerpo: 'Hola {{1}}, todo bien.',
@@ -122,9 +122,9 @@ ok(SALIDAS.every(s => !s.headers.Authorization || /TOK-SECRETO/.test(s.headers.A
    'va siempre en la cabecera, que no se imprime al fallar');
 
 console.log('\n── LA SUBIDA ──');
-ok(r.ok === true && r.resultados.length === 5, 'sube las cinco: ' + r.resultados.length);
+ok(r.ok === true && r.resultados.length === 6, 'sube las seis: ' + r.resultados.length);
 const creadas = SALIDAS.filter(s => /message_templates$/.test(s.url));
-ok(creadas.length === 5, 'una llamada de creación por plantilla: ' + creadas.length);
+ok(creadas.length === 6, 'una llamada de creación por plantilla: ' + creadas.length);
 ok(creadas.every(c => c.opt.method === 'post'), 'todas por POST');
 const subidas = SALIDAS.filter(s => /uploads|upload:SESION/.test(s.url));
 ok(subidas.length === 2,
@@ -138,8 +138,8 @@ SALIDAS = [];
 RUTAS[0] = { re: /message_templates\?/, code: 200,
   body: JSON.stringify({ data: [{ name: 'lobby_pago_registrado', status: 'APPROVED' }] }) };
 r = subirPlantillas();
-ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 4,
-   'la que ya está aprobada no se vuelve a crear: se crean 4');
+ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 5,
+   'la que ya está aprobada no se vuelve a crear: se crean 5 de 6');
 ok(r.resultados.some(x => x.nombre === 'lobby_pago_registrado' && x.saltada),
    'y se dice que se saltó, en vez de callarlo');
 
@@ -148,7 +148,7 @@ SALIDAS = [];
 RUTAS[0] = { re: /message_templates\?/, code: 200, body: '{"data":[]}' };
 RUTAS[1] = { re: /\/uploads/, code: 400, body: '{"error":{"message":"Invalid app id"}}' };
 r = subirPlantillas();
-ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 4,
+ok(SALIDAS.filter(s => /message_templates$/.test(s.url)).length === 5,
    'las que no llevan documento se suben igual');
 ok(r.resultados.some(x => x.nombre === 'lobby_estado_cuenta' && x.ok === false && /Invalid app id/.test(x.error)),
    'y la del estado de cuenta dice por qué no: ' +
@@ -192,6 +192,44 @@ ok(/APPROVED/.test(txt) && /REJECTED/.test(txt), 'muestra las dos');
 ok(/INVALID_FORMAT/.test(txt), 'y el motivo del rechazo, que es lo accionable');
 ok(/1 de 2 aprobadas/.test(txt), 'con la cuenta clara: ' + salida[salida.length - 1]);
 
+console.log('\n── LA AUTORIZACIÓN DE VISITA ──');
+const vis = defs.find(d => d.nombre === 'lobby_autorizacion_visita');
+ok(!/c[ée]dula|pasaporte/i.test(vis.cuerpo),
+   'no le manda la cédula del visitante al propietario: la garita la registra, él sólo decide');
+ok(vis.botones.length === 2, 'dos botones, no tres: autorizar o no');
+ok(vis.botones[0].id === 'acceso_no',
+   'y el «no» va primero: el primer botón es el que se toca sin leer, y el error barato es el «no»');
+
+const pv = _waPlantillaPayload(vis, null);
+const bts = pv.components.find(c => c.type === 'BUTTONS');
+ok(bts && bts.buttons.length === 2 && bts.buttons.every(b => b.type === 'QUICK_REPLY'),
+   'se le mandan a Meta como respuestas rápidas');
+ok(bts.buttons.map(b => b.text).join('|') === 'No autorizo|Autorizo',
+   'con su texto: ' + bts.buttons.map(b => b.text).join(' · '));
+
+falla({ botones: [{ texto: 'a' }, { texto: 'b' }, { texto: 'c' }, { texto: 'd' }] },
+      /más de tres no caben/, 'cuatro botones');
+falla({ botones: [{ texto: 'x'.repeat(26) }] }, /25 caracteres/, 'un botón demasiado largo');
+falla({ botones: [{ texto: '' }] }, /no tiene texto/, 'un botón sin texto');
+
+console.log('\n── AL ENVIARLA, CADA BOTÓN VIAJA CON SU IDENTIFICADOR ──');
+// Sin identificador, del webhook vuelve el TEXTO del botón. Decidir si alguien entra
+// comparando cadenas en español es frágil de más para lo que se está decidiendo.
+PROPS.META_PHONE_ID = '55501'; PROPS.META_WHATSAPP_TOKEN = 'TOK-SECRETO';
+global.normalizarCelular = t => ({ ok: true, e164: '+507' + String(t).replace(/\D/g, '') });
+global._waAnotar = () => {};
+RUTAS = []; SALIDAS = [];
+const env = enviarPlantillaWhatsApp('6111-2233', 'lobby_autorizacion_visita',
+  ['Ana Rosa Tejada', 'Aires de Chicá', 'Luis Mendoza', 'lote Q-9', '2']);
+const cs = (SALIDAS[SALIDAS.length - 1].payload.template.components) || [];
+const qr = cs.filter(c => c.type === 'button');
+ok(env.ok === true && qr.length === 2, 'salen los dos botones: ' + qr.length);
+ok(qr[0].sub_type === 'quick_reply' && qr[0].index === '0' &&
+   qr[0].parameters[0].payload === 'acceso_no',
+   'el primero lleva acceso_no en el índice 0');
+ok(qr[1].parameters[0].payload === 'acceso_si', 'y el segundo acceso_si');
+
+RUTAS = [];
 console.log('\n── RETIRAR LAS VIEJAS NO PUEDE DEJAR A NADIE SIN PODER ENVIAR ──');
 // Borrar una plantilla en Meta es irreversible y surte efecto en el acto. Retirar la
 // vieja antes de que su reemplazo esté aprobado dejaría a la comunidad sin estado de

@@ -169,6 +169,33 @@ function _waPlantillas() {
       ejemplos: ['Aires de Chicá', 'Lote Q-9', 'Ana Rosa Tejada',
                  '¿Cuánto debo de este mes?', 'https://wa.me/50761112233'],
       pie: WA_PIE
+    },
+    {
+      nombre: 'lobby_autorizacion_visita',
+      categoria: 'UTILITY',
+      idioma: 'es',
+      para: 'Módulo de acceso. La garita tiene un visitante delante y el propietario ' +
+            'decide desde donde esté. Se manda a revisión antes de escribir el módulo: ' +
+            'aprobar tarda días y no tiene sentido descubrirlo al final.',
+      encabezado: null,
+      // La cédula NO va aquí. La garita la registra, que para eso la pide; mandársela
+      // al propietario es repartir el documento de identidad de un tercero a alguien
+      // que no la necesita para decidir. El nombre y a dónde dice que va bastan.
+      cuerpo:
+        'Hola {{1}}, hay una visita en la entrada de {{2}}.\n' +
+        '\n' +
+        'Se identifica como {{3}} y dice que va al {{4}}.\n' +
+        '\n' +
+        'Si no responde en {{5}} minutos, la garita no la deja pasar.',
+      ejemplos: ['Ana Rosa Tejada', 'Aires de Chicá', 'Luis Mendoza', 'lote Q-9', '2'],
+      // El «no» va primero a propósito. En una lista vertical el primer botón es el que
+      // se toca sin leer, y equivocarse hacia «no autorizo» cuesta una llamada;
+      // equivocarse hacia «autorizo» mete a un desconocido en la comunidad.
+      botones: [
+        { id: 'acceso_no', texto: 'No autorizo' },
+        { id: 'acceso_si', texto: 'Autorizo' }
+      ],
+      pie: WA_PIE
     }
   ];
 }
@@ -221,6 +248,20 @@ function _waValidarPlantilla(def) {
   ej.forEach(function (e, k) {
     if (!String(e || '').trim()) males.push('el ejemplo de {{' + (k + 1) + '}} está vacío');
   });
+
+  // Botones de respuesta rápida. Meta admite hasta diez, pero en el teléfono sólo se
+  // ven tres sin desplegar: una autorización que exige desplegar para decir que no es
+  // una autorización que se contesta que sí por comodidad.
+  var bot = def.botones || [];
+  if (bot.length) {
+    if (bot.length > 3) males.push('hay ' + bot.length + ' botones; más de tres no caben en pantalla');
+    bot.forEach(function (b, k) {
+      var t = String(b && b.texto || '');
+      if (!t.trim()) males.push('el botón ' + (k + 1) + ' no tiene texto');
+      if (t.length > 25) males.push('el botón «' + t + '» pasa de 25 caracteres');
+      if (/\{\{\d+\}\}/.test(t)) males.push('el botón «' + t + '» lleva variables; aquí no se usan');
+    });
+  }
   return males;
 }
 
@@ -338,6 +379,11 @@ function _waPlantillaPayload(def, handle) {
   comps.push({ type: 'BODY', text: def.cuerpo,
                example: { body_text: [def.ejemplos || []] } });
   if (def.pie) comps.push({ type: 'FOOTER', text: def.pie });
+  if ((def.botones || []).length) {
+    comps.push({ type: 'BUTTONS', buttons: def.botones.map(function (b) {
+      return { type: 'QUICK_REPLY', text: b.texto };
+    }) });
+  }
   return { name: def.nombre, language: def.idioma || 'es',
            category: def.categoria || 'UTILITY', components: comps };
 }
@@ -598,6 +644,15 @@ function enviarPlantillaWhatsApp(telefono, plantilla, params, opts) {
     // Meta rechaza saltos de línea y tabulaciones dentro de un parámetro.
     return { type: 'text', text: String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ') };
   }) });
+
+  // Cada botón de respuesta rápida lleva su propio identificador. Sin esto, lo que
+  // vuelve en el webhook es el TEXTO del botón, y decidir si alguien entra comparando
+  // cadenas en español —tildes, mayúsculas, un cambio de redacción— es frágil de más
+  // para lo que se está decidiendo.
+  (def.botones || []).forEach(function (b, i) {
+    comps.push({ type: 'button', sub_type: 'quick_reply', index: String(i),
+                 parameters: [{ type: 'payload', payload: String(b.id) }] });
+  });
 
   try {
     var r = UrlFetchApp.fetch(WA_GRAPH + '/' + phoneId + '/messages', {
