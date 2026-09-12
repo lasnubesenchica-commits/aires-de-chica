@@ -21,7 +21,8 @@ global.HtmlService = { createHtmlOutput: (h) => ({
 global.Utilities = { sleep: () => {} };
 global.Logger = { log: () => {} };
 
-const rd = f => fs.readFileSync('/home/user/aires-de-chica/backend-aires/' + f, 'utf8');
+const path = require('path');
+const rd = f => fs.readFileSync(path.join(__dirname, '..', 'backend-aires', f), 'utf8');
 // Del módulo de WhatsApp sólo hacen falta las constantes y los ayudantes de propiedades.
 eval(rd('AiresChica_WhatsApp.gs').split('/* ─────────────── bitácora')[0]
        .replace(/function _whatsappHandle[\s\S]*$/, ''));
@@ -173,7 +174,7 @@ ok(/1 de 2 aprobadas/.test(txt), 'con la cuenta clara: ' + salida[salida.length 
 
 console.log('\n── EL PDF DE MUESTRA NO LLEVA DATOS DE NADIE ──');
 const html = HtmlService.createHtmlOutput.toString();
-const fuente = fs.readFileSync('/home/user/aires-de-chica/backend-aires/AiresChica_Plantillas.gs', 'utf8');
+const fuente = rd('AiresChica_Plantillas.gs');
 const muestra = fuente.split('_waPdfDeMuestra')[1].split('function ')[0];
 ok(/EJEMPLO · DATOS FICTICIOS|DATOS FICTICIOS/.test(muestra),
    'el PDF que ve el revisor de Meta se anuncia como ejemplo');

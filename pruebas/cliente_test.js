@@ -11,7 +11,8 @@ global.PropertiesService = { getScriptProperties: () => ({
   setProperties: (o) => { Object.keys(o).forEach(k => { PROPS[k] = o[k]; }); }
 }) };
 
-const RUTA = '/home/user/aires-de-chica/backend-aires/';
+const path = require('path');
+const RUTA = path.join(__dirname, '..', 'backend-aires') + path.sep;
 const fuente = fs.readFileSync(RUTA + 'Code.js', 'utf8');
 // Sólo el bloque de CONFIG: el resto de Code.js es el router y arrastraría medio sistema.
 const bloque = fuente.slice(fuente.indexOf('var CONFIG = (function'),
