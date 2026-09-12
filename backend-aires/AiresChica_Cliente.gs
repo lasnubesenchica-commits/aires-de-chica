@@ -58,6 +58,64 @@ var AC_CLAVES_CLIENTE = [
 
 function _acClaveProp(k) { return AC_PREFIJO + k; }
 
+/* ─────────────── el alta, sin pasar por la pantalla de propiedades ─────────────── */
+
+/**
+ * Datos para dar de alta o corregir esta copia.
+ *
+ * ── Por qué existe esto, si la configuración no debe vivir en el código ──────
+ * No vive. Esto es un formulario, no el almacén: nada de aquí se lee nunca durante el
+ * funcionamiento normal. Sólo lo lee altaDeComunidad(), y sólo cuando alguien la
+ * ejecuta a mano. El dato real queda en las propiedades del script.
+ *
+ * Hace falta porque el botón «Ejecutar» del editor no sabe pasar argumentos, así que
+ * configurarCliente({...}) no se puede llamar desde ahí, y la pantalla de propiedades
+ * del script es una interfaz frágil para meter veinte valores por cada PH.
+ *
+ * ── Cómo se usa ──────────────────────────────────────────────────────────────
+ *   1. Descomenta y rellena las claves que quieras escribir.
+ *   2. Elige «altaDeComunidad» en el desplegable del editor y ejecuta.
+ *   3. Comprueba con verConfiguracionCliente().
+ *   4. VACÍA esto otra vez. No lo subas al repositorio con datos dentro: el
+ *      despliegue copia el código a TODAS las copias, y aunque nadie lo ejecute, los
+ *      datos de una comunidad acabarían visibles en el editor de las demás.
+ *
+ * Se queda vacío en el repositorio a propósito. Ejecutarlo así no escribe nada.
+ */
+var AC_ALTA = {
+  // NEGOCIO:     'PH Las Palmas',
+  // UNIDAD:      'apartamento',
+  // SHEET_ID:    '',
+  // CUENTA_NUM:  ''
+};
+
+/**
+ * Escribe en las propiedades lo que haya en AC_ALTA.
+ *
+ * Sin argumentos, para que el editor pueda ejecutarla. Con AC_ALTA vacío no escribe
+ * nada y lo dice: ejecutarla por error no puede borrar la configuración de nadie.
+ */
+function altaDeComunidad() {
+  var claves = Object.keys(AC_ALTA || {});
+  if (!claves.length) {
+    console.log('AC_ALTA está vacío, así que no se escribió nada.');
+    console.log('');
+    console.log('Rellena AC_ALTA en AiresChica_Cliente.gs y vuelve a ejecutar. Por ejemplo:');
+    console.log('  var AC_ALTA = { UNIDAD: \'lote\' };');
+    console.log('');
+    console.log('Para ver qué hay puesto ahora: verConfiguracionCliente()');
+    return { ok: false, escritas: 0 };
+  }
+  console.log('Escribiendo %s clave(s) desde AC_ALTA: %s', claves.length, claves.join(', '));
+  var r = configurarCliente(AC_ALTA);
+  if (r && r.ok) {
+    console.log('');
+    console.log('Ahora vacía AC_ALTA y vuelve a desplegar: el dato ya está en las');
+    console.log('propiedades y no tiene por qué seguir en el código.');
+  }
+  return r;
+}
+
 /**
  * Rellena a la derecha hasta n caracteres.
  *

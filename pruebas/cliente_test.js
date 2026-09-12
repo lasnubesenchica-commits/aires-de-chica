@@ -40,7 +40,10 @@ const cargar = () => eval(bloque + '\n' + cliente +
   '   configurarCliente: configurarCliente,' +
   '   AC_CLAVES_CLIENTE: AC_CLAVES_CLIENTE, modulosActivos: modulosActivos,' +
   '   moduloActivo: moduloActivo, _moduloDeAccion: _moduloDeAccion,' +
-  '   _moduloBloquea: _moduloBloquea, AC_MODULOS_TODOS: AC_MODULOS_TODOS })');
+  '   _moduloBloquea: _moduloBloquea, AC_MODULOS_TODOS: AC_MODULOS_TODOS,' +
+  '   altaDeComunidad: altaDeComunidad, AC_ALTA: AC_ALTA,' +
+  '   _acUnidad: _acUnidad, _acUnidadCap: _acUnidadCap, _acUnidadDe: _acUnidadDe,' +
+  '   _acUn: _acUn, _acNingun: _acNingun, _acDel: _acDel })');
 
 console.log('── UNA COPIA SIN CONFIGURAR NO HEREDA A NADIE ──');
 PROPS = {};
@@ -196,6 +199,34 @@ ok(m._moduloDeAccion('accionQueNadieClasifico') === 'financiero',
 PROPS = { AC_MODULOS: 'comunicaciones' }; m = cargar();
 ok(m._moduloBloquea('accionQueNadieClasifico') !== null,
    'y para quien no lo tiene, cerrada');
+
+console.log('\n── CÓMO SE LLAMA AQUÍ UNA UNIDAD ──');
+PROPS = {}; m = cargar();
+ok(m._acUnidad() === 'unidad' && m._acUnidadDe('Q-9') === 'unidad Q-9',
+   'sin configurar dice «unidad»: fea, pero no es el nombre de otro PH');
+PROPS = { AC_UNIDAD: 'Lote' }; m = cargar();
+ok(m._acUnidad() === 'lote' && m._acUnidadCap() === 'Lote',
+   'la palabra sale de la propiedad, y da igual cómo se escriba: ' + m._acUnidadDe('Q-9'));
+ok(m._acUn() === 'un' && m._acNingun() === 'ningún' && m._acDel() === 'del',
+   'con «lote» los artículos van en masculino');
+PROPS = { AC_UNIDAD: 'casa' }; m = cargar();
+ok(m._acUn() === 'una' && m._acNingun() === 'ninguna' && m._acDel() === 'de la',
+   'y con «casa» en femenino, que es lo que delata una plantilla mal copiada');
+PROPS = { AC_UNIDAD: 'unidad' }; m = cargar();
+ok(m._acUn() === 'una', '«unidad» también es femenina, aunque no termine en -a');
+
+console.log('\n── EL ALTA POR CÓDIGO NO PUEDE BORRAR NADA POR ERROR ──');
+// El botón «Ejecutar» del editor no pasa argumentos, así que configurarCliente({...})
+// no se puede llamar desde ahí. altaDeComunidad() es la puerta que sí se puede abrir
+// desde el desplegable — y justo por eso se puede abrir sin querer.
+PROPS = { AC_NEGOCIO: 'Aires de Chicá', AC_UNIDAD: 'lote' }; m = cargar();
+ok(Object.keys(m.AC_ALTA).length === 0,
+   'AC_ALTA viaja vacío en el repositorio: el código no lleva los datos de nadie');
+capturar(); let ra = m.altaDeComunidad(); let ta = soltar();
+ok(ra.ok === false && PROPS.AC_NEGOCIO === 'Aires de Chicá' && PROPS.AC_UNIDAD === 'lote',
+   'ejecutarla con AC_ALTA vacío no escribe ni borra nada');
+ok(/vacío/.test(ta) && /verConfiguracionCliente/.test(ta),
+   'y dice qué hacer en vez de quedarse en blanco: ' + ta.split('\n')[0]);
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
