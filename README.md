@@ -44,3 +44,9 @@ automáticamente (GitHub Actions). El frontend se publica con GitHub Pages.
 Ver `backend-aires/PROVISION.md` para la puesta en marcha.
 
 <!-- pages build trigger -->
+
+## Notas técnicas
+
+- [`docs/apps-script-despliegue.md`](docs/apps-script-despliegue.md) — despliegue de
+  Apps Script por API, credenciales OAuth por dominio, y webhooks de Meta. Los
+  errores que ya costaron una tarde y cómo se diagnostican, en orden.
