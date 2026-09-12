@@ -500,13 +500,42 @@ function _accNombre(v) {
     .replace(/\s+/g, ' ').trim();
 }
 
-/** Fecha al mediodía local, para que ningún desfase la mueva de día. */
+/**
+ * Fecha al mediodía local, para que ningún desfase la mueva de día.
+ *
+ * «No hay fecha» tiene que salir como null. Sin esta primera línea no lo hacía:
+ * `new Date(null)` NO es una fecha inválida, es el 1 de enero de 1970 —en Panamá,
+ * el 31 de diciembre de 1969—, así que una autorización sin vencimiento volvía con
+ * un «hasta» de 1969. Vencida desde hace medio siglo, y encima el panel dejaba de
+ * contarla entre las que no vencen nunca, que es justo el aviso que importa.
+ */
 function _accDia(v) {
+  if (v === null || v === undefined || String(v).trim() === '') return null;
   if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12, 0, 0);
   var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '').trim());
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
   var d = new Date(v);
   return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+}
+
+/**
+ * Fecha en AAAA-MM-DD, o cadena vacía si no hay fecha.
+ *
+ * Vacío y no «—»: esto va a un <input type="date"> del panel, y un guion ahí sería
+ * una fecha inválida que el navegador descarta en silencio. `_fechaCorta` es para
+ * enseñarle una fecha a una persona; esto es para devolvérsela al formulario.
+ */
+function _accISO(v) {
+  var d = _accDia(v);
+  if (!d || isNaN(d.getTime())) return '';
+  var m = d.getMonth() + 1, x = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (x < 10 ? '0' : '') + x;
+}
+
+/** Fecha y hora para la bitácora. Vacío si no hay nada, no «—». */
+function _accFechaHora(v) {
+  if (!(v instanceof Date) || isNaN(v.getTime())) return '';
+  return Utilities.formatDate(v, CONFIG.TZ, 'dd/MM/yyyy HH:mm');
 }
 
 function getAutorizaciones(clave) {
@@ -649,4 +678,101 @@ function autorizacionVigente(clave, visita, cuando) {
   if (porCedula) return { autorizacion: porCedula, coincidencia: 'cedula', firme: true };
   if (porNombre) return { autorizacion: porNombre, coincidencia: 'nombre', firme: false };
   return null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Lo que el panel necesita, en una sola llamada
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Contactos, garitas, autorizaciones y las últimas visitas, más lo que falta.
+ *
+ * Va todo junto porque la pestaña se pinta de una vez: cuatro llamadas separadas
+ * a un Apps Script son cuatro arranques en frío y un segundo largo de espera.
+ *
+ * `avisos` es lo que el panel tiene que poner arriba en rojo. Las unidades sin
+ * contactos importan más de lo que parece: el día que llegue una visita para una
+ * de ellas, el mensaje se va al número de cobro del padrón, que puede estar en
+ * otro país.
+ */
+function getAccesoData(clave) {
+  _accHojas();
+
+  var contactos = getContactos(clave || '');
+  var garitas = getGarita();
+  var autorizaciones = getAutorizaciones(clave || '').map(function (a) {
+    return {
+      id: a.id, clave: a.clave, lote: a.lote, visitante: a.visitante, cedula: a.cedula,
+      // En ISO, no en dd/MM/yyyy: estas dos fechas vuelven al panel para EDITARSE, y un
+      // <input type="date"> sólo entiende AAAA-MM-DD. Formatear aquí obligaría al panel a
+      // deshacerlo para poder pintarlas en el formulario.
+      desde: _accISO(a.desde), hasta: _accISO(a.hasta),
+      recurrente: a.recurrente, dias: a.dias, creadoPor: a.creadoPor,
+      activo: a.activo, notas: a.notas,
+      vigente: !!autorizacionVigente(a.clave,
+        { cedula: a.cedula, visitante: a.visitante }, new Date())
+    };
+  });
+
+  // Las últimas cien, de la más reciente a la más vieja. Con 50 visitas diarias,
+  // devolver la hoja entera sería medio megabyte en cada apertura de la pestaña.
+  var visitas = _sheetRows(ACC_SH.VISITAS).slice(-100).reverse().map(function (v) {
+    return {
+      // Con hora: en una bitácora de entradas, saber que alguien entró «el 12/09» y no a
+      // qué hora no sirve para nada cuando hay que reconstruir una noche.
+      id: String(v.id || ''), fecha: _accFechaHora(v.fecha),
+      clave: String(v.clave || ''), lote: String(v.lote || ''),
+      visitante: String(v.visitante || ''), cedula: String(v.cedula || ''),
+      motivo: String(v.motivo || ''), vehiculo: String(v.vehiculo || ''),
+      guardia: String(v.guardia || ''), estado: String(v.estado || ''),
+      autorizadoPor: String(v.autorizadoPor || ''),
+      tieneFoto: !!String(v.fotoUrl || '').trim(),
+      salida: _accFechaHora(v.salida)
+    };
+  });
+
+  // Qué unidades del padrón se quedarían sin a quién preguntar.
+  var conContacto = {};
+  contactos.forEach(function (c) {
+    if (c.activo && c.autoriza && c.celular) conContacto[c.clave] = true;
+  });
+  var sinContactos = [];
+  try {
+    (getPropietarios() || []).forEach(function (pr) {
+      if (!conContacto[pr.clave]) sinContactos.push({ clave: pr.clave, nombre: pr.nombre });
+    });
+  } catch (e) {}
+
+  var avisos = [];
+  if (!garitas.filter(function (g) { return g.activo; }).length) {
+    avisos.push({ tipo: 'error', texto: 'No hay ninguna garita registrada. Sin eso, ningún guardia puede usar el sistema.' });
+  }
+  if (sinContactos.length) {
+    avisos.push({ tipo: 'aviso', texto: sinContactos.length + ' ' + _acPlural(_acUnidad()) +
+      ' sin contactos de acceso. Sus visitas se preguntarán al celular del padrón, que es el de cobro.' });
+  }
+  var sinVencer = autorizaciones.filter(function (a) { return a.activo && !a.hasta; }).length;
+  if (sinVencer) {
+    avisos.push({ tipo: 'aviso', texto: sinVencer + ' autorización(es) sin fecha de vencimiento. ' +
+      'Un permiso que nadie recuerda haber dado es la forma más común de perder el control de quién entra.' });
+  }
+  var purga = 0;
+  try {
+    purga = ScriptApp.getProjectTriggers().filter(function (t) {
+      return t.getHandlerFunction() === 'purgaDiariaDeFotos';
+    }).length;
+  } catch (e) {}
+  if (!purga) {
+    avisos.push({ tipo: 'error', texto: 'El borrado automático de fotos de cédula no está instalado. ' +
+      'Ley 81: no es opcional. Se instala con instalarBorradoDeFotos() desde el editor.' });
+  }
+
+  return {
+    unidad: _acUnidad(), unidadPlural: _acPlural(_acUnidad()),
+    maxContactos: ACC_MAX_CONTACTOS, diasFoto: ACC_DIAS_FOTO,
+    roles: ACC_ROLES, diasSemana: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+    contactos: contactos, garitas: garitas, autorizaciones: autorizaciones,
+    visitas: visitas, sinContactos: sinContactos, avisos: avisos,
+    purgaInstalada: !!purga
+  };
 }

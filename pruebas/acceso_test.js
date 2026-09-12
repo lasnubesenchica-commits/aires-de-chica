@@ -84,6 +84,18 @@ global.ScriptApp = {
     create: () => { TRIGGERS.push({ getHandlerFunction: () => fn }); } }) }) }) })
 };
 global.moduloActivo = () => true;
+global.CONFIG = { TZ: 'America/Panama' };
+// Sólo los dos formatos que el módulo pide. Con la TZ fijada arriba a Panamá, formatear
+// con las funciones locales de Date da lo mismo que Utilities en el Apps Script real.
+global.Utilities = { formatDate: (d, tz, fmt) => {
+  const p = n => (n < 10 ? '0' : '') + n;
+  const base = p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+  return fmt.indexOf('HH:mm') >= 0 ? base + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) : base;
+} };
+// La palabra de la unidad vive en AiresChica_Cliente.gs; aquí basta con que exista.
+global._acUnidad = () => 'lote';
+global._acPlural = p => (/[aeiou]$/i.test(p) ? p + 's' : p + 'es');
+global.getPropietarios = () => PADRON.slice();
 
 const _log = console.log;
 const capturar = () => { SALIDA = []; console.log = (...a) => {
@@ -320,6 +332,84 @@ ok(getAutorizaciones('L-14').length === 0, 'y se puede eliminar del todo');
 console.log('\n── SIN NADA QUE COMPARAR NO SE INVENTA UNA COINCIDENCIA ──');
 ok(autorizacionVigente('Q-9', {}) === null, 'sin cédula ni nombre, null');
 ok(autorizacionVigente('Q-9', { cedula: '', visitante: '  ' }) === null, 'y con los dos en blanco, igual');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Lo que se lleva el panel
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+console.log('\n── LAS DOS FECHAS NO SON LA MISMA CLASE DE DATO ──');
+// La de una autorización vuelve al formulario para editarse: tiene que ser AAAA-MM-DD,
+// que es lo único que un <input type="date"> entiende. La de una visita es una etiqueta
+// que lee una persona, y necesita la HORA: saber que alguien entró «el 12/09» y no a qué
+// hora no sirve para nada la noche que haya que reconstruir qué pasó.
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-456',
+                      desde: '2026-09-12', hasta: '2026-12-31' });
+let d = getAccesoData('');
+ok(d.autorizaciones[0].desde === '2026-09-12',
+   'la autorización viaja en ISO, lista para volver al formulario: ' + d.autorizaciones[0].desde);
+ok(d.autorizaciones[0].hasta === '2026-12-31', 'las dos fechas igual');
+
+_accHojas();
+HOJAS.Visitas.push(['V1', new Date(2026, 8, 11, 21, 35, 0), 'Q-9', '9', 'Pedro Ruiz',
+                    '8-999-111', 'Visita', '', '+50760000000', 'autorizada', 'Ana Rosa',
+                    new Date(2026, 8, 11, 21, 36, 0), 'https://drive/x', '', '', '', new Date()]);
+d = getAccesoData('');
+ok(d.visitas[0].fecha === '11/09/2026 21:35',
+   'la visita trae fecha Y hora, en el formato que se lee aquí: ' + d.visitas[0].fecha);
+ok(d.visitas[0].salida === '', 'y lo que no hay viene vacío, no como «—»: el panel decide cómo pintarlo');
+ok(d.visitas[0].tieneFoto === true && d.visitas[0].fotoUrl === undefined,
+   'la foto se anuncia, pero su enlace NO sale del servidor: es la cédula de un tercero');
+
+console.log('\n── UNA AUTORIZACIÓN SIN FECHA NO SE INVENTA UNA ──');
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Jardinero', recurrente: 'si', dias: 'M' });
+d = getAccesoData('');
+ok(d.autorizaciones[0].hasta === '',
+   'sin vencimiento devuelve cadena vacía, no un guion: un «—» en un campo de fecha es una ' +
+   'fecha inválida que el navegador descarta en silencio → ' + JSON.stringify(d.autorizaciones[0].hasta));
+
+console.log('\n── LA BITÁCORA VIENE DE LA MÁS RECIENTE A LA MÁS VIEJA, Y ACOTADA ──');
+reiniciar();
+_accHojas();
+for (let i = 1; i <= 130; i++) {
+  HOJAS.Visitas.push(['V' + i, new Date(2026, 0, 1, 8, 0, 0), 'Q-9', '9', 'Visita ' + i,
+                      '', '', '', '', 'autorizada', '', '', '', '', '', '', new Date()]);
+}
+d = getAccesoData('');
+ok(d.visitas.length === 100,
+   'con 130 visitas se devuelven cien: la hoja entera serían cientos de kilobytes en cada ' +
+   'apertura de la pestaña → ' + d.visitas.length);
+ok(d.visitas[0].id === 'V130', 'y la primera es la última que entró: ' + d.visitas[0].id);
+ok(d.visitas[99].id === 'V31', 'la última de la lista es la más vieja de las cien: ' + d.visitas[99].id);
+
+console.log('\n── EL PANEL SE ENTERA DE LO QUE FALTA, NO LO DESCUBRE EL GUARDIA ──');
+reiniciar();
+d = getAccesoData('');
+const textos = d.avisos.map(a => a.texto).join(' | ');
+ok(d.avisos.some(a => a.tipo === 'error' && /garita/i.test(a.texto)),
+   'sin garita registrada es un ERROR, no un aviso: sin eso ningún guardia puede usar el sistema');
+ok(d.avisos.some(a => a.tipo === 'error' && /Ley 81/.test(a.texto)),
+   'y que el borrado de fotos no esté instalado, también: la ley no es opcional');
+ok(d.sinContactos.length === 3 && d.avisos.some(a => /sin contactos de acceso/.test(a.texto)),
+   'las tres unidades del padrón salen sin contactos, con su aviso: ' + d.sinContactos.length);
+ok(/lotes/.test(textos),
+   'el aviso habla en la palabra de ESTA comunidad, en plural: un PH de apartamentos no ' +
+   'tiene «lotes» → ' + textos.slice(0, 60));
+
+console.log('\n── UN PERMISO QUE NADIE RECUERDA HABER DADO SE CUENTA APARTE ──');
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+instalarBorradoDeFotos();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Jardinero', recurrente: 'si', dias: 'M' });
+d = getAccesoData('');
+ok(d.avisos.some(a => /sin fecha de vencimiento/.test(a.texto)),
+   'una autorización sin «hasta» se avisa aunque todo lo demás esté en orden');
+ok(!d.avisos.some(a => /garita/i.test(a.texto)) && !d.avisos.some(a => /Ley 81/.test(a.texto)),
+   'y los dos errores desaparecen cuando se resuelven, en vez de quedarse pegados');
+ok(d.sinContactos.length === 2 && d.sinContactos.every(s => s.clave !== 'Q-9'),
+   'Q-9 sale de la lista de pendientes al cargarle un contacto que autoriza');
+ok(d.purgaInstalada === true, 'y el panel sabe que la purga quedó instalada');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

@@ -396,6 +396,18 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .npf label { display:flex; flex-direction:column; gap:4px; font-size:.78rem; font-weight:600; color:var(--ac-muted); min-width:0; }
 .npf .full { grid-column:1 / -1; }
 .npf input { width:100%; padding:9px 10px; border:1px solid var(--ac-border); border-radius:8px; font:inherit; font-weight:400; color:var(--ac-ink); }
+/* Los formularios del control de acceso usan desplegables donde los del padrón usan
+   texto. Se estilan aparte y no en `.npf select` para no cambiar de aspecto, de paso,
+   los formularios que ya existían. */
+.accf select, .accf textarea { width:100%; padding:9px 10px; border:1px solid var(--ac-border); border-radius:8px; font:inherit; font-weight:400; color:var(--ac-ink); background:#fff; }
+.accf textarea { resize:vertical; min-height:56px; }
+.accf .chk { flex-direction:row; align-items:center; gap:8px; font-weight:400; color:var(--ac-ink); }
+.accf .chk input { width:auto; margin:0; }
+.acc-dias { display:flex; flex-wrap:wrap; gap:6px; }
+.acc-dias label { flex-direction:row; align-items:center; gap:5px; font-weight:400; color:var(--ac-ink);
+  border:1px solid var(--ac-border); border-radius:8px; padding:6px 9px; cursor:pointer; }
+.acc-dias input { width:auto; margin:0; }
+.acc-err { background:#fbe6e3; border:1px solid #f0c0b8; color:#8a2b1c; padding:10px 14px; border-radius:10px; font-size:.85rem; }
 /* Toast "guardado" */
 #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(16px); background:var(--ac-ok); color:#fff; padding:9px 18px; border-radius:22px; font-weight:700; font-size:.85rem; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100; box-shadow:0 8px 24px rgba(16,60,80,.22); }
 #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -770,6 +782,7 @@ a.btn { display:inline-block; text-decoration:none; }
     <button data-tab="finanzas">Finanzas</button>
     <button data-tab="prop">Propietarios</button>
     <button data-tab="comunic">Comunicados</button>
+    <button data-tab="acceso">Acceso</button>
     <span class="tab-div" aria-hidden="true"></span>
     <button data-tab="comprob">Comprobantes</button>
     <button data-tab="conc">Conciliación</button>
@@ -924,6 +937,12 @@ a.btn { display:inline-block; text-decoration:none; }
        viven en el mismo contenedor: se repinta según COM_VISTA. -->
   <section id="tab-comunic" style="display:none">
     <div id="comunicBody" class="muted">Cargando…</div>
+  </section>
+
+  <!-- Control de acceso. Contactos, autorizaciones, garitas y bitácora comparten
+       contenedor: se repinta según ACC_VISTA, igual que los comunicados. -->
+  <section id="tab-acceso" style="display:none">
+    <div id="accesoBody" class="muted">Cargando…</div>
   </section>
 
   <!-- OPCIONES / ADMIN -->
@@ -6371,14 +6390,414 @@ function paintFinanzas(){
     </div></div>`;
   body.innerHTML=header+(esBal?_balanceVista(d):_gastosResultado(d));
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Control de acceso
+ *
+ * Todo el módulo entra en UNA llamada (`getAcceso`): contactos, autorizaciones,
+ * garitas y las últimas cien visitas. Cuatro llamadas separadas a un Apps Script
+ * son cuatro arranques en frío, y esta pestaña se abre muchas veces al día.
+ *
+ * Las cuatro vistas comparten contenedor y se repintan de memoria. Sólo se vuelve
+ * al servidor al guardar algo o al tocar «Actualizar».
+ * ═══════════════════════════════════════════════════════════════════════════ */
+let ACC_DATA=null, ACC_VISTA='contactos';
+
+async function renderAcceso(force){
+  const body=document.getElementById('accesoBody');
+  if(ACC_DATA && !force){ paintAcceso(); return; }
+  body.innerHTML='<div class="card"><div class="bd" style="padding:18px"><span class="ac-spin"></span> Cargando el control de acceso…</div></div>';
+  try{
+    // El padrón viaja en paralelo: hace falta para poner nombre a cada unidad en los
+    // desplegables, y pedirlo después sería un segundo de espera al abrir un formulario.
+    const [d]=await Promise.all([jsonp('getAcceso'), accProps()]);
+    ACC_DATA=d;
+  }catch(e){
+    if(onAuthError(e))return;
+    body.innerHTML=`<div class="card"><div class="bd" style="padding:18px">No se pudo cargar el control de acceso: ${_esc(e)}</div></div>`;
+    return;
+  }
+  paintAcceso();
+}
+/** El padrón, una sola vez. Si falla, los desplegables quedan con la clave cruda. */
+async function accProps(){
+  if(PROPS && PROPS.length) return PROPS;
+  try{ PROPS=await jsonp('getPropietarios',{todos:1}); }catch(e){ PROPS=PROPS||[]; }
+  return PROPS;
+}
+function accVista(v){ ACC_VISTA=v; paintAcceso(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+/** Nombre legible de una unidad: «L-14 · Judith Araúz». Si no está en el padrón, la clave. */
+function accNombreDe(clave){
+  const p=(PROPS||[]).find(x=>x.clave===clave);
+  if(!p) return clave;
+  return (p.lote?p.lote+' · ':'')+(p.nombre||clave);
+}
+function accUnidad(){ return (ACC_DATA&&ACC_DATA.unidad)||'unidad'; }
+/** Del AAAA-MM-DD que edita el formulario al dd/mm/aaaa que se lee en la lista. */
+function accFecha(iso){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));
+  return m? `${m[3]}/${m[2]}/${m[1]}` : '—';
+}
+/** La palabra de la unidad con mayúscula, para encabezar una etiqueta. */
+function accUnidadCap(){ const u=accUnidad(); return u.charAt(0).toUpperCase()+u.slice(1); }
+
+function paintAcceso(){
+  const d=ACC_DATA; if(!d) return;
+  const seg=(v,t)=>`<button type="button" class="seg-btn${ACC_VISTA===v?' active':''}" onclick="accVista('${v}')">${t}</button>`;
+  const cuerpo = ACC_VISTA==='autoriz' ? accAutorizHTML()
+               : ACC_VISTA==='garita'  ? accGaritaHTML()
+               : ACC_VISTA==='visitas' ? accVisitasHTML()
+               : accContactosHTML();
+  document.getElementById('accesoBody').innerHTML = accAvisosHTML()+`
+  <div class="card"><div class="hd"><h2>Control de acceso</h2>
+    <div class="seg">${seg('contactos','Contactos')}${seg('autoriz','Autorizaciones')}${seg('garita','Garita')}${seg('visitas','Bitácora')}</div>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn ghost" onclick="renderAcceso(true)">Actualizar</button></div>
+    ${cuerpo}</div>`;
+}
+
+/* ───────── lo que hay que arreglar, arriba y en rojo ───────── */
+function accAvisosHTML(){
+  return ((ACC_DATA&&ACC_DATA.avisos)||[]).map(a=>
+    a.tipo==='error'
+      ? `<div class="acc-err" style="margin-bottom:10px">${_esc(a.texto)}</div>`
+      : `<div class="notice" style="margin-bottom:10px">${_esc(a.texto)}</div>`).join('');
+}
+
+/* ───────── vista 1: contactos por unidad ───────── */
+function accContactosHTML(){
+  const d=ACC_DATA, U=accUnidad();
+  const porClave={};
+  (d.contactos||[]).forEach(c=>{ (porClave[c.clave]=porClave[c.clave]||[]).push(c); });
+  const claves=Object.keys(porClave).sort();
+
+  const filas = claves.length ? claves.map(k=>{
+    const cs=porClave[k], autorizan=cs.filter(c=>c.activo&&c.autoriza).length;
+    return `<div class="cm-item" onclick="accAbrirUnidad('${_esc(k)}')">
+      <div><div class="cm-tit">${_esc(accNombreDe(k))}</div>
+        <div class="cm-sub">${cs.map(c=>_esc(c.nombre)+(c.activo&&c.autoriza?'':' (no autoriza)')).join(' · ')}</div></div>
+      <div class="cm-nums"><span class="pill ${autorizan?'ok':'warn'}">${autorizan} de ${d.maxContactos}</span><br>
+        autorizan visitas</div></div>`;
+  }).join('') : `<div style="padding:22px"><p class="muted" style="margin:0">
+      Todavía no hay contactos de acceso cargados. Mientras tanto, las visitas se preguntan
+      al celular del padrón —que es el de <b>cobro</b>, no necesariamente el de quien está
+      en la casa a las nueve de la noche.</p></div>`;
+
+  const sin=(d.sinContactos||[]);
+  const pendientes = sin.length ? `
+    <div style="padding:14px 18px;border-top:1px solid var(--ac-border)">
+      <div style="font-weight:700;font-size:.86rem;margin-bottom:8px">
+        ${sin.length} ${_esc(sin.length===1?U:d.unidadPlural)} sin contactos de acceso</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${sin.map(s=>
+        `<button class="btn ghost" style="font-size:.78rem;padding:5px 10px"
+           onclick="accFormContacto('${_esc(s.clave)}','')">+ ${_esc(s.clave)}</button>`).join('')}</div>
+    </div>` : '';
+
+  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      A quién se le pregunta por WhatsApp cuando llega una visita, en orden. Admite al
+      inquilino que vive ahí y no es dueño, al cuidador, al hijo que sí contesta.
+      Hasta <b>${d.maxContactos}</b> por ${_esc(U)}: cada uno que autoriza es un mensaje más
+      por visita, y con diez nadie se siente responsable de contestar.
+    </div>
+    <div class="cm-lista">${filas}</div>${pendientes}`;
+}
+
+function accAbrirUnidad(clave){
+  const d=ACC_DATA, U=accUnidad();
+  const cs=(d.contactos||[]).filter(c=>c.clave===clave);
+  const autorizan=cs.filter(c=>c.activo&&c.autoriza).length;
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${_esc(accNombreDe(clave))}</div>
+    <div class="muted" style="font-size:.82rem">Contactos de acceso · ${autorizan} de ${d.maxContactos} autorizan visitas</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="cm-lista" style="border:1px solid var(--ac-border);border-radius:10px">${
+      cs.length ? cs.map(c=>`<div class="cm-item">
+        <div><div class="cm-tit">${_esc(c.nombre)}</div>
+          <div class="cm-sub">${_esc(c.rol)} · ${_esc(c.celular||'sin celular')}${c.activo?'':' · inactivo'}</div></div>
+        <div class="cm-nums"><span class="pill ${c.activo&&c.autoriza?'ok':'warn'}">${c.autoriza?'autoriza':'sólo avisos'}</span><br>
+          <button class="link-btn" onclick="accFormContacto('${_esc(clave)}','${_esc(c.id)}')">Editar</button>
+          <button class="link-btn" style="color:var(--ac-danger)" onclick="accBorrarContacto('${_esc(c.id)}',this)">Quitar</button>
+        </div></div>`).join('')
+      : `<div class="muted" style="padding:16px">Esta ${_esc(U)} no tiene contactos de acceso.
+          Sus visitas se preguntan al celular del padrón, que es el de cobro.</div>`
+    }</div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">
+      Sólo cuentan para el tope de ${d.maxContactos} los que están <b>activos</b> y <b>autorizan</b>.
+      Un contacto sin celular puede quedarse para tenerlo apuntado, pero no puede autorizar:
+      se le pregunta por WhatsApp.</div>
+    <div class="modal-actions">
+      <button class="link-btn" onclick="closeModal()">Cerrar</button>
+      <button class="btn green" onclick="accFormContacto('${_esc(clave)}','')">+ Agregar contacto</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+
+/** Desplegable de unidades del padrón, con la que ya viene marcada. */
+function accOptsUnidad(sel){
+  const ps=(PROPS||[]).slice().sort((a,b)=>String(a.lote||a.clave).localeCompare(String(b.lote||b.clave),'es',{numeric:true}));
+  const hay=ps.some(p=>p.clave===sel);
+  return (sel&&!hay?`<option value="${_esc(sel)}" selected>${_esc(sel)}</option>`:'')
+    + ps.map(p=>`<option value="${_esc(p.clave)}"${p.clave===sel?' selected':''}>${_esc(accNombreDe(p.clave))}</option>`).join('');
+}
+
+function accFormContacto(clave,id){
+  const d=ACC_DATA;
+  const c=(d.contactos||[]).find(x=>x.id===id) || {clave:clave,rol:'otro',autoriza:true,activo:true,orden:1};
+  const roles=(d.roles||['propietario','inquilino','familiar','cuidador','otro']);
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${id?'Editar contacto':'Nuevo contacto de acceso'}</div>
+    <div class="muted" style="font-size:.82rem">${_esc(accNombreDe(c.clave||clave))}</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf accf">
+      <label class="full">${_esc(accUnidadCap())} *
+        <select id="ac_clave">${accOptsUnidad(c.clave||clave)}</select></label>
+      <label class="full">Nombre *<input id="ac_nombre" value="${_esc(c.nombre||'')}" placeholder="Nombre y apellido"></label>
+      <label>Celular<input id="ac_cel" value="${_esc(c.celular||'')}" placeholder="6000-0000"></label>
+      <label>Rol<select id="ac_rol">${roles.map(r=>`<option value="${r}"${r===c.rol?' selected':''}>${r}</option>`).join('')}</select></label>
+      <label>Orden<input id="ac_orden" type="number" min="1" max="9" value="${Number(c.orden)||1}"></label>
+      <label class="chk"><input id="ac_autoriza" type="checkbox"${c.autoriza?' checked':''}>
+        <span>Puede autorizar visitas</span></label>
+      <label class="chk"><input id="ac_activo" type="checkbox"${c.activo!==false?' checked':''}>
+        <span>Activo</span></label>
+      <label class="full">Notas<input id="ac_notas" value="${_esc(c.notas||'')}" placeholder="Opcional"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">
+      El <b>orden</b> decide a quién se le pregunta primero. Quien autoriza necesita celular.</div>
+    <div id="acErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="link-btn" onclick="accAbrirUnidad('${_esc(c.clave||clave)}')">Cancelar</button>
+      <button class="btn green" onclick="accGuardarContacto('${_esc(id||'')}',this)">Guardar</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>{ const el=document.getElementById('ac_nombre'); if(el) el.focus(); },60);
+}
+
+async function accGuardarContacto(id,btn){
+  const g=i=>((document.getElementById(i)||{}).value||'').trim();
+  const ck=i=>!!(document.getElementById(i)||{}).checked;
+  const err=document.getElementById('acErr');
+  const contacto={ id:id, clave:g('ac_clave'), nombre:g('ac_nombre'), celular:g('ac_cel'),
+    rol:g('ac_rol'), orden:Number(g('ac_orden'))||1, notas:g('ac_notas'),
+    autoriza:ck('ac_autoriza'), activo:ck('ac_activo') };
+  if(!contacto.clave||!contacto.nombre){ err.textContent='La unidad y el nombre no pueden quedar vacíos.'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('guardarContacto',{contacto});
+    closeModal(); toast(id?'✓ Contacto actualizado':'✓ Contacto agregado');
+    await renderAcceso(true);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
+
+async function accBorrarContacto(id,btn){
+  if(!confirm('¿Quitar este contacto de acceso?\n\nDeja de recibir las consultas de visita de su unidad. Las visitas ya registradas no se tocan.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarContacto',{id}); closeModal(); toast('✓ Contacto quitado'); await renderAcceso(true); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
+/* ───────── vista 2: autorizaciones permanentes ───────── */
+function accAutorizHTML(){
+  const d=ACC_DATA, as=(d.autorizaciones||[]);
+  const filas = as.length ? as.map(a=>{
+    const cuando = a.recurrente ? ('Todos los '+(a.dias||[]).join(', '))
+                 : ('Desde '+accFecha(a.desde));
+    const vence = a.hasta ? ('hasta '+accFecha(a.hasta)) : 'SIN vencimiento';
+    const [cls,txt] = !a.activo ? ['warn','inactiva'] : a.vigente ? ['ok','vigente'] : ['warn','fuera de fecha'];
+    return `<div class="cm-item" onclick="accFormAutoriz('${_esc(a.id)}')">
+      <div><div class="cm-tit">${_esc(a.visitante)}${a.cedula?` <span class="muted" style="font-weight:400">· ${_esc(a.cedula)}</span>`:''}</div>
+        <div class="cm-sub">${_esc(accNombreDe(a.clave))} · ${_esc(cuando)} · ${_esc(vence)}${a.cedula?'':' · sin cédula'}</div></div>
+      <div class="cm-nums"><span class="pill ${cls}">${txt}</span></div></div>`;
+  }).join('') : `<div style="padding:22px"><p class="muted" style="margin:0">
+      No hay autorizaciones permanentes. Sirven para el jardinero de todos los martes o la
+      señora que limpia: el guardia no tiene que despertar a nadie, el sistema ya sabe que
+      puede pasar.</p></div>`;
+
+  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      Permisos que el residente deja puestos de antemano. Si registró la <b>cédula</b>, tiene
+      que coincidir la cédula: «Juan Pérez» hay muchos y el guardia tiene el documento en la
+      mano. Si sólo dejó el nombre, la coincidencia se compara por nombre y el sistema
+      <b>lo dice</b> — el guardia merece saber si fue firme o floja.
+    </div>
+    <div style="padding:10px 18px;border-bottom:1px solid var(--ac-border);text-align:right">
+      <button class="btn green" onclick="accFormAutoriz('')">+ Nueva autorización</button></div>
+    <div class="cm-lista">${filas}</div>`;
+}
+
+function accFormAutoriz(id){
+  const d=ACC_DATA;
+  const a=(d.autorizaciones||[]).find(x=>x.id===id) || {recurrente:false,activo:true,dias:[]};
+  const dias=(d.diasSemana||['L','M','X','J','V','S','D']);
+  const marc=(a.dias||[]);
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${id?'Editar autorización':'Nueva autorización'}</div>
+    <div class="muted" style="font-size:.82rem">Un permiso dejado puesto de antemano</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf accf">
+      <label class="full">${_esc(accUnidadCap())} que autoriza *
+        <select id="au_clave">${accOptsUnidad(a.clave||'')}</select></label>
+      <label class="full">Visitante *<input id="au_vis" value="${_esc(a.visitante||'')}" placeholder="Nombre y apellido"></label>
+      <label>Cédula<input id="au_ced" value="${_esc(a.cedula||'')}" placeholder="8-123-456"></label>
+      <label>Quién lo autoriza<input id="au_por" value="${_esc(a.creadoPor||'')}" placeholder="Opcional"></label>
+      <label>Desde<input id="au_desde" type="date" value="${_esc(a.desde||'')}"></label>
+      <label>Hasta<input id="au_hasta" type="date" value="${_esc(a.hasta||'')}"></label>
+      <label class="chk full"><input id="au_rec" type="checkbox"${a.recurrente?' checked':''}
+          onchange="document.getElementById('au_diasBox').style.display=this.checked?'':'none'">
+        <span>Se repite todas las semanas</span></label>
+      <div class="full" id="au_diasBox" style="display:${a.recurrente?'':'none'}">
+        <div style="font-size:.78rem;font-weight:600;color:var(--ac-muted);margin-bottom:5px">Días</div>
+        <div class="acc-dias">${dias.map(x=>
+          `<label><input type="checkbox" class="au_dia" value="${x}"${marc.indexOf(x)>=0?' checked':''}><span>${x}</span></label>`).join('')}</div>
+      </div>
+      <label class="chk full"><input id="au_activo" type="checkbox"${a.activo!==false?' checked':''}>
+        <span>Activa</span></label>
+      <label class="full">Notas<input id="au_notas" value="${_esc(a.notas||'')}" placeholder="Jardinero, empleada, etc."></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">
+      Dejar <b>Hasta</b> vacío es un permiso sin vencimiento. Es lo que hace falta para el
+      jardinero de siempre, pero un permiso que nadie recuerda haber dado es la forma más
+      común de perder el control de quién entra: el panel los cuenta aparte arriba.</div>
+    <div id="auErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div class="modal-actions">
+      ${id?`<button class="btn ghost" style="color:var(--ac-danger)" onclick="accBorrarAutoriz('${_esc(id)}',this)">Eliminar</button>`:''}
+      <button class="link-btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" onclick="accGuardarAutoriz('${_esc(id||'')}',this)">Guardar</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>{ const el=document.getElementById('au_vis'); if(el) el.focus(); },60);
+}
+
+async function accGuardarAutoriz(id,btn){
+  const g=i=>((document.getElementById(i)||{}).value||'').trim();
+  const ck=i=>!!(document.getElementById(i)||{}).checked;
+  const err=document.getElementById('auErr');
+  const dias=[...document.querySelectorAll('.au_dia')].filter(x=>x.checked).map(x=>x.value);
+  const autorizacion={ id:id, clave:g('au_clave'), visitante:g('au_vis'), cedula:g('au_ced'),
+    desde:g('au_desde'), hasta:g('au_hasta'), recurrente:ck('au_rec'), dias:dias.join(','),
+    creadoPor:g('au_por'), activo:ck('au_activo'), notas:g('au_notas') };
+  if(!autorizacion.clave||!autorizacion.visitante){ err.textContent='La unidad y el nombre del visitante no pueden quedar vacíos.'; return; }
+  if(autorizacion.recurrente && !dias.length){ err.textContent='Una autorización que se repite necesita al menos un día.'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('guardarAutorizacion',{autorizacion});
+    closeModal(); toast(id?'✓ Autorización actualizada':'✓ Autorización creada');
+    await renderAcceso(true);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
+
+async function accBorrarAutoriz(id,btn){
+  if(!confirm('¿Eliminar esta autorización?\n\nA partir de ahora esa visita vuelve a preguntarse por WhatsApp cada vez.')) return;
+  btn.disabled=true;
+  try{ await post('eliminarAutorizacion',{id}); closeModal(); toast('✓ Autorización eliminada'); await renderAcceso(true); }
+  catch(e){ btn.disabled=false; if(!onAuthError(e)) alert('Error: '+e); }
+}
+
+/* ───────── vista 3: la garita ───────── */
+function accGaritaHTML(){
+  const gs=(ACC_DATA.garitas||[]);
+  const filas = gs.length ? gs.map(g=>`<div class="cm-item" onclick="accFormGarita('${_esc(g.id)}')">
+      <div><div class="cm-tit">${_esc(g.nombre)}</div>
+        <div class="cm-sub">${_esc(g.celular||'sin celular')}${g.turno?' · '+_esc(g.turno):''}</div></div>
+      <div class="cm-nums"><span class="pill ${g.activo?'ok':'warn'}">${g.activo?'activa':'inactiva'}</span></div></div>`).join('')
+    : `<div style="padding:22px"><p class="muted" style="margin:0">
+        No hay ninguna garita registrada. Sin eso, ningún guardia puede usar el sistema:
+        los mensajes que llegan de un número desconocido se tratan como de un residente.</p></div>`;
+
+  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      El número es <b>del puesto</b>, no de quien lo ocupa. El turno rota y los guardias
+      renuncian: con el número personal, el historial se va con la persona y el relevo
+      empieza sin nada.
+    </div>
+    <div style="padding:10px 18px;border-bottom:1px solid var(--ac-border);text-align:right">
+      <button class="btn green" onclick="accFormGarita('')">+ Nueva garita</button></div>
+    <div class="cm-lista">${filas}</div>`;
+}
+
+function accFormGarita(id){
+  const g=(ACC_DATA.garitas||[]).find(x=>x.id===id) || {activo:true};
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${id?'Editar garita':'Nueva garita'}</div>
+    <div class="muted" style="font-size:.82rem">El teléfono del puesto de vigilancia</div></div>`;
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf accf">
+      <label class="full">Nombre del puesto *<input id="ga_nombre" value="${_esc(g.nombre||'')}" placeholder="Garita principal"></label>
+      <label>Celular *<input id="ga_cel" value="${_esc(g.celular||'')}" placeholder="6000-0000"></label>
+      <label>Turno<input id="ga_turno" value="${_esc(g.turno||'')}" placeholder="24 h / diurno"></label>
+      <label class="chk full"><input id="ga_activo" type="checkbox"${g.activo!==false?' checked':''}>
+        <span>Activa</span></label>
+      <label class="full">Notas<input id="ga_notas" value="${_esc(g.notas||'')}" placeholder="Opcional"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:10px">
+      Un mensaje que llegue de este número se trata como del <b>guardia</b>. Si el número
+      es además el de un residente, el sistema lo tomará como guardia: no lo uses para las
+      dos cosas.</div>
+    <div id="gaErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="link-btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn green" onclick="accGuardarGarita('${_esc(id||'')}',this)">Guardar</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>{ const el=document.getElementById('ga_nombre'); if(el) el.focus(); },60);
+}
+
+async function accGuardarGarita(id,btn){
+  const g=i=>((document.getElementById(i)||{}).value||'').trim();
+  const err=document.getElementById('gaErr');
+  const garita={ id:id, nombre:g('ga_nombre'), celular:g('ga_cel'), turno:g('ga_turno'),
+    notas:g('ga_notas'), activo:!!(document.getElementById('ga_activo')||{}).checked };
+  if(!garita.nombre||!garita.celular){ err.textContent='El nombre del puesto y el celular hacen falta.'; return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('guardarGarita',{garita});
+    closeModal(); toast(id?'✓ Garita actualizada':'✓ Garita registrada');
+    await renderAcceso(true);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
+
+/* ───────── vista 4: la bitácora ───────── */
+const ACC_EST={ autorizada:['ok','autorizada'], preautorizada:['ok','preautorizada'],
+  rechazada:['red','rechazada'], pendiente:['warn','pendiente'], 'sin-respuesta':['warn','sin respuesta'] };
+
+function accVisitasHTML(){
+  const vs=(ACC_DATA.visitas||[]);
+  if(!vs.length) return `<div style="padding:22px"><p class="muted" style="margin:0">
+      Todavía no ha entrado nadie por el sistema. Aquí queda quién entró, a qué
+      ${_esc(accUnidad())}, quién lo autorizó y a qué hora.</p></div>`;
+
+  const filas=vs.map(v=>{
+    const [cls,txt]=ACC_EST[v.estado]||['warn',v.estado||'—'];
+    return `<tr>
+      <td>${_esc(v.fecha||'—')}</td>
+      <td>${_esc(v.lote||v.clave||'—')}</td>
+      <td>${_esc(v.visitante||'—')}</td>
+      <td>${_esc(v.cedula||'—')}</td>
+      <td>${_esc(v.motivo||'—')}</td>
+      <td>${_esc(v.vehiculo||'—')}</td>
+      <td><span class="pill ${cls}">${_esc(txt)}</span></td>
+      <td>${_esc(v.autorizadoPor||'—')}</td>
+      <td>${_esc(v.salida||'—')}</td>
+      <td>${v.tieneFoto?'📷':'—'}</td></tr>`;
+  }).join('');
+
+  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      Las últimas ${vs.length} visitas, de la más reciente a la más vieja. La <b>foto de la
+      cédula</b> se borra sola a los ${ACC_DATA.diasFoto} días (Ley 81): la fila se queda —saber quién
+      entró es legítimo— pero la imagen del documento de un tercero que nunca firmó nada, no.
+    </div>
+    <div style="overflow:auto"><table>
+      <thead><tr><th>Fecha</th><th>Unidad</th><th>Visitante</th><th>Cédula</th><th>Motivo</th>
+        <th>Vehículo</th><th>Estado</th><th>Autorizó</th><th>Salida</th><th>Foto</th></tr></thead>
+      <tbody>${filas}</tbody></table></div>`;
+}
+
 document.getElementById('tabs').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
   [...document.querySelectorAll('#tabs button')].forEach(b=>b.classList.remove('active'));
   e.target.classList.add('active');
   const t=e.target.dataset.tab;
-  ['dash','conc','registro','comprob','prop','comunic','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
+  ['dash','conc','registro','comprob','prop','comunic','acceso','gastos','finanzas','opts'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'':'none');
   if(t==='prop')renderProp();
   if(t==='comunic')renderComunic();
+  if(t==='acceso')renderAcceso();
   if(t==='comprob')renderComprob();
   if(t==='gastos')renderGastos();
   if(t==='finanzas')renderFinanzas();

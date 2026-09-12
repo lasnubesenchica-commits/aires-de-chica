@@ -331,11 +331,14 @@ var AC_MODULO_DE = {
   getEnviosPendientes:'comunicaciones', marcarEnvio:'comunicaciones',
   verComunicado:'comunicaciones', misComunicados:'comunicaciones', acuseComunicado:'comunicaciones',
 
-  // Control de acceso. Las acciones aún no existen; la verja ya las conoce para que
-  // el módulo no nazca abierto.
+  // Control de acceso. Todas van listadas, incluso las que aún no existen: una
+  // acción sin clasificar cae en «financiero», así que olvidar una aquí abriría
+  // el módulo a quien no lo contrató.
   getVisitas:'acceso', registrarVisita:'acceso', autorizarVisita:'acceso',
   getAutorizaciones:'acceso', guardarAutorizacion:'acceso', eliminarAutorizacion:'acceso',
-  getGarita:'acceso', guardarGarita:'acceso'
+  getGarita:'acceso', guardarGarita:'acceso',
+  getContactos:'acceso', guardarContacto:'acceso', eliminarContacto:'acceso',
+  getAcceso:'acceso'
 };
 
 /** Los módulos activos en esta copia. */

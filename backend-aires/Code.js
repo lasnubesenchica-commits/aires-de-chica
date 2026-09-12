@@ -152,6 +152,8 @@ function doGet(e) {
     else if (action === 'getBalance')      { requireAuth(p.token); out = { ok: true, data: getBalance(p.asOf || null) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
     else if (action === 'getCuentasData')  { requireAuth(p.token); out = { ok: true, data: getCuentasData() }; }
+    // Todo lo que la pestaña de Acceso necesita, en una sola llamada.
+    else if (action === 'getAcceso')       { requireAuth(p.token); out = { ok: true, data: getAccesoData(p.clave || '') }; }
     else if (action === 'getSaldosCuentas'){ requireAuth(p.token); out = { ok: true, data: saldosPorCuenta(p.asOf || null) }; }
     else if (action === 'getTraspasos')    { requireAuth(p.token); out = { ok: true, data: getTraspasos() }; }
     else if (action === 'getRegistro')     { requireAuth(p.token); out = { ok: true, data: getRegistro({
@@ -252,6 +254,11 @@ function doPost(e) {
     else if (action === 'eliminarCuenta')     out = { ok: true, data: eliminarCuenta(data.id) };
     else if (action === 'marcarCuentaCobro')  out = { ok: true, data: marcarCuentaCobro(data.id) };
     else if (action === 'registrarTraspaso')  out = { ok: true, data: registrarTraspaso(data.traspaso || {}) };
+    else if (action === 'guardarContacto')    out = { ok: true, data: guardarContacto(data.contacto || {}) };
+    else if (action === 'eliminarContacto')   out = { ok: true, data: eliminarContacto(data.id) };
+    else if (action === 'guardarGarita')      out = { ok: true, data: guardarGarita(data.garita || {}) };
+    else if (action === 'guardarAutorizacion') out = { ok: true, data: guardarAutorizacion(data.autorizacion || {}) };
+    else if (action === 'eliminarAutorizacion') out = { ok: true, data: eliminarAutorizacion(data.id) };
     else if (action === 'eliminarTraspaso')   out = { ok: true, data: eliminarTraspaso(data.id) };
     else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };

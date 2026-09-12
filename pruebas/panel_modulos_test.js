@@ -32,10 +32,10 @@ function paginaCon() {
                         HTML.indexOf('function pantallaSinConexion'));
   const ini = HTML.indexOf("document.getElementById('tabs').addEventListener('click'");
   const manejador = HTML.slice(ini, HTML.indexOf('\n});', ini) + 4);
-  const stubs = ['renderProp','renderComunic','renderComprob','renderGastos','renderFinanzas',
-                 'cargarRegistro','renderOpts'].map(f => 'function ' + f + '(){}').join('\n')
+  const stubs = ['renderProp','renderComunic','renderAcceso','renderComprob','renderGastos',
+                 'renderFinanzas','cargarRegistro','renderOpts'].map(f => 'function ' + f + '(){}').join('\n')
                  + '\nvar REG_DATA = 1;';
-  const secciones = ['dash','conc','registro','comprob','prop','comunic','gastos','finanzas','opts']
+  const secciones = ['dash','conc','registro','comprob','prop','comunic','acceso','gastos','finanzas','opts']
     .map(t => `<section id="tab-${t}" style="display:none">${t}</section>`).join('');
   return `<!doctype html><html><body>${nav}${secciones}` +
          `<script>${stubs}\n${fn}\n${manejador}</script></body></html>`;
@@ -64,14 +64,15 @@ function paginaCon() {
   console.log('── SIN LISTA DE MÓDULOS NO SE ESCONDE NADA ──');
   await p.evaluate(() => aplicarModulos(undefined));
   let v = await visibles();
-  ok(v.length === 9, 'un backend viejo o una copia sin la propiedad ve su panel entero: ' + v.length);
+  ok(v.length === 10, 'un backend viejo o una copia sin la propiedad ve su panel entero: ' + v.length);
   await p.evaluate(() => aplicarModulos([]));
-  ok((await visibles()).length === 9, 'y una lista vacía tampoco esconde nada');
+  ok((await visibles()).length === 10, 'y una lista vacía tampoco esconde nada');
 
   console.log('\n── SÓLO EL MÓDULO FINANCIERO ──');
   await p.evaluate(() => aplicarModulos(['financiero']));
   v = await visibles();
   ok(v.indexOf('comunic') < 0, 'Comunicados desaparece: ' + v.join(' '));
+  ok(v.indexOf('acceso') < 0, 'y Acceso también: es un módulo que se contrata aparte');
   ok(v.indexOf('dash') >= 0 && v.indexOf('gastos') >= 0 && v.indexOf('conc') >= 0,
      'y lo financiero se queda');
   ok(v.indexOf('prop') >= 0 && v.indexOf('registro') >= 0 && v.indexOf('opts') >= 0,
@@ -84,8 +85,32 @@ function paginaCon() {
   ok(v.indexOf('dash') < 0 && v.indexOf('gastos') < 0 && v.indexOf('conc') < 0,
      'lo financiero desaparece: ' + v.join(' '));
   ok(v.indexOf('comunic') >= 0, 'y Comunicados se queda');
+  ok(v.indexOf('acceso') < 0, 'Acceso no se cuela con Comunicaciones: son dos módulos distintos');
 
+  // El PH que contrata la garita y nada más. Es un caso real del producto: hay
+  // comunidades que ya llevan su contabilidad aparte y sólo quieren controlar quién entra.
+  console.log('\n── SÓLO CONTROL DE ACCESO ──');
+  p = await abrir();
+  await p.evaluate(() => aplicarModulos(['acceso']));
+  v = await visibles();
+  ok(v.indexOf('acceso') >= 0, 'Acceso se ve: ' + v.join(' '));
+  ok(v.indexOf('dash') < 0 && v.indexOf('gastos') < 0 && v.indexOf('finanzas') < 0
+     && v.indexOf('conc') < 0 && v.indexOf('comprob') < 0,
+     'y lo financiero entero desaparece, incluidos Comprobantes y Finanzas');
+  ok(v.indexOf('comunic') < 0, 'Comunicados tampoco aparece de regalo');
+  // No se afirma que «acceso» quede abierta al arrancar: el padrón no pertenece a ningún
+  // módulo, así que es él quien queda primero. Lo que sí tiene que cumplirse es que la
+  // pestaña ABRA al tocarla — que esté en la barra y no lleve a ningún sitio sería peor
+  // que no estar.
+  await p.evaluate(() => document.querySelector('#tabs [data-tab="acceso"]').click());
+  ok(await p.evaluate(() => document.getElementById('tab-acceso').style.display) !== 'none',
+     'y al tocarla, su sección se abre');
+
+  // Página nueva: el escenario anterior terminó con un clic, y comprobar aquí la pestaña
+  // que uno mismo acaba de abrir no demuestra nada sobre el cambio automático.
   console.log('\n── EL PANEL NO ABRE EN UNA PESTAÑA ESCONDIDA ──');
+  p = await abrir();
+  await p.evaluate(() => aplicarModulos(['comunicaciones']));
   const activa = await p.evaluate(() => {
     const a = document.querySelector('#tabs button.active');
     return { tab: a && a.dataset.tab, visible: a && a.style.display !== 'none' };
