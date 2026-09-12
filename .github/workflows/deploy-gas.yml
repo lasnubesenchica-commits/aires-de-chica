@@ -47,7 +47,11 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           # El router vive en otra cuenta de Google. Un editor de otro dominio puede
-          # subirle código, pero no mover su despliegue, así que lleva su propio token.
+          # subirle código, pero no mover su despliegue, así que lleva su propia
+          # credencial — las TRES piezas: el token se emite para una aplicación OAuth
+          # concreta y presentarlo con otro client_id da «unauthorized_client».
+          GOOGLE_CLIENT_ID_BC: ${{ secrets.GOOGLE_CLIENT_ID_BC }}
+          GOOGLE_CLIENT_SECRET_BC: ${{ secrets.GOOGLE_CLIENT_SECRET_BC }}
           GOOGLE_REFRESH_TOKEN_BC: ${{ secrets.GOOGLE_REFRESH_TOKEN_BC }}
         run: |
           if [ -n "${{ github.event.inputs.solo }}" ]; then

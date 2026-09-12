@@ -201,9 +201,40 @@ async function desplegarCliente(api, cliente, files) {
     console.log(`    ✓ despliegue ${deploymentId} en la versión ${versionNumber}`);
     return { id: cliente.id, ok: true, versionNumber, deploymentId };
   } catch (e) {
-    console.error(`    ✗ ${e.message}`);
-    return { id: cliente.id, ok: false, error: e.message };
+    const msg = explicar(e.message, cliente);
+    console.error(`    ✗ ${msg}`);
+    return { id: cliente.id, ok: false, error: msg };
   }
+}
+
+/**
+ * Traduce los errores de Google que no dicen nada por sí solos.
+ *
+ * No es cosmética: «unauthorized_client» a secas manda a buscar permisos del proyecto,
+ * que es el sitio equivocado. El problema está en el repositorio, y cada PH nuevo con
+ * su propia cuenta va a tropezar con el mismo.
+ */
+function explicar(mensaje, cliente) {
+  const m = String(mensaje || '');
+  const v = variablesDeCredencial(cliente && cliente.credencial);
+
+  if (/unauthorized_client/i.test(m)) {
+    return m + ` — ese token no fue emitido para esta aplicación OAuth. ` +
+      (v.sufijo
+        ? `Copia también ${v.id} y ${v.secreto} desde donde sacaste ${v.token}: ` +
+          `los tres van juntos, el token solo no sirve.`
+        : `Revisa que GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET sean los de la aplicación ` +
+          `con la que se generó GOOGLE_REFRESH_TOKEN.`);
+  }
+  if (/invalid_grant/i.test(m)) {
+    return m + ` — el token caducó o fue revocado. Hay que volver a generar ${v.token}.`;
+  }
+  if (/same domain as the script owner/i.test(m)) {
+    return m + ` — compartir el proyecto como editor no basta para mover el despliegue. ` +
+      `Este proyecto necesita una credencial de su propio dominio ` +
+      `("credencial" en clientes.json).`;
+  }
+  return m;
 }
 
 async function main(opciones) {
@@ -280,5 +311,5 @@ if (require.main === module) {
   main().catch((err) => { console.error('\nError:', err.message); process.exit(1); });
 } else {
   module.exports = { leerClientes, readGasFiles, desplegarCliente, main,
-                     getAuth, variablesDeCredencial, credencialDe };
+                     getAuth, variablesDeCredencial, credencialDe, explicar };
 }

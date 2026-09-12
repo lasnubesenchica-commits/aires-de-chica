@@ -175,6 +175,21 @@ catch (e) { sinToken = e.message; }
 ok(/GOOGLE_REFRESH_TOKEN_BC/.test(sinToken) && !/tok-aires/.test(sinToken),
    'si falta su token se planta y dice cuál, en vez de usar el de otra cuenta: ' + sinToken);
 
+console.log('\n── LOS ERRORES DE GOOGLE SE TRADUCEN ──');
+// «unauthorized_client» a secas manda a buscar permisos del proyecto, que es el sitio
+// equivocado: el problema está en los secretos del repositorio.
+let ex = D.explicar('unauthorized_client', { credencial: 'BC' });
+ok(/GOOGLE_CLIENT_ID_BC/.test(ex) && /GOOGLE_CLIENT_SECRET_BC/.test(ex),
+   'dice que el token no viaja solo, y nombra las otras dos variables');
+ok(/GOOGLE_REFRESH_TOKEN_BC/.test(ex), 'y de dónde sacarlas: ' + ex.slice(0, 100));
+ok(!/GOOGLE_CLIENT_ID_BC/.test(D.explicar('unauthorized_client', {})),
+   'sin credencial propia nombra las de siempre, no unas inventadas');
+ok(/caducó|revocado/.test(D.explicar('invalid_grant', {})), 'invalid_grant es un token vencido');
+ok(/credencial/.test(D.explicar('Only users in the same domain as the script owner may deploy this script.', {})),
+   'y el del dominio manda a clientes.json, no a compartir más el proyecto');
+ok(D.explicar('Requested entity was not found', {}) === 'Requested entity was not found',
+   'lo que ya se entiende se deja tal cual');
+
 console.log('\n── UNA CREDENCIAL QUE FALTA NO DETIENE A LAS DEMÁS ──');
 const raizCred = raizCon({ gasDir: 'backend-aires', clientes: [
   { id: 'aires', nombre: 'Aires', scriptId: 'S-AIRES', deploymentId: 'D-AIRES' },
