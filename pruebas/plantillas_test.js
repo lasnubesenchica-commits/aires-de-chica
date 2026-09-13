@@ -260,7 +260,19 @@ ret = retirarPlantillasViejas();
 t2 = soltar();
 ok(borrados().length === 0 && ret.seRetirarian === 1,
    'sin confirmar sólo dice lo que haría: borrar es irreversible');
-ok(/retirarPlantillasViejas\(true\)/.test(t2), 'y dice cómo confirmarlo');
+// Lo que se le dice al usuario tiene que poder HACERSE. El botón «Ejecutar» del editor
+// no pasa argumentos —es la regla 1 de docs/apps-script-despliegue.md— así que una
+// instrucción del tipo «llama a esto(true)» no se puede cumplir desde ningún sitio:
+// deja la función convertida en un mirador. Aquí se comprueba que lo que se ofrece es
+// una función que EXISTE y que no pide argumentos.
+const ofrecida = (t2.match(/\n\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/m) || [])[1] ||
+                 (t2.match(/\b(retirarPlantillasViejas\w*)/g) || []).pop();
+ok(/retirarPlantillasViejasDeVerdad/.test(t2), 'y dice cómo confirmarlo: ' + ofrecida);
+ok(typeof retirarPlantillasViejasDeVerdad === 'function' &&
+   retirarPlantillasViejasDeVerdad.length === 0,
+   'y eso que ofrece existe y NO pide argumentos, que es lo único ejecutable desde el editor');
+ok(!/retirarPlantillasViejas\(true\)/.test(t2),
+   'no se le pide que escriba un argumento: en el editor no hay dónde escribirlo');
 
 SALIDAS = []; capturar();
 ret = retirarPlantillasViejas(true);

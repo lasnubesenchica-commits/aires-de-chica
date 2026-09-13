@@ -531,7 +531,8 @@ function retirarPlantillasViejas(confirmar) {
   }
   if (confirmar !== true) {
     console.log('\nSe pueden retirar %s. Borrarlas es irreversible.', listas.length);
-    console.log('Si estás de acuerdo: retirarPlantillasViejas(true)');
+    console.log('Si estás de acuerdo, elige ESTA en el desplegable de arriba y ejecútala:');
+    console.log('    retirarPlantillasViejasDeVerdad');
     return { ok: true, retiradas: 0, seRetirarian: listas.length };
   }
 
@@ -547,6 +548,20 @@ function retirarPlantillasViejas(confirmar) {
   });
   console.log('\n%s retirada(s).', hechas);
   return { ok: true, retiradas: hechas, esperando: esperando.length };
+}
+
+/**
+ * Retira las plantillas viejas de verdad. Sin argumentos, para el editor.
+ *
+ * El botón «Ejecutar» del editor no pasa argumentos: elige la función del desplegable y
+ * la corre a secas. Así que `retirarPlantillasViejas(true)` no se puede escribir en
+ * ningún sitio, y sin esta envoltura la función de arriba sólo servía para mirar.
+ *
+ * La protección no se pierde: hay que ELEGIR otra función, con otro nombre, que dice lo
+ * que hace. Nadie borra cinco plantillas por darle a Ejecutar sin leer.
+ */
+function retirarPlantillasViejasDeVerdad() {
+  return retirarPlantillasViejas(true);
 }
 
 function _waBorrarPlantilla(waba, tok, nombre) {

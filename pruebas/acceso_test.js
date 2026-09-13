@@ -255,6 +255,13 @@ capturar(); r = borrarFotosVencidas(); let txt = soltar();
 ok(r.seBorrarian === 1 && DRIVE[ID_VIEJA] === true,
    'sin confirmar dice cuántas borraría y no borra ninguna');
 ok(/irreversible/.test(txt), 'y avisa de que no tiene vuelta atrás');
+// Lo que se le ofrece tiene que poder ejecutarse. El botón «Ejecutar» del editor no
+// pasa argumentos —regla 1 de docs/apps-script-despliegue.md—, así que ofrecer
+// «borrarFotosVencidas(true)» dejaba la función convertida en un mirador.
+ok(/borrarFotosVencidasDeVerdad/.test(txt) && !/borrarFotosVencidas\(true\)/.test(txt),
+   'y ofrece una función sin argumentos, no algo que en el editor no hay dónde escribir');
+ok(typeof borrarFotosVencidasDeVerdad === 'function' && borrarFotosVencidasDeVerdad.length === 0,
+   'que existe y no pide nada');
 
 capturar(); r = borrarFotosVencidas(true); soltar();
 ok(r.borradas === 1, 'confirmando borra una');

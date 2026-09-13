@@ -396,7 +396,8 @@ function borrarFotosVencidas(confirmar) {
 
   if (confirmar !== true) {
     console.log('');
-    console.log('Borrar es irreversible. Si estás de acuerdo: borrarFotosVencidas(true)');
+    console.log('Borrar es irreversible. Si estás de acuerdo, elige ESTA en el');
+    console.log('desplegable de arriba y ejecútala:  borrarFotosVencidasDeVerdad');
     console.log('Para que corra sola todos los días: instalarBorradoDeFotos()');
     return { ok: true, borradas: 0, seBorrarian: vencidas.length };
   }
@@ -435,6 +436,17 @@ function borrarFotosVencidas(confirmar) {
 }
 
 /** El id de un archivo dentro de una URL de Drive, en cualquiera de sus formas. */
+/**
+ * Borra las fotos vencidas de verdad. Sin argumentos, para el editor.
+ *
+ * El botón «Ejecutar» no pasa argumentos, así que `borrarFotosVencidas(true)` no se
+ * puede escribir en ningún sitio. La protección sigue en pie: hay que elegir a mano una
+ * función con otro nombre, que dice lo que hace.
+ */
+function borrarFotosVencidasDeVerdad() {
+  return borrarFotosVencidas(true);
+}
+
 function _accIdDeDrive(url) {
   var s = String(url || '');
   var m = /\/d\/([\w-]{20,})/.exec(s) || /[?&]id=([\w-]{20,})/.exec(s);

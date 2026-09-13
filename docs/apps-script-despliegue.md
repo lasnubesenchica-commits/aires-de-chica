@@ -47,6 +47,41 @@ Tres reglas que no son opcionales:
 El despliegue siguiente devuelve el archivo a su estado vacío por sí solo. El
 dato ya quedó en las propiedades, que es lo que persiste.
 
+### Las funciones destructivas, que es donde más se cae
+
+El patrón «sin argumento sólo dice lo que haría; con `true` lo hace» es bueno
+para algo irreversible, y **rompe esta misma regla**: `borrarTodo(true)` no se
+puede escribir en ninguna parte del editor. La función queda convertida en un
+mirador — dice lo que haría y no hay forma de decirle que lo haga.
+
+Pasó dos veces en el mismo proyecto, `retirarPlantillasViejas` y
+`borrarFotosVencidas`, **después** de escribir esta página.
+
+**Patrón:** la que hace daño es una función aparte, sin argumentos, con un
+nombre que lo dice.
+
+```javascript
+function retirarPlantillasViejas(confirmar) { /* ... */ }
+
+// Lo que se imprime cuando no se confirma:
+//   «Si estás de acuerdo, elige ESTA en el desplegable: retirarPlantillasViejasDeVerdad»
+function retirarPlantillasViejasDeVerdad() {
+  return retirarPlantillasViejas(true);
+}
+```
+
+La protección no se pierde: hay que **elegir** otra función, con otro nombre,
+que dice lo que hace. Nadie borra cinco plantillas por darle a Ejecutar sin leer.
+
+Y la prueba que lo sujeta no comprueba el texto del aviso, sino que **lo que se
+ofrece existe y no pide argumentos** — así el fallo no puede volver:
+
+```javascript
+ok(typeof retirarPlantillasViejasDeVerdad === 'function' &&
+   retirarPlantillasViejasDeVerdad.length === 0,
+   'lo que se ofrece existe y NO pide argumentos');
+```
+
 ---
 
 ## 2. Desplegar desde otra cuenta: qué se puede y qué no
