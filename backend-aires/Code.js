@@ -267,6 +267,12 @@ function doPost(e) {
     else if (action === 'guardarGarita')      out = { ok: true, data: guardarGarita(data.garita || {}) };
     else if (action === 'guardarAutorizacion') out = { ok: true, data: guardarAutorizacion(data.autorizacion || {}) };
     else if (action === 'eliminarAutorizacion') out = { ok: true, data: eliminarAutorizacion(data.id) };
+    // Sobre visitas, el panel ARREGLA: anota una salida olvidada, cierra una pendiente
+    // que nadie decidió, corrige un dato mal leído. No autoriza entradas — eso lo hace
+    // quien tiene el documento delante.
+    else if (action === 'anotarSalida')       out = { ok: true, data: anotarSalidaDesdePanel(data.id) };
+    else if (action === 'cerrarVisita')       out = { ok: true, data: cerrarVisitaDesdePanel(data.id, data.estado) };
+    else if (action === 'corregirVisita')     out = { ok: true, data: corregirVisitaDesdePanel(data.id, data.datos || {}) };
     else if (action === 'eliminarTraspaso')   out = { ok: true, data: eliminarTraspaso(data.id) };
     else if (action === 'guardarPresupuesto') out = { ok: true, data: guardarPresupuesto(data.anio, data.presupuesto || {}) };
     else if (action === 'guardarGastoCategorias') out = { ok: true, data: guardarGastoCategorias(data.categorias || []) };

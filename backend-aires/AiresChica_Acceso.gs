@@ -2606,3 +2606,140 @@ function _accListaAdentro(tel, desde, filtro) {
   _waEnviarLista(tel, cab, 'Ver quién está', [{ title: 'Adentro ahora', rows: filas }]);
   return { contesto: true, avisar: false };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LO QUE LA ADMINISTRACIÓN PUEDE ARREGLAR DESDE EL PANEL
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Hasta aquí el panel veía la bitácora entera y no podía tocar una sola fila. Eso
+ * dejaba dos promesas sin cumplir: el panel avisa de «2 entradas sin salida anotada»
+ * y no daba forma de cerrarlas, y las visitas que quedaron en «pendiente» hace días
+ * se quedaban ahí para siempre ensuciando el registro.
+ *
+ * ── Lo que SÍ, y lo que NO ───────────────────────────────────────────────────
+ * Se puede: anotar una salida que el guardia olvidó, cerrar una pendiente vieja, y
+ * corregir un nombre o una cédula mal leídos.
+ *
+ * NO se puede AUTORIZAR una entrada desde el panel, y no es un olvido. El guardia
+ * tiene el documento en la mano; quien mira el panel no ve a nadie. Autorizar desde
+ * aquí es autorizar a alguien que no se ve, fiándose de lo que leyó el sistema — es
+ * una decisión distinta y más floja, y si algún día hace falta tendrá su propio botón
+ * diciendo que el guardia no estaba disponible, no este.
+ *
+ * ── La atribución es el producto ─────────────────────────────────────────────
+ * Todo lo de aquí queda como «Administración · <quien>», nunca como si lo hubiera
+ * hecho el guardia. Dentro de tres meses, la diferencia entre «lo decidió quien tenía
+ * el documento delante» y «lo arregló la administración desde la oficina» es toda la
+ * conversación.
+ */
+
+/** Quién está usando el panel, para firmar lo que cambia. */
+function _accQuienPanel() {
+  var a = '';
+  try { a = String(typeof AC_AUTOR !== 'undefined' ? AC_AUTOR : '').trim(); } catch (e) {}
+  return 'Administración · ' + (a || 'sin identificar');
+}
+
+/**
+ * Anota una salida que el guardia olvidó.
+ *
+ * Sólo sobre una visita que CONSTA que entró. Anotarle la salida a una «pendiente»
+ * o a una «rechazada» afirmaría que entró, que es justo lo que el registro no dice.
+ */
+function anotarSalidaDesdePanel(id) {
+  var v = _accBuscarVisita(id);
+  if (!_accEntro(v.estado)) {
+    throw new Error('Esa visita está como «' + v.estado + '»: el registro no dice que ' +
+      'entrara, así que no se le puede anotar una salida. Ciérrala primero si nadie contestó.');
+  }
+  var r = registrarSalida(id, _accQuienPanel());
+  if (r.yaSalio) throw new Error('Ya tenía salida anotada: ' + r.salida + '.');
+  return r;
+}
+
+/**
+ * Cierra una visita que quedó pendiente y que ya nadie va a decidir.
+ *
+ * Sólo a «sin-respuesta» o «rechazada»: las dos formas de decir que no entró. Desde el
+ * panel NO se puede poner «autorizada» — ver arriba.
+ */
+var ACC_CIERRES_PANEL = ['sin-respuesta', 'rechazada'];
+
+function cerrarVisitaDesdePanel(id, estado) {
+  estado = String(estado || 'sin-respuesta');
+  if (ACC_CIERRES_PANEL.indexOf(estado) < 0) {
+    throw new Error('Desde el panel una visita sólo se puede cerrar como ' +
+      ACC_CIERRES_PANEL.join(' o ') + '. Autorizar una entrada lo hace quien tiene el ' +
+      'documento delante, no el panel.');
+  }
+  var v = _accBuscarVisita(id);
+  if (v.estado !== 'pendiente') {
+    throw new Error('Esa visita ya está como «' + v.estado + '»; sólo se cierran las pendientes.');
+  }
+
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== String(id).trim()) continue;
+    sh.getRange(r + 1, h.indexOf('estado') + 1).setValue(estado);
+    sh.getRange(r + 1, h.indexOf('autorizadoPor') + 1).setValue(_accQuienPanel());
+    sh.getRange(r + 1, h.indexOf('autorizadoEn') + 1).setValue(new Date());
+    _reg('visita.resuelve', { entidad: 'visita', clave: String(v.clave || ''),
+      propietario: String(v.visitante || ''),
+      detalle: estado + ' · cerrada desde el panel, nadie la decidió a tiempo' });
+    return { ok: true, id: id, estado: estado };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}
+
+/**
+ * Corrige el nombre o la cédula de una visita ya anotada.
+ *
+ * Se puede sobre una visita cerrada, a diferencia de la corrección del guardia, que
+ * sólo vale en los quince minutos siguientes y antes de decidir. Si esa bitácora acaba
+ * delante de un abogado o de la policía, un dato mal leído tiene que poder arreglarse —
+ * y tiene que verse que se arregló, y qué decía antes.
+ */
+function corregirVisitaDesdePanel(id, datos) {
+  datos = datos || {};
+  var nombre = String(datos.visitante || '').trim();
+  var ced = String(datos.cedula || '').trim();
+  if (!nombre && !ced) throw new Error('No hay nada que corregir: manda el nombre o la cédula.');
+  var v = _accBuscarVisita(id);
+
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== String(id).trim()) continue;
+    var antes = String(vals[r][h.indexOf('visitante')] || '') + ' / ' +
+                String(vals[r][h.indexOf('cedula')] || '');
+    if (nombre) sh.getRange(r + 1, h.indexOf('visitante') + 1).setValue(nombre);
+    if (ced)    sh.getRange(r + 1, h.indexOf('cedula') + 1).setValue(ced);
+    var notaVieja = String(vals[r][h.indexOf('notas')] || '');
+    sh.getRange(r + 1, h.indexOf('notas') + 1).setValue(
+      (notaVieja ? notaVieja + ' | ' : '') +
+      'Corregida por ' + _accQuienPanel() + ' el ' + _accFechaHora(new Date()) +
+      '. Antes decía: ' + antes);
+    _reg('visita.corrige', { entidad: 'visita', clave: String(v.clave || ''),
+      propietario: nombre || String(v.visitante || ''),
+      detalle: 'Corregida desde el panel. Antes decía: ' + antes });
+    return { ok: true, id: id, antes: antes };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}
+
+/** Una visita por su identificador, o error. */
+function _accBuscarVisita(id) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador de la visita.');
+  var hallada = null;
+  _sheetRows(ACC_SH.VISITAS).forEach(function (v) {
+    if (String(v.id || '').trim() === id) hallada = v;
+  });
+  if (!hallada) throw new Error('No se encontró la visita ' + id + '.');
+  return hallada;
+}

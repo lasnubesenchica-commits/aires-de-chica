@@ -441,7 +441,8 @@ var AC_MODULO_DE = {
   // acción sin clasificar cae en «financiero», así que olvidar una aquí abriría
   // el módulo a quien no lo contrató.
   getVisitas:'acceso', registrarVisita:'acceso', autorizarVisita:'acceso',
-  resolverVisita:'acceso',
+  resolverVisita:'acceso', anotarSalida:'acceso', cerrarVisita:'acceso',
+  corregirVisita:'acceso',
   getAutorizaciones:'acceso', guardarAutorizacion:'acceso', eliminarAutorizacion:'acceso',
   getGarita:'acceso', guardarGarita:'acceso',
   getContactos:'acceso', guardarContacto:'acceso', eliminarContacto:'acceso',

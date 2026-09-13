@@ -1394,5 +1394,108 @@ pide('adentro zutano');
 ok(/Nadie de los 14/.test(hablo().texto),
    'si no casa nadie lo dice, y recuerda cómo verlos todos: ' + hablo().texto.split('\n')[0]);
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Lo que la administración arregla desde el panel
+ * ═══════════════════════════════════════════════════════════════════════════ */
+global.AC_AUTOR = 'Iris';
+
+console.log('\n── EL PANEL NO PUEDE AUTORIZAR UNA ENTRADA ──');
+// La afirmación que más importa de esta tanda. El guardia tiene el documento en la
+// mano; quien mira el panel no ve a nadie. Autorizar desde aquí es autorizar a alguien
+// que no se ve, fiándose de lo que leyó el sistema.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Queda Pendiente', cedula: '8-1-1', lote: '9' };
+anuncia('Queda Pendiente 8-1-1 va al 9');
+const vP = _sheetRows('Visitas')[0];
+ok(vP.estado === 'pendiente', 'la visita queda pendiente');
+
+let err = '';
+try { cerrarVisitaDesdePanel(vP.id, 'autorizada'); } catch (x) { err = x.message; }
+ok(/sólo se puede cerrar como/.test(err), 'se rechaza y se explica: ' + err.slice(0, 60));
+ok(/documento delante/.test(err), 'diciendo POR QUÉ, no sólo que no');
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'y la visita no se tocó');
+try { cerrarVisitaDesdePanel(vP.id, 'preautorizada'); } catch (x) { err = x.message; }
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'ni con «preautorizada» por la puerta de atrás');
+
+console.log('\n── CERRAR UNA PENDIENTE QUE NADIE VA A DECIDIR ──');
+cerrarVisitaDesdePanel(vP.id, 'sin-respuesta');
+let vC = _sheetRows('Visitas')[0];
+ok(vC.estado === 'sin-respuesta', 'se cierra como sin-respuesta, que es la verdad');
+ok(/Administración · Iris/.test(String(vC.autorizadoPor)),
+   'firmada por la administración, NO como si lo hubiera hecho el guardia: ' + vC.autorizadoPor);
+err = '';
+try { cerrarVisitaDesdePanel(vP.id, 'sin-respuesta'); } catch (x) { err = x.message; }
+ok(/sólo se cierran las pendientes/.test(err), 'y una ya cerrada no se vuelve a cerrar');
+
+console.log('\n── ANOTAR UNA SALIDA QUE EL GUARDIA OLVIDÓ ──');
+// El panel avisaba de «2 entradas sin salida anotada» y no daba forma de cerrarlas.
+// Avisar de un problema sin dar la solución es peor que no avisar.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Entró Y Nadie Anotó', cedula: '8-2-2' });
+CLAUDE = { visitante: 'Entró Y Nadie Anotó', cedula: '8-2-2', lote: '' };
+anuncia('Entró Y Nadie Anotó 8-2-2');
+const vE = _sheetRows('Visitas')[0];
+ok(vE.estado === 'preautorizada' && !vE.salida, 'entró y no tiene salida');
+
+const rS = anotarSalidaDesdePanel(vE.id);
+ok(rS.ok && _sheetRows('Visitas')[0].salida instanceof Date, 'la salida queda anotada');
+ok(REGISTRO.some(r => r.accion === 'visita.salida' && /Administración · Iris/.test(r.detalle)),
+   'firmada por la administración en el registro');
+err = '';
+try { anotarSalidaDesdePanel(vE.id); } catch (x) { err = x.message; }
+ok(/Ya tenía salida/.test(err), 'y no se anota dos veces');
+
+console.log('\n  · pero no a quien no consta que entrara');
+// Anotarle la salida a una pendiente afirmaría que entró, que es justo lo que el
+// registro NO dice.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Nunca Consta', cedula: '', lote: '9' };
+anuncia('Nunca Consta va al 9');
+err = '';
+try { anotarSalidaDesdePanel(_sheetRows('Visitas')[0].id); } catch (x) { err = x.message; }
+ok(/el registro no dice que entrara/.test(err),
+   'se rechaza: anotar una salida afirmaría una entrada que nadie confirmó');
+ok(!_sheetRows('Visitas')[0].salida, 'y no se escribió nada');
+
+console.log('\n── CORREGIR UN DATO, DEJANDO CONSTANCIA ──');
+// A diferencia de la corrección del guardia —quince minutos y antes de decidir— ésta
+// vale sobre una visita ya cerrada. Si la bitácora acaba delante de un abogado, un dato
+// mal leído tiene que poder arreglarse y tiene que VERSE que se arregló.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Mal Leido', cedula: '10445031' });
+CLAUDE = { visitante: 'Mal Leido', cedula: '10445031', lote: '' };
+anuncia('Mal Leido 10445031');
+const vM = _sheetRows('Visitas')[0];
+resolverVisita(vM.id, 'autorizada', 'Garita principal');
+
+corregirVisitaDesdePanel(vM.id, { visitante: 'Georgina Vanesa Martinez Calero', cedula: '1045031' });
+const vF = _sheetRows('Visitas')[0];
+ok(vF.visitante === 'Georgina Vanesa Martinez Calero' && vF.cedula === '1045031',
+   'el dato queda corregido aunque la visita estuviera cerrada');
+ok(/Antes decía: Mal Leido \/ 10445031/.test(String(vF.notas)),
+   'con lo que decía antes, palabra por palabra: ' + String(vF.notas).slice(-55));
+ok(/Administración · Iris/.test(String(vF.notas)), 'y quién lo corrigió');
+ok(vF.estado === 'autorizada', 'corregir un dato NO cambia lo que pasó');
+
+err = '';
+try { corregirVisitaDesdePanel(vM.id, {}); } catch (x) { err = x.message; }
+ok(/nada que corregir/.test(err), 'sin datos no se hace una corrección vacía');
+
+console.log('\n  · y una corrección no borra la nota anterior');
+corregirVisitaDesdePanel(vM.id, { cedula: '1045032' });
+ok(/Mal Leido/.test(String(_sheetRows('Visitas')[0].notas)) &&
+   /Georgina Vanesa Martinez Calero/.test(String(_sheetRows('Visitas')[0].notas)),
+   'se apilan: el historial completo de lo que dijo esa fila');
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

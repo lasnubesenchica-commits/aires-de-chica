@@ -6830,6 +6830,71 @@ async function accGuardarGarita(id,btn){
   }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
 }
 
+/* ───────── arreglar una visita desde el panel ─────────
+ * La bitácora dejó de ser sólo de lectura. Tres cosas, y ninguna es autorizar una
+ * entrada: eso lo decide quien tiene el documento delante, no quien mira una pantalla.
+ */
+function _accEntroPanel(e){ return e==='autorizada' || e==='preautorizada'; }
+
+function accAbrirVisita(id){
+  const v=(ACC_DATA.visitas||[]).find(x=>x.id===id); if(!v) return;
+  const puedeSalida=_accEntroPanel(v.estado) && !v.salida;
+  const puedeCerrar=v.estado==='pendiente';
+
+  document.getElementById('modalHd').innerHTML=`<div>
+    <div style="font-weight:700;font-size:1.1rem">${_esc(v.visitante||'Sin nombre')}</div>
+    <div class="muted" style="font-size:.82rem">${_esc(v.fecha||'')}${v.lote?' · '+_acUnidadTxt()+' '+_esc(v.lote):''}</div></div>`;
+
+  document.getElementById('modalBd').innerHTML=`
+    <div class="npf accf">
+      <label>Nombre<input id="cv_nombre" value="${_esc(v.visitante||'')}"></label>
+      <label>Documento<input id="cv_ced" value="${_esc(v.cedula||'')}"></label>
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:8px">
+      Corregir un dato deja constancia de lo que decía antes. Si esta bitácora acaba
+      delante de un abogado o de la policía, tiene que verse que se corrigió y qué ponía.</div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--ac-border)">
+      <div class="muted" style="font-size:.78rem;margin-bottom:8px">
+        Estado: <b>${_esc(v.estado||'—')}</b>${v.autorizadoPor?' · '+_esc(v.autorizadoPor):''}
+        ${v.salida?' · salió '+_esc(v.salida):''}</div>
+      ${puedeSalida?`<button class="btn ghost" onclick="accVisitaAccion('salida','${_esc(id)}',this)">
+          Anotar que salió</button>`:''}
+      ${puedeCerrar?`<button class="btn ghost" onclick="accVisitaAccion('cerrar','${_esc(id)}',this)">
+          Cerrar: nadie contestó</button>`:''}
+      ${(!puedeSalida&&!puedeCerrar)?`<div class="muted" style="font-size:.8rem">
+          Esta visita ya está cerrada. Sólo se puede corregir el dato.</div>`:''}
+    </div>
+    <div class="muted" style="font-size:.74rem;margin-top:12px">
+      Desde aquí <b>no</b> se autoriza una entrada: eso lo decide quien tiene el documento
+      delante. Todo lo que se cambie queda firmado como <b>Administración</b>.</div>
+    <div id="cvErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="link-btn" onclick="closeModal()">Cerrar</button>
+      <button class="btn green" onclick="accVisitaAccion('corregir','${_esc(id)}',this)">Guardar corrección</button>
+    </div>`;
+  document.getElementById('modal').classList.add('show');
+}
+
+function _acUnidadTxt(){ return (ACC_DATA&&ACC_DATA.unidad)||'unidad'; }
+
+async function accVisitaAccion(que,id,btn){
+  const err=document.getElementById('cvErr'); err.textContent='';
+  btn.disabled=true; const t=btn.textContent; btn.textContent='…';
+  try{
+    if(que==='salida'){ await post('anotarSalida',{id}); toast('✓ Salida anotada'); }
+    else if(que==='cerrar'){
+      if(!confirm('Cerrar esta visita como «sin respuesta».\n\nEs decir: nadie contestó y no consta que entrara. No se puede deshacer desde el panel.')){
+        btn.disabled=false; btn.textContent=t; return; }
+      await post('cerrarVisita',{id,estado:'sin-respuesta'}); toast('✓ Visita cerrada');
+    } else {
+      const g=i=>((document.getElementById(i)||{}).value||'').trim();
+      await post('corregirVisita',{id,datos:{visitante:g('cv_nombre'),cedula:g('cv_ced')}});
+      toast('✓ Corregido');
+    }
+    closeModal(); await renderAcceso(true);
+  }catch(e){ btn.disabled=false; btn.textContent=t; if(!onAuthError(e)) err.textContent='Error: '+e; }
+}
+
 /* ───────── vista 4: la bitácora ───────── */
 const ACC_EST={ autorizada:['ok','autorizada'], preautorizada:['ok','preautorizada'],
   rechazada:['red','rechazada'], pendiente:['warn','pendiente'], 'sin-respuesta':['warn','sin respuesta'] };
@@ -6842,7 +6907,8 @@ function accVisitasHTML(){
 
   const filas=vs.map(v=>{
     const [cls,txt]=ACC_EST[v.estado]||['warn',v.estado||'—'];
-    return `<tr>
+    // Toda fila se puede abrir: aunque esté cerrada, el dato se puede corregir.
+    return `<tr onclick="accAbrirVisita('${_esc(v.id)}')" style="cursor:pointer" title="Arreglar esta visita">
       <td>${_esc(v.fecha||'—')}</td>
       <td>${_esc(v.lote||v.clave||'—')}</td>
       <td>${_esc(v.visitante||'—')}</td>
