@@ -59,6 +59,62 @@ function _botSilenciado(tel) {
   catch (e) { return false; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * QUIÉN ESTÁ ESCRIBIENDO · el papel decide lo que se le ofrece
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Antes esto estaba repartido por el enrutador: una comprobación aquí, otra allá, y
+ * el menú igual para todos. El resultado era que uno de los cinco contactos de acceso
+ * —el inquilino, el cuidador— que no está en el padrón recibía «usted no aparece en
+ * el padrón» por escribir «hola», y encima se quedaba mudo seis horas.
+ *
+ * Ahora el papel se decide en UN sitio, y de él sale todo: lo que se le ofrece en el
+ * menú y lo que se le contesta cuando escribe cualquier otra cosa.
+ *
+ *   guardia       — el número de una garita activa. Manda sobre todo lo demás: quien
+ *                   escribe desde la garita está trabajando.
+ *   propietario   — está en el padrón y es dueño único de sus unidades.
+ *   autorizante   — no es dueño, pero el dueño lo cargó como contacto que autoriza
+ *                   visitas. Puede lo de la entrada y nada más.
+ *   varios-duenos — su número figura en unidades de dueños distintos. No recibe cifras.
+ *   desconocido   — ni padrón ni contacto.
+ *
+ * Un propietario que además es contacto es PROPIETARIO: su papel incluye el otro.
+ */
+function _botRol(tel) {
+  if (typeof esGuardia === 'function' && _botAccesoVivo() && esGuardia(tel)) {
+    return { rol: 'guardia', claves: [] };
+  }
+  var q = (typeof identificarPorCelular === 'function')
+    ? identificarPorCelular(tel) : { prop: null, motivo: 'sin-padron' };
+
+  if (q.prop) {
+    return { rol: 'propietario', nombre: String(q.prop.nombre || ''),
+             claves: (q.claves && q.claves.length) ? q.claves : [q.prop.clave] };
+  }
+
+  // No es dueño. ¿Lo cargó algún dueño como contacto que autoriza?
+  if (_botAccesoVivo() && typeof getContactos === 'function' && typeof _accTel === 'function') {
+    var t = _accTel(tel), suyas = [], nom = '';
+    try {
+      getContactos('').forEach(function (c) {
+        if (c.activo && c.autoriza && t && _accTel(c.celular) === t) {
+          suyas.push(c.clave); if (!nom) nom = c.nombre;
+        }
+      });
+    } catch (e) {}
+    if (suyas.length) return { rol: 'autorizante', nombre: nom, claves: suyas };
+  }
+
+  if (q.motivo === 'varios-duenos') return { rol: 'varios-duenos', claves: q.claves || [] };
+  return { rol: 'desconocido', claves: [] };
+}
+
+/** ¿Está vivo el módulo de acceso en esta copia? */
+function _botAccesoVivo() {
+  return (typeof moduloActivo !== 'function') || moduloActivo('acceso');
+}
+
 /* ─────────────── qué quiere quien escribe ─────────────── */
 
 /** El identificador de un botón o fila de lista, sin interpretar nada. */
@@ -196,7 +252,24 @@ function _botBoton(id, titulo) { return { type: 'reply', reply: { id: id, title:
  * foto igual, se invite o no, y si no se atendiera se perdería— pero no se ofrece
  * hasta que la administración quiera ese flujo abierto.
  */
-function _botSecciones() {
+function _botSecciones(rol) {
+  // Un autorizante no es propietario: no tiene saldo, ni cuota, ni comunicados suyos.
+  // Ofrecerle «Mi saldo» y contestarle «usted no está en el padrón» al tocarlo es la
+  // peor combinación posible — se le ofrece algo y se le regaña por aceptarlo.
+  if (rol === 'autorizante') {
+    return _botFiltrarPorModulo([
+      { title: 'Las visitas', rows: [
+        { id: 'bot_acc_permiso', title: 'Dejar un permiso',  description: 'Para que alguien entre sin que le llamemos' }
+      ] },
+      { title: 'Ayuda', rows: [
+        { id: 'bot_humano',      title: 'Hablar con alguien', description: 'Le contesta la administración' }
+      ] }
+    ]);
+  }
+  return _botSeccionesDePropietario();
+}
+
+function _botSeccionesDePropietario() {
   // Cada fila declara el módulo que necesita. Un PH que sólo contrató el financiero no
   // debe ver «Último comunicado» en el menú, ni poder llegar a él escribiendo.
   return _botFiltrarPorModulo([
@@ -273,33 +346,41 @@ function _botTextoSaldo(est) {
 function _botAtender(info, msg) {
   var tel = info.telefono;
   if (!_botContestaA(tel)) return { contesto: false, avisar: true, motivo: 'bot apagado para este número' };
+
+  // ── Primero: lo que tiene a alguien esperando en la entrada ──────────────────
+  //
+  // Esto va ANTES del silencio, y es un arreglo de un fallo que tenía dientes. El
+  // silencio existe para que el bot no hable por encima de una persona que está
+  // atendiendo un reclamo; se activa, entre otras cosas, cuando alguien que no está en
+  // el padrón escribe. Uno de los cinco contactos de acceso de una unidad puede no
+  // estar en el padrón —el inquilino, el cuidador—, así que le bastaba escribir «hola»
+  // para quedarse mudo seis horas. Y mudo quería decir que su «Autorizo» tampoco se
+  // atendía: visitante parado en la garita, el residente toca el botón, y no pasa nada.
+  //
+  // Una decisión de entrada no es la conversación administrativa. No espera.
+  // Los `typeof` no son adorno: si el archivo del módulo de acceso no está en la copia
+  // —un PH que no lo contrató, o un despliegue a medias— llamar a esGuardia() revienta
+  // el bot ENTERO, y el propietario deja de recibir hasta su saldo. Un módulo que falta
+  // tiene que restar funciones, no tumbar el sistema.
+  if (_botAccesoVivo() && typeof esGuardia === 'function') {
+    // El guardia manda sobre el residente: su número puede estar además en el padrón,
+    // y quien escribe desde la garita está trabajando, no consultando su cuota. Va
+    // también antes de _botAccion() porque para un guardia una foto es una CÉDULA.
+    var garita = esGuardia(tel);
+    if (garita) return _botGuardia(tel, garita, msg);
+    if (typeof _botRespuestaDeAcceso === 'function') {
+      var r = _botRespuestaDeAcceso(tel, msg);
+      if (r) return r;
+    }
+  }
+
   // Mientras una persona lleva la conversación, el bot no habla por encima. El aviso
   // sigue saliendo —con su propio límite de uno por hora— porque quien contesta
   // necesita ver lo nuevo.
   if (_botSilenciado(tel)) return { contesto: false, avisar: true, motivo: 'silenciado tras pasar a un humano' };
 
-  // El guardia va ANTES que todo lo demás, y a propósito.
-  //
-  // Su número puede estar además en el padrón —al arrancar un piloto lo normal es que el
-  // administrador ponga el suyo— y entonces el puesto manda sobre la vivienda: quien
-  // escribe desde la garita está trabajando, no consultando su cuota. El panel avisa de
-  // ese choque para que nadie lo descubra una noche cualquiera.
-  //
-  // Y va antes de _botAccion() porque para un guardia una foto es una CÉDULA, no un
-  // comprobante de pago.
-  if (typeof esGuardia === 'function' &&
-      (typeof moduloActivo !== 'function' || moduloActivo('acceso'))) {
-    var garita = esGuardia(tel);
-    if (garita) return _botGuardia(tel, garita, msg);
-
-    // Y si no es guardia, puede ser un residente contestando «Autorizo» / «No autorizo»
-    // a una visita que está esperando en la entrada. Eso va antes que su saldo: hay
-    // alguien parado en la garita mientras tanto.
-    if (typeof _botRespuestaDeAcceso === 'function') {
-      var r = _botRespuestaDeAcceso(tel, msg);
-      if (r) return r;
-    }
-
+  // Dejar un permiso para mañana sí puede esperar a que el humano termine.
+  if (_botAccesoVivo()) {
     // Un propietario a medio cargar un contacto: lo que escriba es el dato que se le
     // pidió, no una pregunta. Va ANTES de _botAccion() para no gastar una llamada al
     // modelo clasificando «Carlos Pérez 6000-1111» como si fuera una consulta.
@@ -321,6 +402,17 @@ function _botAtender(info, msg) {
   // Un número que aparece en unidades de dueños distintos no recibe cifras. Contestarle a
   // uno de los dos al azar sería enseñarle a alguien el saldo de otro.
   if (info.nota === 'varios-duenos') {
+    // Puede ser además contacto de acceso de alguna de esas unidades. No recibe cifras
+    // —eso no cambia—, pero lo de las visitas sí es suyo, y callárselo lo dejaría sin
+    // poder dejar un permiso que está autorizado a dejar.
+    var amb = _botRol(tel);
+    if (amb.rol === 'autorizante') {
+      _botDice(tel,
+        'Este número figura en más de ' + _acUn() + ' ' + _acUnidad() + ' a nombre de personas ' +
+        'distintas, así que por aquí no podemos darle cifras. Lo de las visitas sí: usted ' +
+        'está autorizado para el ' + _acUnidad() + ' ' + amb.claves.join(', ') + '.', 'autorizante');
+      return { contesto: true, avisar: true };
+    }
     _botSilenciar(tel);
     enviarWhatsAppTexto(tel,
       'Gracias por escribir. Este número figura en más de ' + _acUn() + ' ' + _acUnidad() +
@@ -330,6 +422,19 @@ function _botAtender(info, msg) {
     return { contesto: true, avisar: true };
   }
   if (!info.clave) {
+    // Antes de tratarlo como un desconocido: puede ser uno de los contactos que el
+    // dueño cargó para autorizar visitas. Ése no está en el padrón y no tiene por qué,
+    // pero sí tiene un papel en el sistema y hay que hablarle desde su papel.
+    var papel = _botRol(tel);
+    if (papel.rol === 'autorizante') {
+      _botDice(tel, (papel.nombre ? 'Hola ' + String(papel.nombre).split(' ')[0] + '. ' : 'Hola. ') +
+        'Usted está autorizado para las visitas del ' + _acUnidad() + ' ' +
+        papel.claves.join(', ') + '. Por aquí le avisamos cuando llegue alguien, y puede ' +
+        'dejar permisos por adelantado.\n\n' +
+        'Las cuentas y los pagos de ' + _acEl() + ' ' + _acUnidad() +
+        ' los ve el propietario desde su número.', 'autorizante');
+      return { contesto: true, avisar: false };
+    }
     _botSilenciar(tel);
     var correo = _botCorreoAdmin();
     enviarWhatsAppTexto(tel,
@@ -372,8 +477,9 @@ function _botSaluda(tel, info) {
  * La única forma de contestar: el texto, y el menú siempre debajo. Quien escribe no
  * necesita recordar nada ni volver atrás.
  */
-function _botDice(tel, texto) {
-  return _waEnviarLista(tel, texto, 'Ver opciones', _botSecciones());
+function _botDice(tel, texto, rol) {
+  return _waEnviarLista(tel, texto, 'Ver opciones',
+    _botSecciones(rol || (_botRol(tel) || {}).rol));
 }
 
 /** Cuando alguien escribe «menú» a secas. */

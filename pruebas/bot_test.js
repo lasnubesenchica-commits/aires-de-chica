@@ -503,5 +503,82 @@ ok(alGuardia === null && /B\/\. 45/.test(cuerpos()),
    'sin el módulo de acceso contratado, ese mismo número vuelve a ser un residente');
 delete PROPS.AC_MODULOS; CACHE = {};
 
+console.log('\n── CADA PAPEL RECIBE LO SUYO, NI MÁS NI MENOS ──');
+// La regla de todo el bot en una sección. Antes esto estaba repartido por el enrutador
+// y el menú era el mismo para todos: uno de los cinco contactos de acceso que no está
+// en el padrón recibía «usted no aparece en el padrón» por decir «hola».
+let CONTACTOS_FALSOS = [];
+global.getContactos = () => CONTACTOS_FALSOS;
+global._accTel = v => { const d = String(v||'').replace(/\D/g,''); return d.length===8 ? '507'+d : d; };
+global.esGuardia = tel => (_accTel(tel) === '50760000000' ? { nombre: 'Garita principal' } : null);
+global._botGuardia = () => ({ contesto: true, avisar: false, __guardia: true });
+global._botRespuestaDeAcceso = () => null;
+global._botGestionAcceso = () => null;
+global._botAtajoPermiso = () => null;
+PROPS.META_BOT = 'activo'; delete PROPS.AC_MODULOS;
+
+// El inquilino del lote 9: autoriza visitas y NO está en el padrón.
+CONTACTOS_FALSOS = [{ id:'CT1', clave:'Q-9', nombre:'Carlos el inquilino',
+                      celular:'+50765551111', rol:'inquilino', autoriza:true, activo:true }];
+
+const papel = t => _botRol(t).rol;
+ok(papel('50760000000') === 'guardia',      'el número de la garita es GUARDIA');
+ok(papel('50761112233') === 'propietario',  'el del padrón es PROPIETARIO');
+ok(papel('50765551111') === 'autorizante',  'el contacto que no está en el padrón es AUTORIZANTE');
+ok(papel('50760300008') === 'propietario',
+   'y una persona con dos lotes suyos sigue siendo propietaria, no «varios dueños»');
+ok(papel('50762438455') === 'varios-duenos','dos dueños distintos en el mismo número: VARIOS-DUEÑOS');
+ok(papel('50769999999') === 'desconocido',  'el resto, DESCONOCIDO');
+
+console.log('\n  · el autorizante escribe cualquier cosa');
+CACHE = {}; CLAUDE = 'saludo';
+correr(texto('50765551111', 'hola buenas'));
+let c2 = cuerpos();
+ok(/autorizado para las visitas/.test(c2),
+   'se le habla desde su papel, no se le dice que no existe: ' + c2.slice(0, 60));
+ok(!/no aparece en el padrón/.test(c2), 'NUNCA se le dice que no está en el padrón: sí está en el sistema');
+ok(!CACHE['bot_mudo_50765551111'],
+   'y NO se le silencia. Silenciado, su «Autorizo» tampoco se atendería: visitante ' +
+   'parado en la garita y el botón sin efecto');
+
+const filasAut = menu().action.sections.reduce((a, s) => a.concat(s.rows), []).map(f => f.id);
+ok(filasAut.indexOf('bot_saldo') < 0 && filasAut.indexOf('bot_cuota') < 0,
+   'su menú NO ofrece saldo ni cuota: no es su cuenta → ' + filasAut.join(' '));
+ok(filasAut.indexOf('bot_acc_permiso') >= 0, 'sí ofrece dejar un permiso, que es lo suyo');
+ok(filasAut.indexOf('bot_acc_quien') < 0,
+   'y NO ofrece nombrar autorizantes: eso es del dueño');
+ok(filasAut.indexOf('bot_humano') >= 0, 'y siempre queda hablar con una persona');
+
+console.log('\n  · el propietario sigue viendo lo suyo entero');
+CACHE = {}; CLAUDE = 'saldo';
+correr(texto('50761112233', 'cuanto debo'));
+ok(/B\/\. 245/.test(cuerpos()), 'recibe su saldo');
+const filasProp = menu().action.sections.reduce((a, s) => a.concat(s.rows), []).map(f => f.id);
+ok(filasProp.indexOf('bot_acc_quien') >= 0 && filasProp.indexOf('bot_saldo') >= 0,
+   'y su menú lleva las diez, incluidas las de visitas');
+
+console.log('\n  · un desconocido sigue sin recibir nada');
+CACHE = {}; CLAUDE = 'saldo';
+correr(texto('50769999999', 'cuanto debo'));
+ok(!/B\/\./.test(cuerpos()) && /no aparece en el padrón/.test(cuerpos()),
+   'ni cifras ni menú: ' + cuerpos().slice(0, 50));
+
+console.log('\n  · el guardia no recibe menú de propietario');
+CACHE = {};
+const rG = _botAtender({ telefono: '50760000000', clave: '', nota: '' }, texto('50760000000', 'hola'));
+ok(rG && rG.__guardia, 'va a su propio flujo y no toca nada del menú del residente');
+
+console.log('\n── UN MÓDULO QUE FALTA RESTA FUNCIONES, NO TUMBA EL BOT ──');
+// Los `typeof` del enrutador no son adorno: en una copia sin el archivo del módulo de
+// acceso, llamar a esGuardia() reventaba el bot ENTERO y el propietario se quedaba sin
+// su saldo. Ya pasó al reordenar el enrutador.
+const _esG = global.esGuardia, _gC = global.getContactos;
+delete global.esGuardia; delete global.getContactos;
+CACHE = {}; CLAUDE = 'saldo';
+correr(texto('50761112233', 'cuanto debo'));
+ok(/B\/\. 245/.test(cuerpos()),
+   'sin el módulo de acceso cargado, el propietario sigue recibiendo su saldo');
+global.esGuardia = _esG; global.getContactos = _gC;
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
