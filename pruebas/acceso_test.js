@@ -742,7 +742,7 @@ global.UrlFetchApp.fetch = () => ({ getResponseCode: () => 400,
 foto();
 ok(/HTTP 400/.test(apuntes()) && /model not found/.test(apuntes()),
    'y si Anthropic contesta un error, se guarda el código Y lo que dijo: ' + apuntes().slice(12, 80));
-ok(apuntes().indexOf(ACC_MODELO_CEDULA) >= 0 && apuntes().indexOf(ACC_MODELO_CEDULA_2) >= 0,
+ok(apuntes().indexOf(_accModelo1()) >= 0 && apuntes().indexOf(ACC_MODELO_CEDULA_2) >= 0,
    'y cada modelo deja su propio apunte, para saber si falló uno o los dos');
 ok(/ninguna de las pasadas/.test(apuntes()),
    'con una línea final que lo resume, que es la que explica el «no pude leer esa foto»');
@@ -1496,6 +1496,50 @@ corregirVisitaDesdePanel(vM.id, { cedula: '1045032' });
 ok(/Mal Leido/.test(String(_sheetRows('Visitas')[0].notas)) &&
    /Georgina Vanesa Martinez Calero/.test(String(_sheetRows('Visitas')[0].notas)),
    'se apilan: el historial completo de lo que dijo esa fila');
+
+console.log('\n── AUDITORÍA: UN PH SIN EL MÓDULO NO SE ENCUENTRA HOJAS DE ACCESO ──');
+// Un disparador corre pase lo que pase, y _accSheet CREA la hoja si no está. El módulo
+// promete que sus cuatro hojas sólo aparecen cuando se usa; sin esta verja, el reloj
+// diario de Google se las plantaba a un PH que sólo contrató lo financiero.
+const _mod = global.moduloActivo;
+global.moduloActivo = (m) => m !== 'acceso';
+HOJAS = {};
+let rC = cerrarVisitasSinRespuesta();
+ok(Object.keys(HOJAS).length === 0,
+   'cerrarVisitasSinRespuesta no crea ninguna hoja: ' + Object.keys(HOJAS).join(',') || '(ninguna)');
+ok(/no está activo/.test(String(rC.motivo)), 'y dice por qué no hizo nada');
+capturar(); let rB = borrarFotosVencidas(); soltar();
+ok(Object.keys(HOJAS).length === 0, 'borrarFotosVencidas tampoco');
+ok(rB.borradas === 0 && /no está activo/.test(String(rB.motivo)), 'y lo mismo');
+global.moduloActivo = _mod;
+HOJAS = {};
+cerrarVisitasSinRespuesta();
+ok(Object.keys(HOJAS).length > 0, 'con el módulo activo sí trabaja, que es lo que tiene que hacer');
+
+console.log('\n── AUDITORÍA: EL PANEL LEE LA HOJA DE VISITAS UNA SOLA VEZ ──');
+// Pedía tres cosas de la misma hoja por separado —las últimas cien, quién está dentro y
+// quién quedó sin cerrar—: tres lecturas completas en cada carga. Con unos miles de
+// filas eso se nota, y crece cada día.
+reiniciar(); reiniciarF4();
+_accHojas();
+let lecturas = 0;
+const _rows = global._sheetRows;
+global._sheetRows = (n) => { if (n === 'Visitas') lecturas++; return _rows(n); };
+getAccesoData('');
+global._sheetRows = _rows;
+ok(lecturas === 1, 'una sola lectura por carga del panel, no tres: ' + lecturas);
+
+console.log('\n── AUDITORÍA: EL MODELO SE RESUELVE AL LLAMAR ──');
+// Apps Script evalúa los archivos por orden, y éste va antes que el que declara
+// ANTHROPIC_MODEL: con una var de nivel superior el respaldo quedaba congelado y
+// cambiar el modelo en Comprobantes no movía el lector de cédulas, sin error ni aviso.
+ok(typeof _accModelo1 === 'function', 'es una función, no una var congelada al cargar');
+const _am = global.ANTHROPIC_MODEL;
+global.ANTHROPIC_MODEL = 'claude-otro-modelo';
+ok(_accModelo1() === 'claude-otro-modelo', 'sigue al que esté puesto en Comprobantes');
+global.ANTHROPIC_MODEL = undefined;
+ok(_accModelo1() === 'claude-haiku-4-5', 'y sin él, cae en un respaldo que existe');
+global.ANTHROPIC_MODEL = _am;
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

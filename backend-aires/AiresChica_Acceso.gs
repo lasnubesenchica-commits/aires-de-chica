@@ -368,7 +368,12 @@ function _accGaritasDeResidente() {
  * está en el mismo desplegable que todo lo demás.
  */
 function borrarFotosVencidas(confirmar) {
-  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  // Igual que arriba: corre desde un disparador diario y no puede crear las hojas del
+  // módulo en una copia que no lo contrató.
+  if (typeof moduloActivo === 'function' && !moduloActivo('acceso')) {
+    console.log('El módulo de acceso no está activo en esta copia. No hay nada que borrar.');
+    return { ok: true, borradas: 0, motivo: 'el módulo de acceso no está activo' };
+  }
   var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
   var vals = sh.getDataRange().getValues();
   if (vals.length < 2) { console.log('No hay visitas registradas.'); return { ok: true, borradas: 0 }; }
@@ -776,7 +781,8 @@ function getAccesoData(clave) {
 
   // Las últimas cien, de la más reciente a la más vieja. Con 50 visitas diarias,
   // devolver la hoja entera sería medio megabyte en cada apertura de la pestaña.
-  var visitas = _sheetRows(ACC_SH.VISITAS).slice(-100).reverse().map(function (v) {
+  var filasVisitas = _sheetRows(ACC_SH.VISITAS);
+  var visitas = filasVisitas.slice(-100).reverse().map(function (v) {
     return {
       // Con hora: en una bitácora de entradas, saber que alguien entró «el 12/09» y no a
       // qué hora no sirve para nada cuando hay que reconstruir una noche.
@@ -819,8 +825,8 @@ function getAccesoData(clave) {
 
   // Entradas que nadie cerró. Las de hoy son normales —esa gente está dentro— pero las
   // de hace días son un registro a medias, y no saber quién salió es no saber quién está.
-  var dentro = visitasAdentro(ACC_HORAS_ADENTRO);
-  var colgadas = visitasAdentro(0).length - dentro.length;
+  var dentro = _accDentroDe(filasVisitas, ACC_HORAS_ADENTRO);
+  var colgadas = _accDentroDe(filasVisitas, 0).length - dentro.length;
   if (colgadas) {
     avisos.push({ tipo: 'aviso', texto: colgadas + ' entrada(s) de hace más de ' +
       ACC_HORAS_ADENTRO + ' horas sin salida anotada. No saber quién salió es no saber ' +
@@ -1030,7 +1036,15 @@ function _accLeerVisitaTexto(texto) {
 // una cédula del Tribunal Electoral, derecha y enfocada, la lee sin despeinarse. El
 // segundo sólo corre cuando el primero salió flojo, así que se paga en los casos
 // difíciles y no en los setenta que entran bien cada día.
-var ACC_MODELO_CEDULA   = (typeof ANTHROPIC_MODEL !== 'undefined') ? ANTHROPIC_MODEL : 'claude-haiku-4-5';
+// Se resuelve al LLAMAR, no al cargar. Apps Script evalúa los archivos por orden y éste
+// va antes que AiresChica_Comprobantes.gs, donde vive ANTHROPIC_MODEL: al cargar todavía
+// vale undefined. Con una var de nivel superior el respaldo quedaba congelado, y cambiar
+// el modelo en Comprobantes no movía el lector de cédulas — sin error y sin aviso.
+function _accModelo1() {
+  try { if (typeof ANTHROPIC_MODEL !== 'undefined' && ANTHROPIC_MODEL) return ANTHROPIC_MODEL; }
+  catch (e) {}
+  return 'claude-haiku-4-5';
+}
 var ACC_MODELO_CEDULA_2 = 'claude-sonnet-4-6';
 var ACC_CONFIANZA_MIN   = 0.75;
 
@@ -1222,10 +1236,10 @@ function _accLeerCedulaFoto(blob, tipo) {
   try { b64 = Utilities.base64Encode(blob.getBytes()); }
   catch (e) { _accApunte('no se pudo codificar la imagen — ' + (e && e.message || e)); return null; }
 
-  var lecturas = [_accPasadaCedula(b64, mime, ACC_MODELO_CEDULA, key)];
+  var lecturas = [_accPasadaCedula(b64, mime, _accModelo1(), key)];
   var reintento = false;
   if (_accLecturaFloja(lecturas[0]) && ACC_MODELO_CEDULA_2 &&
-      ACC_MODELO_CEDULA_2 !== ACC_MODELO_CEDULA) {
+      ACC_MODELO_CEDULA_2 !== _accModelo1()) {
     lecturas.push(_accPasadaCedula(b64, mime, ACC_MODELO_CEDULA_2, key));
     reintento = true;
   }
@@ -1637,7 +1651,7 @@ function diagnosticarLecturaCedula() {
   try { props = (typeof _waProps === 'function') ? _waProps() : PropertiesService.getScriptProperties(); }
   catch (e) { props = null; }
 
-  console.log('Modelo 1 (siempre) : %s', ACC_MODELO_CEDULA);
+  console.log('Modelo 1 (siempre) : %s', _accModelo1());
   console.log('Modelo 2 (si falla): %s', ACC_MODELO_CEDULA_2);
   console.log('Confianza mínima   : %s', ACC_CONFIANZA_MIN);
   console.log('Clave de Anthropic : %s',
@@ -1668,7 +1682,7 @@ function diagnosticarLecturaCedula() {
   var key = _anthropicKey();
   var b64 = Utilities.base64Encode(blob.getBytes());
   var mime = blob.getContentType() || 'image/jpeg';
-  [ACC_MODELO_CEDULA, ACC_MODELO_CEDULA_2].forEach(function (m) {
+  [_accModelo1(), ACC_MODELO_CEDULA_2].forEach(function (m) {
     var j = _accPasadaCedula(b64, mime, m, key);
     console.log('%s → %s', m, j ? JSON.stringify(j) : 'nada (mira los apuntes de arriba)');
     if (j) console.log('    ¿floja? %s', _accLecturaFloja(j) ? 'SÍ, no se daría por buena' : 'no');
@@ -1880,7 +1894,13 @@ function _accAvisarGarita(visita, texto) {
  * bitácora que dentro de un mes no distingue «nadie contestó» de «se quedó a medias».
  */
 function cerrarVisitasSinRespuesta() {
-  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  // Un disparador corre pase lo que pase, y _accSheet CREA la hoja si no está. En un PH
+  // que no contrató el acceso eso le planta cuatro hojas vacías en su cálculo — justo lo
+  // que el módulo promete no hacer. Se comprueba aquí porque aquí no hay enrutador que
+  // lo filtre: el reloj de Google llama directo.
+  if (typeof moduloActivo === 'function' && !moduloActivo('acceso')) {
+    return { ok: true, cerradas: 0, motivo: 'el módulo de acceso no está activo' };
+  }
   var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
   var vals = sh.getDataRange().getValues();
   if (vals.length < 2) return { ok: true, cerradas: 0 };
@@ -2467,8 +2487,20 @@ function _accEntro(estado) {
  */
 function visitasAdentro(horas) {
   _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  return _accDentroDe(_sheetRows(ACC_SH.VISITAS), horas);
+}
+
+/**
+ * Lo mismo, sobre filas ya leídas.
+ *
+ * Existe porque el panel necesitaba tres cosas de la misma hoja —las últimas cien, los
+ * que están dentro y los que quedaron sin cerrar— y las pedía por separado: tres
+ * lecturas completas de la hoja de visitas en cada carga. Con unos miles de filas eso
+ * se nota, y crece cada día que pasa.
+ */
+function _accDentroDe(filas, horas) {
   var corte = horas ? (new Date().getTime() - horas * 3600 * 1000) : 0;
-  return _sheetRows(ACC_SH.VISITAS)
+  return filas
     .filter(function (v) {
       if (!_accEntro(v.estado)) return false;
       if (String(v.salida || '').trim() || v.salida instanceof Date) return false;
@@ -2484,6 +2516,7 @@ function visitasAdentro(horas) {
     })
     .reverse();   // el último que entró, primero
 }
+
 
 /** «2 h 15 min», para decirle al guardia cuánto estuvo dentro. */
 function _accDuracion(entrada, salida) {
