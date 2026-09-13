@@ -53,6 +53,12 @@ var AC_CLAVES_CLIENTE = [
   { k: 'DUE_DAY',            req: false, desc: 'Día de vencimiento; 0 = fin de mes' },
   { k: 'ANIO_ACTUAL',        req: true,  desc: 'Año fiscal en curso (número)' },
   { k: 'UNIDAD',             req: false, desc: 'Cómo llama esta comunidad a su unidad: lote, apartamento, casa…' },
+  // Cómo se llega. En Panamá una dirección escrita casi nunca basta —«entrando por la
+  // vía, después del puente, a mano derecha»— y quien viene navega con Waze o Maps. Se
+  // guardan los dos enlaces porque la gente usa uno u otro y no se convierten entre sí.
+  { k: 'DIRECCION',          req: false, desc: 'Dirección en palabras, para quien pregunta cómo llegar' },
+  { k: 'MAPS_URL',           req: false, desc: 'Enlace de Google Maps a la entrada de la comunidad' },
+  { k: 'WAZE_URL',           req: false, desc: 'Enlace de Waze a la entrada de la comunidad' },
   { k: 'MODULOS',            req: false, desc: 'Módulos contratados, separados por coma; vacío = todos' }
 ];
 

@@ -1180,5 +1180,60 @@ PADRON[0].lote = '9';
 ok(_botGestionAcceso('+50769812266', { type: 'text', text: { body: 'cuanto debo?' } }, '') === null,
    'devuelve null y el bot sigue su camino normal');
 
+console.log('\n── EL MENSAJE QUE EL RESIDENTE LE REENVÍA AL VISITANTE ──');
+// Mandárselo el sistema directamente parecía lo obvio y es lo que NO se hace: no
+// tenemos su número, es un tercero que no dio su consentimiento, y Meta exige opt-in
+// para las plantillas — con un WABA compartido por todas las comunidades, un número
+// bloqueado las afecta a todas. Reenviado, el consentimiento es del residente.
+reiniciar(); reiniciarWA(); CACHE = {};
+CONFIG.NEGOCIO = 'Aires de Chicá';
+CONFIG.DIRECCION = 'Entrando por la vía, después del puente, a mano derecha';
+CONFIG.MAPS_URL = 'https://maps.app.goo.gl/ejemplo';
+CONFIG.WAZE_URL = 'https://waze.com/ul/ejemplo';
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
+escribe('+50769812266', 'Juan Pérez 8-123-456');
+reiniciarWA();
+toca('+50769812266', 'bot_acc_si');
+
+ok(ENVIADO.length === 2,
+   'se le mandan DOS mensajes: la confirmación y el reenviable aparte → ' + ENVIADO.length);
+const reenv = ENVIADO[1].texto;
+ok(/Está autorizado para entrar a Aires de Chicá/.test(reenv), 'el reenviable dice a dónde');
+ok(/Juan Pérez/.test(reenv), 'a quién');
+ok(/Lo autoriza: 9 · Ana Rosa Tejada/.test(reenv), 'y quién lo autorizó, con su unidad');
+ok(/Válido hasta el/.test(reenv), 'hasta cuándo vale');
+ok(/Presente su cédula en la garita/.test(reenv), 'y qué tiene que hacer al llegar');
+ok(/maps\.app\.goo\.gl/.test(reenv) && /waze\.com/.test(reenv),
+   'con los dos enlaces: la gente usa uno u otro y no se convierten entre sí');
+ok(/después del puente/.test(reenv), 'y la dirección en palabras, que en Panamá hace más falta que el enlace');
+
+ok(ENVIADO.every(e => e.tel === '+50769812266'),
+   'TODO va al residente. Al visitante no se le escribe: no tenemos su número, no dio ' +
+   'su consentimiento, y un dígito mal tecleado le diría a un desconocido que la garita ' +
+   'lo va a dejar pasar');
+ok(!/8-123-456/.test(reenv),
+   'y la cédula no viaja en el reenviable: el visitante ya sabe la suya, y ese mensaje ' +
+   'puede acabar en cualquier chat');
+
+console.log('\n── SIN DIRECCIÓN CONFIGURADA, NO SE INVENTA UNA ──');
+// Un enlace de mapa escrito en el código mandaría a los visitantes de un PH a la
+// puerta de otro. Es el mismo error que la cuenta bancaria y se paga más caro.
+reiniciar(); reiniciarWA(); CACHE = {};
+CONFIG.DIRECCION = ''; CONFIG.MAPS_URL = ''; CONFIG.WAZE_URL = '';
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
+escribe('+50769812266', 'Juan Pérez 8-123-456');
+reiniciarWA();
+toca('+50769812266', 'bot_acc_si');
+const sinDir = ENVIADO[1].texto;
+ok(!/Cómo llegar/.test(sinDir),
+   'sin nada configurado, la sección entera desaparece en vez de salir vacía');
+ok(!/Maps:|Waze:/.test(sinDir), 'y no quedan etiquetas huérfanas colgando');
+ok(/Está autorizado para entrar/.test(sinDir), 'el resto del mensaje sigue sirviendo');
+CONFIG.NEGOCIO = 'Aires de Chicá';
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

@@ -2256,7 +2256,10 @@ function _accGuardarLoDicho(tel, charla, puede) {
                             activo: true, notas: 'Dejado por el propietario desde WhatsApp.' });
       _accCharla(tel, null);
       enviarWhatsAppTexto(tel, '✅ Listo. *' + charla.nombre + '* puede entrar sin que le llamemos, ' +
-        'hasta el ' + _fechaCorta(hasta) + '.');
+        'hasta el ' + _fechaCorta(hasta) + '.\n\nAbajo le dejo un mensaje para reenviarle, con ' +
+        'la dirección y cómo llegar.');
+      // Aparte, y sin nada alrededor: así se reenvía entero de un toque.
+      enviarWhatsAppTexto(tel, _accMensajeParaVisitante(charla.nombre, charla.clave, hasta));
       return { contesto: true, avisar: false };
     }
   } catch (e) {
@@ -2265,6 +2268,49 @@ function _accGuardarLoDicho(tel, charla, puede) {
     return { contesto: true, avisar: true };
   }
   return null;
+}
+
+/**
+ * El mensaje que el residente le REENVÍA a su visitante.
+ *
+ * ── Por qué reenviado y no directo ───────────────────────────────────────────
+ * Mandárselo el sistema directamente parecía lo obvio, y es lo que no se hace:
+ *
+ *   · No tenemos su número. Una autorización guarda nombre y cédula, no celular.
+ *   · El visitante es un tercero que nunca firmó nada con la asociación, y su número
+ *     nos lo daría OTRA persona. Escribirle por iniciativa nuestra no es lo mismo que
+ *     guardarle la cédula por seguridad: es contacto sin su consentimiento. La misma
+ *     Ley 81 que obliga a borrar la foto a los 90 días.
+ *   · Meta exige consentimiento para las plantillas. Un visitante que no lo esperaba la
+ *     reporta como spam y la calidad del WABA cae — y ese WABA es UNO para todas las
+ *     comunidades. Un número bloqueado no afecta a una: las afecta a todas.
+ *   · Y un dígito mal tecleado le diría a un desconocido que la garita lo va a dejar
+ *     pasar, con la dirección incluida.
+ *
+ * Reenviado, el consentimiento es del residente por definición: él decide a quién se
+ * lo manda, desde su propia conversación. Mismo contenido, sin nada de lo anterior.
+ *
+ * Va como mensaje aparte y sin adornos, para que se reenvíe entero de un toque.
+ */
+function _accMensajeParaVisitante(nombre, clave, hasta) {
+  var negocio = (typeof CONFIG !== 'undefined' && CONFIG.NEGOCIO) || 'la comunidad';
+  var quien = _accDeQuien(clave);
+  var t = 'Está autorizado para entrar a ' + negocio + '.\n\n' +
+          'Visitante: ' + String(nombre || '') + '\n' +
+          'Lo autoriza: ' + quien + '\n' +
+          'Válido hasta el ' + _fechaCorta(hasta) + '\n\n' +
+          'Presente su cédula en la garita.';
+
+  var dir  = (typeof CONFIG !== 'undefined' && CONFIG.DIRECCION) || '';
+  var maps = (typeof CONFIG !== 'undefined' && CONFIG.MAPS_URL) || '';
+  var waze = (typeof CONFIG !== 'undefined' && CONFIG.WAZE_URL) || '';
+  if (dir || maps || waze) {
+    t += '\n\n📍 Cómo llegar';
+    if (dir)  t += '\n' + dir;
+    if (maps) t += '\nMaps: ' + maps;
+    if (waze) t += '\nWaze: ' + waze;
+  }
+  return t;
 }
 
 /** Quitar: se enseña la lista y se quita de un toque. */

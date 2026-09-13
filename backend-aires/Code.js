@@ -68,6 +68,13 @@ var CONFIG = (function () {
     // «unidad» es fea, pero no es falsa en ninguna.
     UNIDAD:         'unidad',
 
+    // Cómo se llega. Vacías a propósito: un enlace de mapa escrito en el código
+    // mandaría a los visitantes de un PH a la puerta de otro, que es el mismo error
+    // que la cuenta bancaria y se paga más caro.
+    DIRECCION:      '',
+    MAPS_URL:       '',
+    WAZE_URL:       '',
+
     // Lo único que de verdad no cambia entre comunidades: son de Panamá.
     MONEDA:         'B/.',
     TZ:             'America/Panama'
