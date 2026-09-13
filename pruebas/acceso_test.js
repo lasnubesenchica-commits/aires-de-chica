@@ -129,10 +129,14 @@ global.DriveApp = Object.assign(global.DriveApp || {}, {
   createFolder: () => ({ createFile: b => ({ getUrl: () => 'https://drive/foto', getId: () => 'FILE1' }) })
 });
 
-let PROPS = {};
+let PROPS = {}, CACHE = {};
 global.PropertiesService = { getScriptProperties: () => ({
   getProperty: k => (PROPS[k] === undefined ? null : PROPS[k]),
   setProperty: (k, v) => { PROPS[k] = v; } }) };
+global.CacheService = { getScriptCache: () => ({
+  get: k => (CACHE[k] === undefined ? null : CACHE[k]),
+  put: (k, v) => { CACHE[k] = v; },
+  remove: k => { delete CACHE[k]; } }) };
 const apuntes = () => String(PROPS.ACC_LECTURA_APUNTES || '');
 global.Utilities.base64Encode = () => 'AAAA';
 
@@ -695,7 +699,8 @@ ok(/NO ME FÍO DE ESTA LECTURA/.test(hablo().texto),
    'se avisa de que la lectura no es de fiar: ' + hablo().texto.split('\n')[0]);
 ok(hablo().texto.indexOf('NO ME FÍO') < hablo().texto.indexOf('PERLA'),
    'y el aviso va ANTES del dato, no escondido al final del mensaje');
-ok(/[Tt]eclee usted/.test(hablo().texto), 'con qué hacer: teclearlo él');
+ok(/Corregir los datos/.test(hablo().texto) && /tecl/i.test(hablo().texto),
+   'con qué hacer, y señalando el botón que lo arregla sin duplicar la visita');
 ok(_sheetRows('Visitas').length === 1 && /LECTURA DUDOSA/.test(_sheetRows('Visitas')[0].notas),
    'y la bitácora guarda que ese dato entró sin confirmar: ' + _sheetRows('Visitas')[0].notas);
 
@@ -750,6 +755,83 @@ ok(PROPS.ACC_ULTIMA_FOTO === 'FILE1',
    'la foto se apunta para poder reintentarla: la URL de WhatsApp caduca en minutos');
 ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto',
    'y se guarda antes de leerla, para que un fallo de lectura no se lleve también la imagen');
+
+console.log('\n── CORREGIR UNA LECTURA MALA NO PUEDE DUPLICAR LA VISITA ──');
+// Decirle al guardia «tecléelo usted» sin esto era pedirle que rompiera la bitácora: su
+// texto se tomaba como un anuncio NUEVO y quedaban dos filas para la misma persona, una
+// con los datos malos y otra con los buenos y nada que las relacione. Tres meses
+// después, eso son dos visitas distintas.
+const boton = (id) => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' }, { type: 'interactive', interactive: { button_reply: { id: id } } }); };
+
+reiniciar(); reiniciarWA(); PROPS = {}; CACHE = {};
+CLAUDE = [ { esCedula: false, tipoDoc: 'permanencia', visitante: 'PERLA MANCANELA PROVISONAL',
+             cedula: '1045031', confianza: 0.65 },
+           { esCedula: true, tipoDoc: 'permanencia', visitante: 'GEORGINA VANESA MARTINEZ CALERO',
+             cedula: '10445031', confianza: 0.72 } ];
+foto();
+const bots = (hablo().botones || []).map(b => b.reply.id);
+ok(bots.length === 3 && bots.some(x => x.indexOf('acc_fix_') === 0),
+   'con la lectura en duda aparece el tercer botón, «Corregir los datos»: ' + bots.length);
+const vid2 = _sheetRows('Visitas')[0].id;
+
+boton('acc_fix_' + vid2);
+ok(/Mándeme el nombre y el número/.test(hablo().texto), 'al tocarlo, se le pide el dato escrito');
+ok(/no se crea otra/.test(hablo().texto), 'y se le dice que corrige la que ya está, no que crea otra');
+
+CLAUDE = { visitante: 'Georgina Martínez', cedula: '1045031', lote: '' };
+anuncia('Georgina Martínez 1045031');
+ok(_sheetRows('Visitas').length === 1,
+   'sigue habiendo UNA visita, no dos: ' + _sheetRows('Visitas').length);
+let vc = _sheetRows('Visitas')[0];
+ok(vc.cedula === '1045031' && /Georgina Martínez/.test(String(vc.visitante)),
+   'con el dato bueno ya puesto: ' + vc.visitante + ' / ' + vc.cedula);
+ok(/tecleados por el guardia/.test(String(vc.notas)) && /10445031/.test(String(vc.notas)),
+   'y queda constancia de que lo tecleó él Y de lo que había puesto el lector: ' + vc.notas);
+
+console.log('\n── SI AL CORREGIRLO APARECE UN PERMISO, SE DICE ──');
+// La cédula mal leída puede ser justo la razón de que no casara ninguna autorización.
+reiniciar(); reiniciarWA(); CACHE = {};
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Georgina Martínez', cedula: '1045031' });
+CLAUDE = [ { esCedula: false, visitante: 'PERLA PERLA', cedula: '10445031', confianza: 0.6 },
+           { esCedula: true, visitante: 'Georgina Martinez Calero', cedula: '10445031', confianza: 0.7 } ];
+foto();
+const vid3 = _sheetRows('Visitas')[0].id;
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'con la cédula mal leída no casa ningún permiso');
+boton('acc_fix_' + vid3);
+CLAUDE = { visitante: 'Georgina Martínez', cedula: '1045031', lote: '' };
+anuncia('Georgina Martínez 1045031');
+ok(/ASÍ SÍ TIENE PERMISO/.test(hablo().texto),
+   'corregida la cédula, la autorización aparece y se le dice: ' + hablo().texto.split('\n')[0]);
+ok(_sheetRows('Visitas')[0].estado === 'preautorizada',
+   'y la MISMA visita pasa a preautorizada: ' + _sheetRows('Visitas')[0].estado);
+
+console.log('\n── UN ANUNCIO NORMAL NO SE COME LA VISITA ANTERIOR ──');
+// Un guardia puede anunciar a otra persona treinta segundos después. Por eso la
+// corrección la declara él con un botón y no se adivina comparando parecidos.
+reiniciar(); reiniciarWA(); CACHE = {};
+CLAUDE = { visitante: 'Primero Uno', cedula: '8-111-111', lote: '' };
+anuncia('Primero Uno 8-111-111');
+CLAUDE = { visitante: 'Segundo Dos', cedula: '8-222-222', lote: '' };
+anuncia('Segundo Dos 8-222-222');
+ok(_sheetRows('Visitas').length === 2,
+   'sin tocar «Corregir», dos anuncios son dos visitas: ' + _sheetRows('Visitas').length);
+
+console.log('\n── DECIDIDA LA VISITA, YA NO SE CORRIGE ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+CLAUDE = [ { esCedula: false, visitante: 'PERLA PERLA', cedula: '111', confianza: 0.5 },
+           { esCedula: true, visitante: 'Alguien Dudoso', cedula: '222', confianza: 0.6 } ];
+foto();
+const vid4 = _sheetRows('Visitas')[0].id;
+boton('acc_fix_' + vid4);
+boton('acc_si_' + vid4);          // se arrepiente y decide
+CLAUDE = { visitante: 'Otro Distinto', cedula: '9-999-999', lote: '' };
+anuncia('Otro Distinto 9-999-999');
+ok(_sheetRows('Visitas').length === 2,
+   'tras decidir, lo siguiente que escriba es un anuncio nuevo, no una corrección: ' +
+   _sheetRows('Visitas').length);
+ok(_sheetRows('Visitas')[0].estado === 'autorizada',
+   'y la decisión que tomó no se pierde: ' + _sheetRows('Visitas')[0].estado);
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

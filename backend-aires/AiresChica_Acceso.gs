@@ -1241,8 +1241,63 @@ function _accLeerCedulaFoto(blob, tipo) {
 
 /* ─────────────── la conversación con el guardia ─────────────── */
 
-var ACC_BOT_SI = 'acc_si_';      // el guardia dejó pasar
-var ACC_BOT_NO = 'acc_no_';      // el guardia no dejó pasar
+var ACC_BOT_SI  = 'acc_si_';      // el guardia dejó pasar
+var ACC_BOT_NO  = 'acc_no_';      // el guardia no dejó pasar
+var ACC_BOT_FIX = 'acc_fix_';     // el guardia va a teclear los datos buenos
+var ACC_CORRIGE_MIN = 15;         // minutos que se espera a que teclee la corrección
+
+/**
+ * Qué visita está esperando que este guardia la corrija.
+ *
+ * Sin esto, decirle «teclee usted el nombre y el número» era pedirle que rompiera la
+ * bitácora: el texto que escribiera a continuación se tomaría como un anuncio NUEVO y
+ * quedarían dos filas para la misma persona, una con los datos malos y otra con los
+ * buenos, sin nada que las relacione. Tres meses después, eso son dos visitas.
+ *
+ * La intención la declara ÉL con un botón, en vez de adivinarla comparando parecidos:
+ * un guardia puede perfectamente anunciar a otra persona treinta segundos después, y
+ * confundir las dos cosas sería peor que no ofrecer la corrección.
+ */
+function _accEsperaCorreccion(tel, visitaId) {
+  try {
+    var c = CacheService.getScriptCache();
+    var k = 'acc_corrige_' + String(tel).replace(/\D/g, '');
+    if (visitaId === null) { c.remove(k); return ''; }
+    if (visitaId) { c.put(k, String(visitaId), ACC_CORRIGE_MIN * 60); return String(visitaId); }
+    return String(c.get(k) || '');
+  } catch (e) { return ''; }
+}
+
+/**
+ * Reescribe el nombre y el número de una visita ya anotada.
+ *
+ * No se borra la anterior ni se crea otra: es la MISMA visita, con el dato corregido y
+ * constancia de que lo tecleó el guardia. Quien mire la bitácora tiene que poder ver
+ * que ese dato pasó por un par de ojos.
+ */
+function corregirVisita(id, d) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador de la visita.');
+  d = d || {};
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== id) continue;
+    var antes = String(vals[r][h.indexOf('visitante')] || '') + ' / ' +
+                String(vals[r][h.indexOf('cedula')] || '');
+    if (String(d.visitante || '').trim()) sh.getRange(r + 1, h.indexOf('visitante') + 1).setValue(String(d.visitante).trim());
+    if (String(d.cedula || '').trim())    sh.getRange(r + 1, h.indexOf('cedula') + 1).setValue(String(d.cedula).trim());
+    sh.getRange(r + 1, h.indexOf('notas') + 1)
+      .setValue('Datos tecleados por el guardia. El lector había puesto: ' + antes);
+    _reg('visita.corrige', { entidad: 'visita', clave: String(vals[r][h.indexOf('clave')] || ''),
+      propietario: String(d.visitante || ''),
+      detalle: 'Corregida a mano en la garita. Antes decía: ' + antes });
+    return { ok: true, id: id, antes: antes };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}
 
 /**
  * Todo lo que el bot le contesta a un guardia.
@@ -1258,14 +1313,57 @@ function _botGuardia(tel, garita, msg) {
     var i = msg.interactive || {};
     var b = i.button_reply || i.list_reply || {};
     var id = String(b.id || (msg.button && msg.button.payload) || '');
+    if (id.indexOf(ACC_BOT_FIX) === 0) {
+      _accEsperaCorreccion(tel, id.slice(ACC_BOT_FIX.length));
+      enviarWhatsAppTexto(tel,
+        'Mándeme el nombre y el número tal como aparecen en el documento, por ejemplo:\n' +
+        '«Georgina Martínez 1045031».\n\nCorrijo la visita que acabo de anotar; no se crea otra.');
+      return { contesto: true, avisar: false };
+    }
     if (id.indexOf(ACC_BOT_SI) === 0 || id.indexOf(ACC_BOT_NO) === 0) {
       var paso = id.indexOf(ACC_BOT_SI) === 0;
       var visitaId = id.slice(ACC_BOT_SI.length);
       resolverVisita(visitaId, paso ? 'autorizada' : 'rechazada', garita.nombre);
+      _accEsperaCorreccion(tel, null);   // decidida: lo que escriba ya es otra cosa
       enviarWhatsAppTexto(tel, paso
         ? 'Anotado: entró. Queda en la bitácora a su nombre.'
         : 'Anotado: no entró. Queda en la bitácora a su nombre.');
       return { contesto: true, avisar: false };
+    }
+  }
+
+  // 1b) ¿Es el texto con el que corrige una lectura que él mismo puso en duda?
+  if (tipo === 'text') {
+    var pendiente = _accEsperaCorreccion(tel);
+    if (pendiente) {
+      var buenos = _accLeerVisitaTexto((msg.text && msg.text.body) || '');
+      if (!String(buenos.visitante || '').trim() && !String(buenos.cedula || '').trim()) {
+        enviarWhatsAppTexto(tel,
+          'No saqué de ahí ni nombre ni número. Mándemelo así: «Georgina Martínez 1045031».');
+        return { contesto: true, avisar: false };
+      }
+      corregirVisita(pendiente, buenos);
+      _accEsperaCorreccion(tel, null);
+
+      // Con el dato bueno, la pregunta de si tiene permiso se vuelve a hacer: puede que
+      // con la cédula corregida sí aparezca una autorización que antes no casaba.
+      var deNuevo = autorizacionVigente('', buenos, new Date());
+      if (deNuevo && deNuevo.firme) {
+        resolverVisita(pendiente, 'preautorizada', garita.nombre);
+        enviarWhatsAppTexto(tel,
+          '✅ Corregido, y ASÍ SÍ TIENE PERMISO.\n\n' + String(buenos.visitante || '') +
+          (buenos.cedula ? '\nDocumento ' + buenos.cedula : '') +
+          '\n\nPermiso dejado por ' + _accDeQuien(deNuevo.autorizacion.clave) + '.' +
+          _accVigencia(deNuevo.autorizacion));
+        return { contesto: true, avisar: false };
+      }
+      _waEnviarBotones(tel,
+        'Corregido. Queda anotado así:\n\n' + String(buenos.visitante || '(sin nombre)') +
+        (buenos.cedula ? '\nDocumento ' + buenos.cedula : '') +
+        '\n\nSigue sin haber autorización dejada para esta persona.',
+        [_botBoton(ACC_BOT_SI + pendiente, 'Lo dejé pasar'),
+         _botBoton(ACC_BOT_NO + pendiente, 'No lo dejé pasar')]);
+      return { contesto: true, avisar: true };
     }
   }
 
@@ -1328,7 +1426,7 @@ function _botGuardia(tel, garita, msg) {
   if (datos.floja) {
     // Se pone ARRIBA de todo y en mayúsculas. Un guardia lee la primera línea y actúa;
     // una advertencia al final del mensaje no la lee nadie a las nueve de la noche.
-    leido = '⚠️ *NO ME FÍO DE ESTA LECTURA.* Teclee usted el nombre y el número.\n\n' + leido +
+    leido = '⚠️ *NO ME FÍO DE ESTA LECTURA.* Toque «Corregir los datos» y tecléelos usted.\n\n' + leido +
             '\n_Es lo que creí leer, y puede estar mal._';
   } else if (datos.deFoto) {
     leido += '\n_Leído de la foto — confírmelo con el documento._';
@@ -1342,22 +1440,24 @@ function _botGuardia(tel, garita, msg) {
     return { contesto: true, avisar: false };
   }
 
+  // Los botones. El de corregir sólo aparece cuando la lectura quedó en duda: si el dato
+  // es bueno, ofrecer «corregir» invita a tocar lo que ya está bien. WhatsApp admite tres.
+  var botones = [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
+                 _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')];
+  if (datos.floja) botones.push(_botBoton(ACC_BOT_FIX + visita.id, 'Corregir los datos'));
+
   if (hallado) {
     _waEnviarBotones(tel,
       '⚠️ COINCIDE EL NOMBRE, NO LA CÉDULA\n\n' + leido + '\n\n' + deQuien + ' dejó permiso para ' +
       'alguien con ese nombre, pero sin cédula anotada, así que no puedo asegurar que sea la ' +
-      'misma persona. Usted tiene el documento: decida y déjelo anotado.',
-      [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
-       _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')]);
+      'misma persona. Usted tiene el documento: decida y déjelo anotado.', botones);
     return { contesto: true, avisar: true };
   }
 
   _waEnviarBotones(tel,
     '⛔ SIN PERMISO PREVIO\n\n' + leido + '\n\nNo hay ninguna autorización dejada para esta ' +
     'persona. Todavía no puedo preguntarle a la casa desde aquí: llame usted por el medio de ' +
-    'siempre y déjelo anotado.',
-    [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
-     _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')]);
+    'siempre y déjelo anotado.', botones);
   return { contesto: true, avisar: true };
 }
 
