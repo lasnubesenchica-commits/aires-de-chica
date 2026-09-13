@@ -202,6 +202,12 @@ ok(filas.every(f => f.title.length <= 24),
    'ningún título pasa de 24 caracteres: ' +
    (filas.filter(f => f.title.length > 24).map(f => f.title).join(' · ') || 'ninguno'));
 ok(filas.every(f => f.description.length <= 72), 'ni ninguna descripción de 72');
+// WhatsApp admite DIEZ filas en total en una lista, sumando todas las secciones. Con
+// las once, Meta rechaza el mensaje entero y el propietario no recibe NADA — no es que
+// se pierda la opción nueva, es que se queda sin menú. Ya estamos en el tope, así que
+// la siguiente opción que se añada obliga a reorganizar antes, no después.
+ok(filas.length <= 10,
+   'el menú cabe en una lista de WhatsApp: ' + filas.length + ' de 10 filas');
 ok(filas.length <= 10, 'sin pasar de las 10 que admite WhatsApp');
 ok(filas.every(f => f.title.length <= 24 && (!f.description || f.description.length <= 72)),
    'y sin títulos ni descripciones que WhatsApp corte por largos');

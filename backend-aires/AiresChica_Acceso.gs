@@ -1903,12 +1903,48 @@ var ACC_RES_MIN = 10;            // minutos que se recuerda una conversación a 
  * es lo que se le va a decir.
  */
 function _accPuedeGestionar(telefono) {
-  if (typeof identificarPorCelular !== 'function') return { ok: false, por: 'sin-padron' };
+  if (typeof identificarPorCelular !== 'function') return { ok: false, por: 'sin-padron', claves: [] };
   var q = identificarPorCelular(telefono);
-  if (q.motivo === 'varios-duenos') return { ok: false, por: 'varios-duenos' };
-  if (!q.prop) return { ok: false, por: 'no-esta-en-el-padron' };
+  if (q.motivo === 'varios-duenos') return { ok: false, por: 'varios-duenos', claves: [] };
+  if (!q.prop) return { ok: false, por: 'no-esta-en-el-padron', claves: [] };
   var claves = (q.claves && q.claves.length) ? q.claves : [q.prop.clave];
   return { ok: true, claves: claves, nombre: String(q.prop.nombre || '') };
+}
+
+/**
+ * ¿Quién puede DEJAR UN PERMISO, y para qué unidades?
+ *
+ * Más ancho que _accPuedeGestionar a propósito, y la distinción importa:
+ *
+ *   · Nombrar a quien autoriza es estructural — le da a una persona un poder que dura.
+ *     Eso es del dueño y de nadie más.
+ *   · Dejar un permiso a un visitante es exactamente lo que un autorizante ya hace a
+ *     las nueve de la noche cuando la garita le pregunta, sólo que por adelantado.
+ *     Negárselo sería decirle «puede abrirle la puerta ahora, pero no puede avisar de
+ *     que viene». No tiene sentido: hace al residente llamar a la administración para
+ *     algo que él ya está autorizado a decidir.
+ *
+ * Un contacto puede autorizar aunque su número esté en unidades de dueños distintos:
+ * que el dueño lo haya cargado a mano en SU unidad es un permiso explícito, y no
+ * depende de lo que diga el padrón sobre ese número.
+ */
+function _accPuedeAutorizar(telefono) {
+  var claves = {}, nombre = '';
+  var dueno = _accPuedeGestionar(telefono);
+  if (dueno.ok) {
+    dueno.claves.forEach(function (c) { claves[c] = true; });
+    nombre = dueno.nombre;
+  }
+  var t = _accTel(telefono);
+  getContactos('').forEach(function (c) {
+    if (c.activo && c.autoriza && t && _accTel(c.celular) === t) {
+      claves[c.clave] = true;
+      if (!nombre) nombre = c.nombre;
+    }
+  });
+  var lista = Object.keys(claves);
+  if (!lista.length) return { ok: false, por: dueno.por || 'no-autoriza', claves: [] };
+  return { ok: true, claves: lista, nombre: nombre, esDueno: !!dueno.ok };
 }
 
 /** La conversación a medias de este propietario. `null` la borra. */
@@ -1962,7 +1998,13 @@ function _botGestionAcceso(tel, msg, accion) {
     return { contesto: true, avisar: false };
   }
 
-  var puede = _accPuedeGestionar(tel);
+  // Nombrar autorizantes es del dueño; dejar un permiso lo puede hacer cualquiera que
+  // ya autorice visitas de esa unidad.
+  var deContactos = (accion === ACC_RES_QUIEN) ||
+                    (charla && charla.que === 'contacto') ||
+                    (accion.indexOf(ACC_RES_QUITA + 'c|') === 0) ||
+                    (accion.indexOf(ACC_RES_QUITA + 'C|') === 0);
+  var puede = deContactos ? _accPuedeGestionar(tel) : _accPuedeAutorizar(tel);
   if (!puede.ok) {
     _accCharla(tel, null);
     if (puede.por === 'varios-duenos') {
@@ -1971,9 +2013,12 @@ function _botGestionAcceso(tel, msg, accion) {
         'distintas, así que por aquí no podemos dejarle cambiar quién autoriza las visitas. ' +
         'La administración lo hace por usted.');
     } else {
-      enviarWhatsAppTexto(tel,
-        'Esto sólo lo puede gestionar el propietario desde el número que tenemos en el padrón. ' +
-        'Si es usted, escríbanos y lo actualizamos.');
+      enviarWhatsAppTexto(tel, deContactos
+        ? 'Cambiar QUIÉN autoriza las visitas sólo lo hace el propietario, desde el número que ' +
+          'tenemos en el padrón. Usted sí puede dejar permisos a visitantes: toque «Dejar un ' +
+          'permiso» en el menú.'
+        : 'Para esto hace falta ser el propietario, o estar cargado como contacto que autoriza ' +
+          'las visitas de una ' + _acUnidad() + '. Si cree que debería estarlo, pídaselo al dueño.');
     }
     return { contesto: true, avisar: true };
   }
@@ -2005,6 +2050,60 @@ function _botGestionAcceso(tel, msg, accion) {
   // Un texto suelto: o es el dato que se le pidió, o no hay conversación viva.
   if (charla && esTexto) return _accRecibirDato(tel, charla, texto, puede);
   return null;
+}
+
+/**
+ * El atajo: alguien que autoriza manda una cédula, sin pasar por el menú.
+ *
+ * Es como de verdad se usa esto. A un residente le escriben «mañana va Juan, cédula
+ * 8-123-456», lo reenvía al bot y ya está; obligarle a abrir un menú de diez opciones
+ * para algo que cabe en una línea es pedirle que no lo use.
+ *
+ * NO escribe nada: propone, y se guarda sólo si toca el botón. Y dice cómo salirse, que
+ * un mensaje que alguien mandó con otra intención —«mi cédula es…»— no puede acabar en
+ * un permiso de entrada.
+ *
+ * Devuelve null si esto no era un atajo, y el bot sigue su camino.
+ */
+function _botAtajoPermiso(tel, msg) {
+  if (String(msg.type || '') !== 'text') return null;
+  if (_accCharla(tel)) return null;                       // ya hay una conversación viva
+  var texto = String((msg.text && msg.text.body) || '').trim();
+  var ced = _accCedulaEnTexto(texto);
+  if (!ced) return null;
+
+  var puede = _accPuedeAutorizar(tel);
+  if (!puede.ok) return null;                             // no autoriza: no es asunto suyo
+
+  var clave = puede.claves.length === 1 ? puede.claves[0] : '';
+  var d = _accLeerVisitaTexto(texto);
+  var nombre = String(d.visitante || '').trim();
+
+  var charla = { que: 'permiso', clave: clave, cedula: ced, nombre: nombre };
+
+  if (!clave) {                                           // autoriza en varias unidades
+    charla.paso = 'espera-permiso';
+    _accCharla(tel, charla);
+    return _accPreguntarUnidad(tel, puede);
+  }
+  if (!nombre) {
+    charla.paso = 'espera-permiso';
+    _accCharla(tel, charla);
+    enviarWhatsAppTexto(tel,
+      'Veo la cédula ' + ced + '. ¿Cómo se llama quien viene?\n\n' +
+      'Si no era eso lo que buscaba, escriba «menú».');
+    return { contesto: true, avisar: false };
+  }
+
+  charla.paso = 'confirma-permiso';
+  _accCharla(tel, charla);
+  var hasta = _accHasta();
+  _waEnviarBotones(tel,
+    '¿Le dejo permiso de entrada?\n\n*' + nombre + '*\nCédula ' + ced + '\n' +
+    _acUnidadCap() + ' ' + clave + '\n\nVale hasta el ' + _fechaCorta(hasta) + '.' +
+    '\n\n_Si buscaba otra cosa, toque No._',
+    [_botBoton(ACC_RES_SI, 'Sí, dejarlo'), _botBoton(ACC_RES_NO, 'No')]);
+  return { contesto: true, avisar: false };
 }
 
 /** Con varias unidades a su nombre hay que saber de cuál habla. */
@@ -2108,14 +2207,21 @@ function _accRecibirDato(tel, charla, texto, puede) {
         'No saqué de ahí el nombre del visitante. Mándemelo así:\n«Juan Pérez 8-123-456»');
       return { contesto: true, avisar: false };
     }
-    charla.nombre = nombre; charla.cedula = ced; charla.paso = 'confirma-permiso';
+    // Lo que ya venía en la charla NO se pisa con el vacío de este mensaje. El atajo
+    // guarda la cédula del primer mensaje y luego pregunta el nombre: sobrescribirla
+    // con lo que trae la respuesta —que sólo trae el nombre— la perdía por el camino.
+    charla.nombre = nombre;
+    if (ced) charla.cedula = ced;
+    charla.cedula = String(charla.cedula || '');
+    charla.paso = 'confirma-permiso';
     _accCharla(tel, charla);
     var hasta = _accHasta();
+    var cedFinal = charla.cedula;
     _waEnviarBotones(tel,
-      '¿Dejo el permiso?\n\n*' + nombre + '*\n' + (ced ? 'Cédula ' + ced : '_sin cédula_') +
+      '¿Dejo el permiso?\n\n*' + nombre + '*\n' + (cedFinal ? 'Cédula ' + cedFinal : '_sin cédula_') +
       '\n' + _acUnidadCap() + ' ' + charla.clave +
       '\n\nVale hasta el ' + _fechaCorta(hasta) + '. Después hay que volver a dejarlo.' +
-      (ced ? '' : '\n\nSin cédula, el guardia sabrá que la coincidencia es sólo por el nombre.'),
+      (cedFinal ? '' : '\n\nSin cédula, el guardia sabrá que la coincidencia es sólo por el nombre.'),
       [_botBoton(ACC_RES_SI, 'Sí, dejarlo'), _botBoton(ACC_RES_NO, 'No')]);
     return { contesto: true, avisar: false };
   }

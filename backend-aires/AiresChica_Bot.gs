@@ -61,13 +61,6 @@ function _botSilenciado(tel) {
 
 /* ─────────────── qué quiere quien escribe ─────────────── */
 
-/**
- * De un mensaje entrante a una de las acciones que el bot sabe hacer.
- *
- * Un botón no se interpreta: trae su identificador y no hay nada que adivinar. El
- * texto libre sí, y ahí entra Claude. Lo que no es ni una cosa ni la otra —una nota
- * de voz, una ubicación, un sticker— va a un humano en vez de fingir que se entendió.
- */
 /** El identificador de un botón o fila de lista, sin interpretar nada. */
 function _botIdDeBoton(msg) {
   var tipo = String(msg.type || '');
@@ -80,6 +73,13 @@ function _botIdDeBoton(msg) {
   return '';
 }
 
+/**
+ * De un mensaje entrante a una de las acciones que el bot sabe hacer.
+ *
+ * Un botón no se interpreta: trae su identificador y no hay nada que adivinar. El
+ * texto libre sí, y ahí entra Claude. Lo que no es ni una cosa ni la otra —una nota
+ * de voz, una ubicación, un sticker— va a un humano en vez de fingir que se entendió.
+ */
 function _botAccion(msg) {
   var tipo = String(msg.type || '');
   if (tipo === 'interactive') {
@@ -306,6 +306,13 @@ function _botAtender(info, msg) {
     if (typeof _botGestionAcceso === 'function') {
       var g = _botGestionAcceso(tel, msg, _botIdDeBoton(msg));
       if (g) return g;
+    }
+    // Y el atajo: quien autoriza visitas manda una cédula y ya está. Va aquí, después
+    // de la conversación a medias —para no pisarla— y antes de que el modelo clasifique
+    // «Juan Pérez 8-123-456» como una consulta cualquiera.
+    if (typeof _botAtajoPermiso === 'function') {
+      var at = _botAtajoPermiso(tel, msg);
+      if (at) return at;
     }
   }
 

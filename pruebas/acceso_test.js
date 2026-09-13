@@ -1094,16 +1094,65 @@ ok(res && res.contesto, 'se le contesta');
 ok(/personas distintas/.test(hablo().texto), 'y se le dice por qué no: ' + hablo().texto.slice(0, 60));
 ok(getContactos('Q-9').length === 0, 'no se le deja tocar nada');
 
-console.log('\n── UN CONTACTO DE ACCESO NO PUEDE NOMBRAR A OTROS ──');
-// El inquilino puede abrirle a quien llegue hoy. Lo que no puede es nombrar a otros
-// cinco que abran mañana: eso es del dueño.
+console.log('\n── UN CONTACTO NO NOMBRA AUTORIZANTES, PERO SÍ DEJA PERMISOS ──');
+// Las dos mitades de la misma regla. Nombrar a quien autoriza es estructural y es del
+// dueño. Dejar un permiso es lo que el contacto YA hace a las nueve de la noche cuando
+// la garita le pregunta, sólo que por adelantado: negárselo sería decirle «puede
+// abrirle la puerta ahora, pero no puede avisar de que viene».
 reiniciar(); reiniciarWA(); CACHE = {};
 PADRON[0].lote = '9';
 guardarContacto({ clave: 'Q-9', nombre: 'El inquilino', celular: '6555-8888', autoriza: 'si' });
+
 res = toca('+50765558888', 'bot_acc_quien');
-ok(/sólo lo puede gestionar el propietario/.test(hablo().texto),
-   'se le dice que no, aunque él sí autorice visitas');
-ok(getContactos('Q-9').length === 1, 'y no se agregó nada');
+ok(/sólo lo hace el propietario/.test(hablo().texto),
+   'nombrar autorizantes, no: ' + hablo().texto.slice(0, 55));
+ok(/Dejar un permiso/.test(hablo().texto),
+   'pero se le dice lo que sí puede hacer, en vez de dejarlo en «no»');
+ok(getContactos('Q-9').length === 1, 'y no se agregó a nadie');
+
+res = toca('+50765558888', 'bot_acc_permiso');
+ok(/Permisos dejados/.test(hablo().texto), 'dejar un permiso, sí');
+CLAUDE = { visitante: 'Su Visita', cedula: '8-555-666', lote: '' };
+escribe('+50765558888', 'Su Visita 8-555-666');
+toca('+50765558888', 'bot_acc_si');
+ok(getAutorizaciones('Q-9').length === 1,
+   'y el permiso queda dejado por él: ' + getAutorizaciones('Q-9').length);
+
+console.log('\n── EL ATAJO: MANDAR LA CÉDULA Y YA ──');
+// Es como se usa de verdad. A un residente le escriben «mañana va Juan, cédula
+// 8-123-456», lo reenvía al bot y listo.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
+let at = _botAtajoPermiso('+50769812266', { type: 'text', text: { body: 'mañana va Juan Pérez, cédula 8-123-456' } });
+ok(at && /¿Le dejo permiso de entrada\?/.test(hablo().texto),
+   'sin pasar por el menú, propone el permiso');
+ok(/Juan Pérez/.test(hablo().texto) && /8-123-456/.test(hablo().texto), 'con lo que leyó');
+ok(getAutorizaciones('Q-9').length === 0, 'pero NO lo escribe: propone, no hace');
+ok(/toque No/.test(hablo().texto), 'y dice cómo salirse, por si mandó eso con otra intención');
+toca('+50769812266', 'bot_acc_si');
+ok(getAutorizaciones('Q-9').length === 1, 'al confirmar, queda');
+
+console.log('\n── EL ATAJO PIDE EL NOMBRE SI SÓLO LLEGA EL NÚMERO ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+CLAUDE = { visitante: '', cedula: '8-123-456', lote: '' };
+_botAtajoPermiso('+50769812266', { type: 'text', text: { body: '8-123-456' } });
+ok(/¿Cómo se llama quien viene\?/.test(hablo().texto),
+   'una cédula sola no basta para un permiso: falta el nombre');
+CLAUDE = { visitante: 'Juan Pérez', cedula: '', lote: '' };
+escribe('+50769812266', 'Juan Pérez');
+toca('+50769812266', 'bot_acc_si');
+ok(getAutorizaciones('Q-9')[0] && getAutorizaciones('Q-9')[0].cedula === '8-123-456',
+   'y la cédula del primer mensaje no se pierde por el camino');
+
+console.log('\n── EL ATAJO NO ES DE CUALQUIERA ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+ok(_botAtajoPermiso('+50799999999', { type: 'text', text: { body: 'Juan Pérez 8-123-456' } }) === null,
+   'quien no autoriza en ninguna unidad no propone nada, y el bot sigue su camino');
+CACHE['acc_res_50769812266'] = JSON.stringify({ que: 'contacto', clave: 'Q-9', paso: 'espera-contacto' });
+ok(_botAtajoPermiso('+50769812266', { type: 'text', text: { body: 'Carlos 8-123-456' } }) === null,
+   'y con una conversación viva no se cuela: ese texto era para el formulario abierto');
 
 console.log('\n── NO SE PUEDE GESTIONAR UNA UNIDAD AJENA ──');
 // La charla vive en una caché de diez minutos y lo que escribe es de seguridad: se
