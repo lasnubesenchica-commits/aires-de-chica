@@ -1268,6 +1268,7 @@ var ACC_BOT_SI  = 'acc_si_';      // el guardia dejó pasar
 var ACC_BOT_NO  = 'acc_no_';      // el guardia no dejó pasar
 var ACC_BOT_FIX = 'acc_fix_';     // el guardia va a teclear los datos buenos
 var ACC_BOT_SAL = 'acc_sal_';     // el guardia anota que alguien salió
+var ACC_BOT_MAS = 'acc_mas_';     // siguiente página de la lista de adentro
 var ACC_CORRIGE_MIN = 15;         // minutos que se espera a que teclee la corrección
 
 /**
@@ -1337,15 +1338,23 @@ function _botGuardia(tel, garita, msg) {
     var i = msg.interactive || {};
     var b = i.button_reply || i.list_reply || {};
     var id = String(b.id || (msg.button && msg.button.payload) || '');
+    if (id.indexOf(ACC_BOT_MAS) === 0) {
+      return _accListaAdentro(tel, id.slice(ACC_BOT_MAS.length), '');
+    }
     if (id.indexOf(ACC_BOT_SAL) === 0) {
       var rs = registrarSalida(id.slice(ACC_BOT_SAL.length), garita.nombre);
       if (rs.yaSalio) {
         enviarWhatsAppTexto(tel, String(rs.visitante || 'Esa visita') +
           ' ya tenía salida anotada: ' + rs.salida + '. No se cambió nada.');
-      } else {
-        enviarWhatsAppTexto(tel, '✅ Salió ' + String(rs.visitante || '') +
-          (rs.duracion ? '.\nEstuvo ' + rs.duracion + ' adentro.' : '.'));
+        return { contesto: true, avisar: false };
       }
+      enviarWhatsAppTexto(tel, '✅ Salió ' + String(rs.visitante || '') +
+        (rs.duracion ? '.\nEstuvo ' + rs.duracion + ' adentro.' : '.'));
+      // Y la lista otra vez, actualizada. Aquí sí compensa: la gente se va en tandas
+      // —una familia, una cuadrilla— y el siguiente sale en dos minutos. En cambio no
+      // se manda tras cada ENTRADA: serían cincuenta listas al día enterrando los
+      // mensajes que sí hay que leer, y para cuando alguien saliera estaría vieja.
+      if (visitasAdentro(ACC_HORAS_ADENTRO).length) return _accListaAdentro(tel, 0, '');
       return { contesto: true, avisar: false };
     }
     if (id.indexOf(ACC_BOT_FIX) === 0) {
@@ -1372,11 +1381,13 @@ function _botGuardia(tel, garita, msg) {
   // Va antes que la corrección y que cualquier lectura de texto: es una orden corta y
   // exacta, como «menú» en el resto del bot, y quien la escribe está preguntando otra
   // cosa. Si tenía una corrección a medias, se descarta — igual que «menú».
-  if (tipo === 'text' &&
-      /^\s*(adentro|dentro|salida|salidas|lista|qui[eé]n(es)? est[aá]n? (adentro|dentro))\s*[?¿]*\s*$/i
-        .test(String((msg.text && msg.text.body) || ''))) {
-    _accEsperaCorreccion(tel, null);
-    return _accListaAdentro(tel);
+  if (tipo === 'text') {
+    var mAd = /^\s*(?:adentro|dentro|salida|salidas|lista|qui[eé]nes? est[aá]n? (?:adentro|dentro))\b[\s?¿]*(.*)$/i
+      .exec(String((msg.text && msg.text.body) || ''));
+    if (mAd) {
+      _accEsperaCorreccion(tel, null);
+      return _accListaAdentro(tel, 0, mAd[1]);
+    }
   }
 
   // 1b) ¿Es el texto con el que corrige una lectura que él mismo puso en duda?
@@ -1481,9 +1492,12 @@ function _botGuardia(tel, garita, msg) {
 
   // 4) La respuesta. Lo único que abre sin preguntar es una cédula que casa.
   if (hallado && hallado.firme) {
+    // La CUENTA de quién hay dentro, no la lista. Una línea en un mensaje que ya se
+    // manda, en vez de cincuenta listas al día enterrando lo que sí hay que leer.
+    // Cuando la necesite de verdad, escribe «adentro» y la recibe fresca.
     enviarWhatsAppTexto(tel,
       '✅ PUEDE PASAR\n\n' + leido + '\n\nTiene permiso dejado por ' + deQuien + '.' +
-      _accVigencia(hallado.autorizacion));
+      _accVigencia(hallado.autorizacion) + _accCuentaAdentro());
     return { contesto: true, avisar: false };
   }
 
@@ -1550,6 +1564,23 @@ function _accDeQuien(clave) {
   var p = (typeof _findProp === 'function') ? _findProp(clave) : null;
   if (!p) return String(clave || 'la unidad');
   return (p.lote ? p.lote + ' · ' : '') + (p.nombre || clave);
+}
+
+/**
+ * «3 adentro ahora» — la CUENTA, no la lista.
+ *
+ * Va pegada al mensaje que ya se manda, en vez de un mensaje aparte por cada entrada:
+ * cincuenta listas al día enterrarían los avisos que sí hay que leer, y para cuando
+ * alguien saliera estarían viejas. Cuando la necesite, el guardia escribe «adentro» y
+ * la recibe fresca.
+ *
+ * La visita que acaba de entrar ya está contada: se anota antes de componer esto.
+ */
+function _accCuentaAdentro() {
+  var n = 0;
+  try { n = visitasAdentro(ACC_HORAS_ADENTRO).length; } catch (e) { return ''; }
+  if (!n) return '';
+  return '\n\n' + n + (n === 1 ? ' visita adentro ahora.' : ' visitas adentro ahora.');
 }
 
 /** « Vigente hasta el 31/12/2026.» o cadena vacía. */
@@ -2501,27 +2532,77 @@ function registrarSalida(id, guardia) {
 /**
  * La lista de quién está dentro, para que el guardia toque al que salió.
  *
- * WhatsApp admite diez filas por lista. Con más de diez dentro se enseñan las diez
- * últimas y se dice cuántas quedan: cortar en silencio haría creer que no hay más.
+ * ── El tope de diez ──────────────────────────────────────────────────────────
+ * WhatsApp admite DIEZ filas por lista, sumando todas las secciones. La primera
+ * versión enseñaba las diez últimas y decía «de 15» — o sea, que a los cinco
+ * restantes no había forma de anotarles la salida. Un tope que se anuncia sigue
+ * siendo un tope: en una comunidad con una fiesta dentro, esos cinco son justo los
+ * que van a salir.
+ *
+ * Con más de diez se enseñan NUEVE y la décima fila es «Ver más». Cuesta una fila y
+ * llega a todos. El punto de partida viaja dentro del identificador del botón, así
+ * que no hace falta recordar nada entre mensajes.
+ *
+ * Y se puede filtrar escribiendo: «adentro juan» enseña sólo los que casan. Con
+ * treinta personas dentro es más rápido que pasar tres páginas.
  */
-function _accListaAdentro(tel) {
-  var dentro = visitasAdentro(ACC_HORAS_ADENTRO);
-  if (!dentro.length) {
+function _accListaAdentro(tel, desde, filtro) {
+  desde = Number(desde) || 0;
+  filtro = String(filtro || '').trim();
+
+  var todos = visitasAdentro(ACC_HORAS_ADENTRO);
+  var dentro = todos;
+  if (filtro) {
+    var f = _accNombre(filtro);
+    dentro = todos.filter(function (v) {
+      return _accNombre(v.visitante).indexOf(f) >= 0 ||
+             _accNombre(v.lote || v.clave).indexOf(f) >= 0;
+    });
+  }
+
+  if (!todos.length) {
     enviarWhatsAppTexto(tel,
       'No hay nadie adentro con entrada anotada en las últimas ' + ACC_HORAS_ADENTRO + ' horas.');
     return { contesto: true, avisar: false };
   }
+  if (!dentro.length) {
+    enviarWhatsAppTexto(tel,
+      'Nadie de los ' + todos.length + ' que están adentro casa con «' + filtro + '».\n' +
+      'Escriba «adentro» a secas para verlos todos.');
+    return { contesto: true, avisar: false };
+  }
 
-  var filas = dentro.slice(0, 10).map(function (v) {
+  // Con más de diez, la última fila se gasta en «Ver más».
+  var quedan = dentro.length - desde;
+  var cabenTodas = quedan <= 10;
+  var pagina = dentro.slice(desde, desde + (cabenTodas ? 10 : 9));
+
+  var filas = pagina.map(function (v) {
     return { id: ACC_BOT_SAL + v.id,
              title: String(v.visitante || 'Sin nombre').slice(0, 24),
              description: ((v.lote || v.clave) ? _acUnidadCap() + ' ' + (v.lote || v.clave) + ' · ' : '') +
                           'entró ' + v.desde };
   });
-  var cabecera = dentro.length + (dentro.length === 1 ? ' visita adentro' : ' visitas adentro') +
-    '.\nToque a quien acaba de salir.' +
-    (dentro.length > 10 ? '\n\n_Se muestran las 10 últimas de ' + dentro.length + '._' : '');
+  if (!cabenTodas) {
+    var restantes = dentro.length - (desde + 9);
+    filas.push({ id: ACC_BOT_MAS + (desde + 9), title: 'Ver más',
+                 description: 'Quedan ' + restantes + ' por mostrar' });
+  }
 
-  _waEnviarLista(tel, cabecera, 'Ver quién está', [{ title: 'Adentro ahora', rows: filas }]);
+  var cab;
+  if (filtro) {
+    cab = dentro.length + ' de ' + todos.length + ' casan con «' + filtro + '».';
+  } else {
+    cab = dentro.length + (dentro.length === 1 ? ' visita adentro' : ' visitas adentro') + '.';
+  }
+  cab += '\nToque a quien acaba de salir.';
+  if (!cabenTodas || desde) {
+    cab += '\n\n_Mostrando ' + (desde + 1) + '–' + (desde + pagina.length) + ' de ' + dentro.length + '._';
+  }
+  if (!filtro && dentro.length > 10) {
+    cab += '\nTambién puede escribir «adentro» y un nombre para buscar.';
+  }
+
+  _waEnviarLista(tel, cab, 'Ver quién está', [{ title: 'Adentro ahora', rows: filas }]);
   return { contesto: true, avisar: false };
 }

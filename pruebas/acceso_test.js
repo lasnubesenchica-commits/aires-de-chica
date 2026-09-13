@@ -1317,5 +1317,82 @@ pide('adentro');
 ok(/No hay nadie adentro/.test(hablo().texto),
    'al guardia se le dice que no hay nadie de las últimas 24 h, sin llenarle la lista de ruido');
 
+console.log('\n── LA CUENTA VA EN LA ENTRADA; LA LISTA, EN LA SALIDA ──');
+// Mandar la lista entera en cada entrada serían cincuenta mensajes al día enterrando
+// los avisos que sí hay que leer, y para cuando alguien saliera estaría vieja. La
+// cuenta cabe en el mensaje que ya se manda. Después de una SALIDA sí compensa: la
+// gente se va en tandas y el siguiente sale en dos minutos.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Uno Uno', cedula: '8-1-1' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Dos Dos', cedula: '8-2-2' });
+CLAUDE = { visitante: 'Uno Uno', cedula: '8-1-1', lote: '' };
+anuncia('Uno Uno 8-1-1');
+ok(/1 visita adentro ahora/.test(hablo().texto),
+   'el mensaje de entrada trae la cuenta, contando al que acaba de entrar');
+ok(hablo().botones === null && !hablo().lista,
+   'y NO manda la lista: ni un mensaje extra ni una lista de más');
+
+CLAUDE = { visitante: 'Dos Dos', cedula: '8-2-2', lote: '' };
+anuncia('Dos Dos 8-2-2');
+ok(/2 visitas adentro ahora/.test(hablo().texto), 'la cuenta sube con el segundo');
+
+console.log('\n  · al anotar una salida, la lista actualizada');
+const dentroAhora = visitasAdentro(24);
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: 'acc_sal_' + dentroAhora[0].id } } });
+ok(ENVIADO.length === 2, 'se mandan dos: la confirmación y la lista → ' + ENVIADO.length);
+ok(/Salió/.test(ENVIADO[0].texto), 'primero, quién salió');
+ok(ENVIADO[1].lista && ENVIADO[1].lista[0].rows.length === 1,
+   'y detrás quién queda, sin que tenga que pedirla');
+
+console.log('\n  · y si no queda nadie, no se manda una lista vacía');
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: 'acc_sal_' + visitasAdentro(24)[0].id } } });
+ok(ENVIADO.length === 1 && !ENVIADO[0].lista, 'sólo la confirmación');
+
+console.log('\n── MÁS DE DIEZ ADENTRO: SE LLEGA A TODOS ──');
+// WhatsApp admite diez filas por lista. La primera versión enseñaba las diez últimas
+// y decía «de 15» — o sea, que a los otros cinco no había forma de anotarles la
+// salida. Un tope que se anuncia sigue siendo un tope.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+_accHojas();
+for (let i = 1; i <= 14; i++) {
+  HOJAS.Visitas.push(['V' + i, new Date(), 'Q-9', '9', 'Visitante ' + i, '', '', '', '',
+                      'autorizada', '', '', '', '', '', '', new Date()]);
+}
+ok(visitasAdentro(24).length === 14, 'catorce adentro');
+
+pide('adentro');
+let rows = hablo().lista[0].rows;
+ok(rows.length === 10, 'la lista trae diez filas, que es el tope de WhatsApp');
+ok(rows[9].id.indexOf('acc_mas_') === 0,
+   'y la décima es «Ver más», no un visitante cortado: ' + rows[9].title);
+ok(/Quedan 5/.test(rows[9].description), 'diciendo cuántos faltan: ' + rows[9].description);
+ok(/Mostrando 1–9 de 14/.test(hablo().texto), 'y el encabezado sitúa la página');
+
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: rows[9].id } } });
+rows = hablo().lista[0].rows;
+ok(rows.length === 5, 'la segunda página trae los cinco que faltaban: ' + rows.length);
+ok(rows.every(r => r.id.indexOf('acc_sal_') === 0),
+   'todos con su botón de salida: se llega a los catorce, no a diez');
+ok(/Mostrando 10–14 de 14/.test(hablo().texto), 'y lo dice');
+
+console.log('\n  · o se busca por nombre, que con treinta dentro es más rápido');
+pide('adentro visitante 3');
+ok(hablo().lista[0].rows.length === 1 && /Visitante 3/.test(hablo().lista[0].rows[0].title),
+   'filtra por nombre');
+ok(/1 de 14 casan/.test(hablo().texto), 'y dice cuántos casaron: ' + hablo().texto.split('\n')[0]);
+
+pide('adentro zutano');
+ok(/Nadie de los 14/.test(hablo().texto),
+   'si no casa nadie lo dice, y recuerda cómo verlos todos: ' + hablo().texto.split('\n')[0]);
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
