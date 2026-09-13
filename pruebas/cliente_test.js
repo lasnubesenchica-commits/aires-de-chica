@@ -4,7 +4,8 @@ const fs = require('fs');
 let mal = 0;
 const ok = (c, m) => { console.log((c ? '  ✓' : '  ✗ NO PASA') + ' ' + m); if (!c) mal++; };
 
-let PROPS = {};
+let PROPS = {}, REGISTRO = [];
+global._reg = (accion, d) => { REGISTRO.push({ accion, ...d }); return 'R1'; };
 global.PropertiesService = { getScriptProperties: () => ({
   getProperties: () => JSON.parse(JSON.stringify(PROPS)),
   getProperty: k => (PROPS[k] === undefined ? null : PROPS[k]),
@@ -43,7 +44,9 @@ const cargar = () => eval(bloque + '\n' + cliente +
   '   _moduloBloquea: _moduloBloquea, AC_MODULOS_TODOS: AC_MODULOS_TODOS,' +
   '   altaDeComunidad: altaDeComunidad, AC_ALTA: AC_ALTA,' +
   '   _acUnidad: _acUnidad, _acUnidadCap: _acUnidadCap, _acUnidadDe: _acUnidadDe,' +
-  '   _acUn: _acUn, _acNingun: _acNingun, _acDel: _acDel })');
+  '   _acUn: _acUn, _acNingun: _acNingun, _acDel: _acDel,' +
+  '   getIdentidad: getIdentidad, guardarIdentidad: guardarIdentidad,' +
+  '   AC_EDITABLES_PANEL: AC_EDITABLES_PANEL })');
 
 console.log('── UNA COPIA SIN CONFIGURAR NO HEREDA A NADIE ──');
 PROPS = {};
@@ -227,6 +230,66 @@ ok(ra.ok === false && PROPS.AC_NEGOCIO === 'Aires de Chicá' && PROPS.AC_UNIDAD 
    'ejecutarla con AC_ALTA vacío no escribe ni borra nada');
 ok(/vacío/.test(ta) && /verConfiguracionCliente/.test(ta),
    'y dice qué hacer en vez de quedarse en blanco: ' + ta.split('\n')[0]);
+
+console.log('\n── LO QUE SE EDITA DESDE EL PANEL, Y LO QUE NO ──');
+// La lista blanca no es de comodidad, es de qué pasa si alguien se equivoca. Un
+// nombre mal escrito se nota en el siguiente correo; un SHEET_ID mal escrito deja a la
+// comunidad mirando la contabilidad de nadie, y desde el panel no hay vuelta atrás.
+PROPS = {};
+m = cargar();
+m.configurarCliente({ NEGOCIO:'PH Las Palmas', SHEET_ID:'1AbCdEfGhIjKlMnOpQrStUvWxYz',
+                    WEBAPP_URL:'https://script.google.com/macros/s/AKfycbxLARGO/exec',
+                    MODULOS:'financiero', DIRECCION:'Tras el puente' });
+let idt = m.getIdentidad();
+const kEdit = idt.editables.map(f => f.k);
+const kFija = idt.fijas.map(f => f.k);
+
+ok(kEdit.indexOf('DIRECCION') >= 0 && kEdit.indexOf('MAPS_URL') >= 0 && kEdit.indexOf('WAZE_URL') >= 0,
+   'la dirección y los mapas se editan desde el panel: es lo que recibe el visitante');
+ok(kEdit.indexOf('NEGOCIO') >= 0 && kEdit.indexOf('UNIDAD') >= 0, 'el nombre y la palabra de la unidad también');
+ok(kFija.indexOf('SHEET_ID') >= 0, 'la hoja NO: un dedazo deja la copia mirando a otra contabilidad');
+ok(kFija.indexOf('WEBAPP_URL') >= 0,
+   'la URL del despliegue NO: rompería los enlaces personales que ya están en los correos');
+ok(kFija.indexOf('MODULOS') >= 0,
+   'y los MÓDULOS tampoco. Un cliente que se enciende el control de acceso desde su ' +
+   'propio panel no está usando el producto, está usando la caja registradora');
+ok(kFija.indexOf('CUENTA_NUM') >= 0,
+   'la cuenta de cobro tampoco: ya tiene su propio editor, y dos sitios editando el ' +
+   'mismo dato es como ese dato acaba diciendo dos cosas');
+
+console.log('\n  · y las que no se editan igual se VEN, pero acortadas');
+const fSheet = idt.fijas.filter(f => f.k === 'SHEET_ID')[0];
+ok(fSheet.valor && fSheet.valor !== '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+   'el id de la hoja sale acortado, no entero: ' + fSheet.valor);
+ok(/…/.test(fSheet.valor), 'con puntos suspensivos, para que se vea que está recortado');
+ok(idt.fijas.filter(f => f.k === 'MODULOS')[0].valor === 'financiero',
+   'pero lo que no identifica un archivo se enseña tal cual: saber qué módulos hay resuelve la consulta');
+
+console.log('\n── UNA CLAVE PROHIBIDA NO SE IGNORA EN SILENCIO ──');
+// Descartar callado lo que no se entiende hace creer que se guardó algo que no.
+let e = '';
+try { m.guardarIdentidad({ NEGOCIO:'Otro', SHEET_ID:'ROBADO' }); } catch (x) { e = x.message; }
+ok(/SHEET_ID/.test(e), 'se rechaza y se dice cuál: ' + e);
+ok(PROPS.AC_SHEET_ID === '1AbCdEfGhIjKlMnOpQrStUvWxYz', 'y la hoja no se tocó');
+ok(PROPS.AC_NEGOCIO === 'PH Las Palmas',
+   'NI SIQUIERA la que sí era válida: o se guarda la operación entera o no se guarda nada');
+
+console.log('\n── LO QUE SÍ SE PUEDE, SE GUARDA Y SE COMPRUEBA ──');
+m.guardarIdentidad({ DIRECCION:'Entrando por la vía, después del puente',
+                   MAPS_URL:'https://maps.app.goo.gl/xyz', UNIDAD:'apartamento' });
+ok(PROPS.AC_DIRECCION === 'Entrando por la vía, después del puente', 'la dirección queda escrita');
+ok(PROPS.AC_UNIDAD === 'apartamento', 'y la palabra de la unidad');
+
+e = '';
+try { m.guardarIdentidad({ MAPS_URL:'maps.app.goo.gl/sinesquema' }); } catch (x) { e = x.message; }
+ok(/http/.test(e), 'un enlace sin http:// se rechaza: pegado en un WhatsApp no sería pulsable');
+e = '';
+try { m.guardarIdentidad({ REPLY_TO:'esto-no-es-un-correo' }); } catch (x) { e = x.message; }
+ok(/correo válido/.test(e), 'y un correo con errata también: es a donde contestan setenta personas');
+e = '';
+try { m.guardarIdentidad({ NEGOCIO:'' }); } catch (x) { e = x.message; }
+ok(/no puede quedar vacío/.test(e), 'el nombre no puede quedar vacío: sale en cada correo');
+ok(PROPS.AC_NEGOCIO === 'PH Las Palmas', 'y sigue el anterior');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

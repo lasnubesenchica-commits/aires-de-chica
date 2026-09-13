@@ -89,6 +89,7 @@ function requireAuth(token) {
  */
 var ADMIN_ACCIONES = {
   guardarConfig: 1,              // cuota, mora, notificaciones, cuenta de cobro, envíos
+  guardarIdentidad: 1,           // nombre, dirección, correos y logos de la comunidad
   liberarAutor: 1,               // soltar un nombre del padrón de usuarios
   actualizarJulio2026: 1, rollbackJulio2026: 1,
   seedInicial: 1, seedGastos2026: 1, seedRecurrentes: 1,

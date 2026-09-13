@@ -155,6 +155,7 @@ function doGet(e) {
       var _sim = (p.simFecha && Number(p.simMonto) > 0) ? { fecha: p.simFecha, monto: Number(p.simMonto) } : null;
       out = { ok: true, data: getEstadoCuentaByKey(p.clave, _sim) }; }
     else if (action === 'getConfig')       { requireAuth(p.token); out = { ok: true, data: getConfig() }; }
+    else if (action === 'getIdentidad')     { requireAuth(p.token); out = { ok: true, data: getIdentidad() }; }
     else if (action === 'getGastosData')   { requireAuth(p.token); out = { ok: true, data: getGastosData(p.anio) }; }
     else if (action === 'getBalance')      { requireAuth(p.token); out = { ok: true, data: getBalance(p.asOf || null) }; }
     else if (action === 'estadoUpdateJulio') { requireAuth(p.token); out = { ok: true, data: estadoUpdateJulio() }; }
@@ -294,6 +295,7 @@ function doPost(e) {
     else if (action === 'previsualizarComunicado') out = { ok: true, data: previsualizarComunicado(data.comunicado || {}) };
     else if (action === 'marcarEnvio')        out = { ok: true, data: marcarEnvio(data.envioId, data.estado, data.error) };
     else if (action === 'guardarConfig')    out = { ok: true, data: guardarConfig(data.config) };
+    else if (action === 'guardarIdentidad') out = { ok: true, data: guardarIdentidad(data.identidad || {}) };
     else if (action === 'guardarPropuesta') out = { ok: true, data: guardarPropuesta(data.html, data.quien, data.version) };
     else if (action === 'setPropLotes')     out = { ok: true, data: setPropLotes(data.clave, data.lotes) };
     else if (action === 'setPropCabanas')   out = { ok: true, data: setPropCabanas(data.clave, data.cabanas) };

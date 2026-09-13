@@ -64,6 +64,105 @@ var AC_CLAVES_CLIENTE = [
 
 function _acClaveProp(k) { return AC_PREFIJO + k; }
 
+/**
+ * Cuáles de esas claves se pueden tocar desde el panel, y cuáles NO.
+ *
+ * La diferencia no es de comodidad: es qué pasa si alguien se equivoca. Las de aquí
+ * abajo cambian cómo se ve y cómo se contacta a la comunidad — un error se nota en el
+ * siguiente correo y se arregla en treinta segundos. Las que quedan fuera rompen cosas
+ * que no se arreglan desde el panel:
+ *
+ *   SHEET_ID     apunta la copia a OTRA hoja. Con un dedazo, la comunidad se queda
+ *                mirando la contabilidad de nadie y no hay botón para volver.
+ *   WEBAPP_URL   cada propietario tiene ya en su correo un enlace personal que apunta
+ *                aquí. Cambiarla los rompe todos, incluidos los que se mandaron en
+ *                enero y alguien va a abrir mañana.
+ *   MODULOS      es lo que el PH contrató. Un cliente que puede encenderse el control
+ *                de acceso desde su propio panel no está usando un producto, está
+ *                usando la caja registradora.
+ *   BANCO, CUENTA_*        ya tienen su propio editor, el de cuentas, con su flujo y
+ *                          su marca de «cuenta de cobro».
+ *   CUOTA_BASE, MORA_*,
+ *   DUE_DAY, ANIO_ACTUAL   ya se editan en Opciones, que guarda en AC_CONFIG.
+ *
+ * Los dos últimos grupos se dejan fuera por la misma razón: dos sitios editando el
+ * mismo dato es como ese dato acaba diciendo dos cosas distintas.
+ *
+ * Todas esas siguen estando en el editor con altaDeComunidad(), que es donde tiene que
+ * costar un poco llegar.
+ */
+var AC_EDITABLES_PANEL = [
+  'NEGOCIO', 'RAZON_SOCIAL', 'UNIDAD',
+  'DIRECCION', 'MAPS_URL', 'WAZE_URL',
+  'LOGO_URL', 'LOGO_PNG_URL',
+  'ADMIN_EMAIL', 'REPLY_TO', 'COMPROBANTES_EMAIL'
+];
+
+/** Lo que el panel enseña en «Identidad de la comunidad». */
+function getIdentidad() {
+  var props = PropertiesService.getScriptProperties();
+  var editables = [], fijas = [];
+  AC_CLAVES_CLIENTE.forEach(function (c) {
+    var fila = { k: c.k, desc: c.desc, req: !!c.req,
+                 valor: String(props.getProperty(_acClaveProp(c.k)) || '') };
+    if (AC_EDITABLES_PANEL.indexOf(c.k) >= 0) editables.push(fila);
+    else { fila.valor = _acTapada(c.k, fila.valor); fijas.push(fila); }
+  });
+  return { editables: editables, fijas: fijas };
+}
+
+/**
+ * Las que no se editan se enseñan igual —saber qué hay puesto es media consulta
+ * resuelta— pero las que identifican un archivo o un destino salen acortadas: el panel
+ * lo abre quien administra, y un identificador de hoja completo en pantalla es algo
+ * que se copia y se pega donde no debe.
+ */
+function _acTapada(k, v) {
+  if (!v) return '';
+  if (k === 'SHEET_ID' || k === 'WEBAPP_URL') {
+    return v.length > 14 ? v.slice(0, 8) + '…' + v.slice(-4) : v;
+  }
+  return v;
+}
+
+/**
+ * Guarda lo que se editó en el panel. Sólo las de la lista blanca.
+ *
+ * Una clave que no esté en AC_EDITABLES_PANEL no se ignora en silencio: se rechaza
+ * entera la operación y se dice cuál. Un panel que descarta callado lo que no entiende
+ * hace creer que se guardó algo que no se guardó.
+ */
+function guardarIdentidad(datos) {
+  datos = datos || {};
+  var fuera = Object.keys(datos).filter(function (k) { return AC_EDITABLES_PANEL.indexOf(k) < 0; });
+  if (fuera.length) {
+    throw new Error('Desde el panel no se pueden cambiar: ' + fuera.join(', ') +
+      '. Esas se cambian desde el editor con altaDeComunidad().');
+  }
+  var limpio = {};
+  Object.keys(datos).forEach(function (k) { limpio[k] = String(datos[k] == null ? '' : datos[k]).trim(); });
+
+  ['ADMIN_EMAIL', 'REPLY_TO', 'COMPROBANTES_EMAIL'].forEach(function (k) {
+    if (limpio[k] && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(limpio[k])) {
+      throw new Error('«' + limpio[k] + '» no es un correo válido (' + k + ').');
+    }
+  });
+  ['MAPS_URL', 'WAZE_URL', 'LOGO_URL', 'LOGO_PNG_URL'].forEach(function (k) {
+    if (limpio[k] && !/^https?:\/\//i.test(limpio[k])) {
+      throw new Error('«' + k + '» tiene que empezar por http:// o https://');
+    }
+  });
+  if (limpio.NEGOCIO !== undefined && !limpio.NEGOCIO) {
+    throw new Error('El nombre de la comunidad no puede quedar vacío: sale en cada correo.');
+  }
+
+  var r = configurarCliente(limpio);
+  if (!r || !r.ok) throw new Error('No se pudo guardar la configuración.');
+  _reg('config.identidad', { entidad: 'config',
+    detalle: 'Identidad de la comunidad: ' + Object.keys(limpio).join(', ') });
+  return { ok: true, escritas: r.escritas };
+}
+
 /* ─────────────── el alta, sin pasar por la pantalla de propiedades ─────────────── */
 
 /**
@@ -313,7 +412,8 @@ var AC_MODULOS_TODOS = ['financiero', 'comunicaciones', 'acceso'];
  */
 var AC_ACCIONES_NUCLEO = {
   ping:1, getAuthState:1, verifyPassword:1, setPassword:1, resetPassword:1,
-  getConfig:1, guardarConfig:1, getRegistro:1, getAutores:1, claimAutor:1,
+  getConfig:1, guardarConfig:1, getIdentidad:1, guardarIdentidad:1,
+  getRegistro:1, getAutores:1, claimAutor:1,
   moverAutor:1, liberarAutor:1, marcarAvisoVisto:1, ensureSheets:1, seedInicial:1,
   getPropietarios:1, guardarPropietario:1, eliminarPropietario:1,
   getPropuesta:1, guardarPropuesta:1, getContrato:1, guardarContrato:1,

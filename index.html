@@ -1241,7 +1241,7 @@ async function post(action,data={}){
  * pierde al recargar o al salir. Quien encuentre el panel abierto puede registrar un
  * pago, pero no apagar los correos ni cambiar la mora.
  */
-const ADMIN_ACCIONES = new Set(['guardarConfig','liberarAutor',
+const ADMIN_ACCIONES = new Set(['guardarConfig','guardarIdentidad','liberarAutor',
   'actualizarJulio2026','rollbackJulio2026','seedInicial','seedGastos2026','seedRecurrentes',
   'seedRegistro18Ago','rollbackSeedRegistro18Ago',
   'enviarPruebaEstado','enviarPruebaAlertaUsuario','emitirConstanciasFaltantes',
@@ -3041,6 +3041,8 @@ async function renderOpts(){
           <div class="in"><input type="number" id="o_provinc" step="1" min="0" max="100" value="${c.provisionIncobrablesPct||0}"><span class="unit">% del saldo con más de 90 días</span></div>
           <div class="help">Sólo afecta al <b>Balance</b>: descuenta esa parte de «lo que nos deben» para no mostrar como cobrable lo que probablemente no entre. <b>No condona nada</b> ni cambia el estado de cuenta de nadie. En 0% la cartera se muestra íntegra.</div></div>
       </div></div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h2>🏷 Identidad de la comunidad</h2></div>
+      <div class="bd" style="padding:18px" id="optsIdentidad"><div class="muted">Cargando…</div></div></div>
     <div class="card" style="margin-top:16px"><div class="hd"><h2>🏦 Cuentas de la asociación</h2></div>
       <div class="bd" style="padding:18px" id="optsCuentas"><div class="muted">Cargando…</div></div></div>
     <div class="card" style="margin-top:16px"><div class="hd"><h2>👤 Quién usa el panel</h2></div>
@@ -3068,6 +3070,7 @@ async function renderOpts(){
       <button class="btn green" onclick="guardarOpts()">Guardar cambios</button>
     </div>`;
   renderOptsUsuarios();
+  renderOptsIdentidad();
   renderOptsCuentas();
   renderRecor();
   _optsVigilarCambios();
@@ -3085,6 +3088,80 @@ async function renderOpts(){
  * cambios a medias de los otros campos de la pantalla.
  */
 let CUENTAS_DATA=null;
+/* ───────── Identidad de la comunidad ─────────
+ * Lo que distingue una copia de otra: el nombre, cómo llama a sus unidades, cómo se
+ * llega y a qué correos se contesta. Vive en las propiedades del script, no en la hoja.
+ *
+ * No están todas. Las que apuntan a la hoja, a la URL del despliegue o a los módulos
+ * contratados se quedan en el editor: un dedazo ahí no se arregla desde aquí. Se
+ * enseñan igual —saber qué hay puesto resuelve media consulta— pero en gris y sin
+ * campo donde escribir.
+ */
+const IDENT_ETIQ = {
+  NEGOCIO:'Nombre de la comunidad', RAZON_SOCIAL:'Razón social', UNIDAD:'Cómo se llama una unidad',
+  DIRECCION:'Dirección, en palabras', MAPS_URL:'Enlace de Google Maps', WAZE_URL:'Enlace de Waze',
+  LOGO_URL:'Logo', LOGO_PNG_URL:'Logo en PNG',
+  ADMIN_EMAIL:'Correo de la administración', REPLY_TO:'A dónde contestan los propietarios',
+  COMPROBANTES_EMAIL:'Buzón que captura comprobantes'
+};
+const IDENT_PISTA = {
+  UNIDAD:'lote, apartamento, casa, local…',
+  DIRECCION:'Entrando por la vía, después del puente, a mano derecha',
+  MAPS_URL:'https://maps.app.goo.gl/…', WAZE_URL:'https://waze.com/ul/…'
+};
+let IDENT_DATA=null;
+
+async function renderOptsIdentidad(){
+  const box=document.getElementById('optsIdentidad'); if(!box) return;
+  let d; try{ d=await jsonp('getIdentidad'); }
+  catch(e){ if(onAuthError(e))return; box.innerHTML='<div class="notice">No se pudo leer: '+_esc(String(e))+'</div>'; return; }
+  IDENT_DATA=d;
+
+  const campo = f => `<div class="field">
+      <label>${_esc(IDENT_ETIQ[f.k]||f.k)}${f.req?' *':''}</label>
+      <div class="in"><input id="id_${f.k}" value="${_esc(f.valor)}"
+        placeholder="${_esc(IDENT_PISTA[f.k]||'')}" style="width:100%"></div>
+      <div class="help">${_esc(f.desc)}</div></div>`;
+
+  box.innerHTML = `
+    <div class="muted" style="font-size:.82rem;margin-bottom:14px">
+      Esto sale en los correos, en los mensajes del bot y en el mensaje que un residente
+      le reenvía a su visitante. <b>La dirección y los enlaces</b> son los que recibe quien
+      viene de visita: si están vacíos, ese mensaje sale sin el «cómo llegar».</div>
+    <div class="npf">${(d.editables||[]).map(campo).join('')}</div>
+    <div id="identErr" style="color:var(--ac-danger);font-size:.82rem;margin-top:10px"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn green" onclick="guardarIdentidad(this)">Guardar identidad</button></div>
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;font-size:.85rem;color:var(--ac-muted)">
+        Lo que no se cambia desde aquí (${(d.fijas||[]).length})</summary>
+      <div style="margin-top:10px;font-size:.84rem">
+        <p class="muted" style="margin:0 0 10px">Un error en éstas no se arregla desde el panel:
+          apuntan a la hoja de cálculo, a los enlaces personales que ya están en los correos de
+          los propietarios, o a los módulos contratados. Se cambian desde el editor con
+          <code>altaDeComunidad()</code>.</p>
+        <table class="tabla"><tbody>${(d.fijas||[]).map(f=>`<tr>
+          <td style="white-space:nowrap"><code>${_esc(f.k)}</code></td>
+          <td>${f.valor?_esc(f.valor):'<span class="muted">(sin poner)</span>'}</td></tr>`).join('')}
+        </tbody></table></div></details>`;
+}
+
+async function guardarIdentidad(btn){
+  const err=document.getElementById('identErr'); err.textContent='';
+  const identidad={};
+  (IDENT_DATA.editables||[]).forEach(f=>{
+    const el=document.getElementById('id_'+f.k);
+    if(el) identidad[f.k]=el.value.trim();
+  });
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Guardando…';
+  try{
+    await post('guardarIdentidad',{identidad});
+    toast('✓ Identidad guardada');
+    await renderOptsIdentidad();
+  }catch(e){ if(!onAuthError(e)) err.textContent='Error: '+e; }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+
 async function renderOptsCuentas(){
   const box=document.getElementById('optsCuentas'); if(!box) return;
   let d; try{ d=await jsonp('getCuentasData'); }
