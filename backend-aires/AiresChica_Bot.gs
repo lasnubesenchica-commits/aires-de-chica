@@ -270,6 +270,14 @@ function _botAtender(info, msg) {
       (typeof moduloActivo !== 'function' || moduloActivo('acceso'))) {
     var garita = esGuardia(tel);
     if (garita) return _botGuardia(tel, garita, msg);
+
+    // Y si no es guardia, puede ser un residente contestando «Autorizo» / «No autorizo»
+    // a una visita que está esperando en la entrada. Eso va antes que su saldo: hay
+    // alguien parado en la garita mientras tanto.
+    if (typeof _botRespuestaDeAcceso === 'function') {
+      var r = _botRespuestaDeAcceso(tel, msg);
+      if (r) return r;
+    }
   }
 
   var accion = _botAccion(msg);

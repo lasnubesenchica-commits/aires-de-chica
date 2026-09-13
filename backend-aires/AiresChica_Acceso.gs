@@ -1454,10 +1454,31 @@ function _botGuardia(tel, garita, msg) {
     return { contesto: true, avisar: true };
   }
 
+  // Sin permiso previo: se le pregunta a la casa, que es lo que la fase 4 desbloqueó.
+  // Sólo se puede si se sabe A QUÉ unidad va; sin eso no hay a quién preguntarle.
+  var destino = hallado ? hallado.autorizacion.clave : clave;
+  if (destino) {
+    var pregunta = preguntarALaCasa(visita.id, destino, datos);
+    if (pregunta.ok) {
+      _waEnviarBotones(tel,
+        '📲 PREGUNTÁNDOLE A LA CASA\n\n' + leido + '\n\nAvisé a ' + pregunta.avisados.join(', ') +
+        '. Le digo en cuanto contesten.\nSi en ' + ACC_MINUTOS_RESPUESTA +
+        ' minutos nadie responde, no pasa.' +
+        (pregunta.deRespaldo ? '\n\n_Se avisó al número del padrón: este ' + _acUnidad() +
+          ' no tiene contactos de acceso cargados._' : ''),
+        botones);
+      return { contesto: true, avisar: false };
+    }
+    _waEnviarBotones(tel,
+      '⛔ SIN PERMISO, Y NO PUDE AVISAR\n\n' + leido + '\n\n' + (pregunta.error || '') +
+      ' Llame usted por el medio de siempre y déjelo anotado.', botones);
+    return { contesto: true, avisar: true };
+  }
+
   _waEnviarBotones(tel,
-    '⛔ SIN PERMISO PREVIO\n\n' + leido + '\n\nNo hay ninguna autorización dejada para esta ' +
-    'persona. Todavía no puedo preguntarle a la casa desde aquí: llame usted por el medio de ' +
-    'siempre y déjelo anotado.', botones);
+    '⛔ SIN PERMISO PREVIO\n\n' + leido + '\n\nNo hay autorización dejada para esta persona, y ' +
+    'no me dijo a qué ' + _acUnidad() + ' va, así que no sé a quién preguntarle. Mándeme el ' +
+    _acUnidad() + ' y le pregunto a la casa.', botones);
   return { contesto: true, avisar: true };
 }
 
@@ -1605,4 +1626,224 @@ function resolverVisita(id, estado, guardia) {
     return { ok: true, id: id, estado: estado };
   }
   throw new Error('No se encontró la visita ' + id + '.');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * FASE 4 · preguntarle a la casa, en vivo
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Hasta aquí, una visita sin permiso previo terminaba en «llame usted por el medio de
+ * siempre». Con lobby_autorizacion_visita aprobada, el sistema puede escribirle al
+ * residente aunque él no haya escrito primero, que era lo único que faltaba.
+ *
+ * ── Cómo se ata la respuesta a la visita ─────────────────────────────────────
+ * Los botones de una plantilla llevan un identificador FIJO —acceso_si y acceso_no—
+ * que se define al aprobarla y no admite nada variable. Así que cuando vuelve un
+ * «acceso_si» no trae consigo a qué visita se refiere: hay que buscarla por el número
+ * de quien contestó, entre las unidades que esa persona puede autorizar.
+ *
+ * De ahí que la confirmación al residente REPITA el nombre del visitante. Si contestó
+ * por la visita equivocada —porque llegaron dos seguidas— tiene que poder verlo en el
+ * acto, no enterarse mañana.
+ *
+ * ── El reloj ─────────────────────────────────────────────────────────────────
+ * La plantilla promete que si no contesta en X minutos, la garita no lo deja pasar.
+ * Eso obliga a cumplirlo: un disparador cierra las que nadie contestó y se lo dice al
+ * guardia. Prometer un plazo y no cerrarlo deja al guardia esperando una respuesta que
+ * no va a llegar.
+ */
+
+var ACC_MINUTOS_RESPUESTA = 10;   // lo que se le promete al residente en la plantilla
+var ACC_PLANTILLA_VISITA  = 'lobby_autorizacion_visita';
+
+/**
+ * Le pregunta a la casa. Devuelve a quién se le escribió.
+ *
+ * Se escribe a TODOS los que autorizan, no al primero: a las nueve de la noche el que
+ * contesta es el que tiene el teléfono a mano, y encadenar intentos de uno en uno con
+ * un plazo de por medio significa que el guardia espera de más por nada.
+ */
+function preguntarALaCasa(visitaId, clave, datos) {
+  var quienes = contactosQueAutorizan(clave);
+  if (!quienes.ok || !quienes.contactos.length) {
+    _accApunte('no hay a quién preguntarle en ' + clave + ': ' + (quienes.error || ''));
+    return { ok: false, avisados: [], error: quienes.error || 'No hay a quién preguntarle.' };
+  }
+
+  var negocio = (typeof CONFIG !== 'undefined' && CONFIG.NEGOCIO) || 'la comunidad';
+  var destino = _acUnidad() + ' ' + clave;
+  var visitante = String(datos.visitante || '').trim() || 'una persona sin identificar';
+
+  var avisados = [], fallos = [];
+  quienes.contactos.forEach(function (c) {
+    var r = enviarPlantillaWhatsApp(c.celular, ACC_PLANTILLA_VISITA,
+      [String(c.nombre || '').split(' ')[0] || 'vecino', negocio, visitante, destino,
+       String(ACC_MINUTOS_RESPUESTA)],
+      { nota: 'visita ' + visitaId });
+    if (r.ok) avisados.push(c.nombre);
+    else fallos.push(c.nombre + ': ' + r.error);
+  });
+
+  if (fallos.length) _accApunte('no se pudo avisar a ' + fallos.join(' | '));
+  return { ok: !!avisados.length, avisados: avisados, fallos: fallos,
+           deRespaldo: !!quienes.deRespaldo };
+}
+
+/**
+ * La visita que esta persona puede contestar ahora mismo.
+ *
+ * Se busca entre las unidades que autoriza, y se coge la más reciente que siga
+ * pendiente. Si no autoriza en ninguna, se mira el padrón: un propietario cuyo número
+ * está sólo ahí también recibe la pregunta, porque contactosQueAutorizan() cae a ese
+ * número cuando la unidad no tiene contactos cargados.
+ */
+function _accVisitaPendienteDe(telefono) {
+  var buscado = _accTel(telefono);
+  if (!buscado) return null;
+
+  var suyas = {};
+  getContactos('').forEach(function (c) {
+    if (c.activo && c.autoriza && _accTel(c.celular) === buscado) suyas[c.clave] = true;
+  });
+  try {
+    (getPropietarios() || []).forEach(function (p) {
+      if (_accTel(p.celular) === buscado) suyas[p.clave] = true;
+    });
+  } catch (e) {}
+  if (!Object.keys(suyas).length) return null;
+
+  var limite = new Date().getTime() - ACC_MINUTOS_RESPUESTA * 60 * 1000;
+  var hallada = null;
+  _sheetRows(ACC_SH.VISITAS).forEach(function (v) {
+    if (String(v.estado || '') !== 'pendiente') return;
+    if (!suyas[String(v.clave || '').trim()]) return;
+    var cuando = (v.fecha instanceof Date) ? v.fecha.getTime() : 0;
+    if (cuando < limite) return;                 // ya se le pasó el plazo
+    if (!hallada || cuando > hallada.cuando) hallada = { fila: v, cuando: cuando };
+  });
+  return hallada ? hallada.fila : null;
+}
+
+/**
+ * Lo que contesta el bot cuando un RESIDENTE toca «Autorizo» o «No autorizo».
+ *
+ * Devuelve null si el mensaje no era eso, para que el bot siga su camino normal.
+ */
+function _botRespuestaDeAcceso(tel, msg) {
+  var i = msg.interactive || {};
+  var b = i.button_reply || i.list_reply || {};
+  var id = String(b.id || (msg.button && msg.button.payload) || '');
+  if (id !== 'acceso_si' && id !== 'acceso_no') return null;
+
+  var visita = _accVisitaPendienteDe(tel);
+  if (!visita) {
+    enviarWhatsAppTexto(tel,
+      'Gracias. Esa visita ya está resuelta —o se pasó el plazo de ' + ACC_MINUTOS_RESPUESTA +
+      ' minutos y la garita ya decidió—, así que su respuesta no cambia nada. ' +
+      'Si hace falta, llame a la garita.');
+    return { contesto: true, avisar: true };
+  }
+
+  var paso = (id === 'acceso_si');
+  var quien = identificarPorCelular(tel);
+  var nombre = (quien && quien.nombre) || 'el residente';
+  resolverVisitaPorResidente(String(visita.id), paso ? 'autorizada' : 'rechazada', nombre);
+
+  // El nombre del visitante se REPITE. Si llegaron dos seguidas y contestó por la que
+  // no era, tiene que poder verlo ahora y no mañana.
+  enviarWhatsAppTexto(tel, paso
+    ? '✅ Autorizado. Le aviso a la garita para que deje pasar a ' + String(visita.visitante || '') + '.'
+    : '⛔ No autorizado. Le aviso a la garita para que NO deje pasar a ' + String(visita.visitante || '') + '.');
+
+  _accAvisarGarita(visita, paso
+    ? '✅ AUTORIZADA por ' + nombre + '\n\n' + String(visita.visitante || '') +
+      ' puede pasar al ' + _acUnidad() + ' ' + String(visita.clave || '') + '.'
+    : '⛔ NO AUTORIZADA por ' + nombre + '\n\n' + String(visita.visitante || '') +
+      ' NO puede pasar. Si insiste, es cosa de la administración, no suya.');
+  return { contesto: true, avisar: false };
+}
+
+/** Como resolverVisita, pero dejando dicho que lo decidió la casa y no el guardia. */
+function resolverVisitaPorResidente(id, estado, quien) {
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== String(id).trim()) continue;
+    sh.getRange(r + 1, h.indexOf('estado') + 1).setValue(estado);
+    sh.getRange(r + 1, h.indexOf('autorizadoPor') + 1).setValue('Residente · ' + String(quien || ''));
+    sh.getRange(r + 1, h.indexOf('autorizadoEn') + 1).setValue(new Date());
+    _reg('visita.resuelve', { entidad: 'visita', clave: String(vals[r][h.indexOf('clave')] || ''),
+      propietario: String(vals[r][h.indexOf('visitante')] || ''),
+      detalle: estado + ' · lo decidió la casa desde WhatsApp (' + String(quien || '') + ')' });
+    return { ok: true, id: id, estado: estado };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}
+
+/** Le escribe a la garita que anunció esta visita. */
+function _accAvisarGarita(visita, texto) {
+  var nombre = String(visita.guardia || '').trim();
+  var destino = null;
+  getGarita().forEach(function (g) {
+    if (g.activo && (!nombre || g.nombre === nombre) && !destino) destino = g;
+  });
+  if (!destino) { _accApunte('no se pudo avisar a la garita: ninguna activa.'); return false; }
+  enviarWhatsAppTexto(destino.celular, texto);
+  return true;
+}
+
+/**
+ * Cierra las visitas que nadie contestó dentro del plazo y se lo dice al guardia.
+ *
+ * Existe porque la plantilla PROMETE el plazo. Dejar una visita en «pendiente» para
+ * siempre es tener al guardia esperando una respuesta que ya no va a llegar, y una
+ * bitácora que dentro de un mes no distingue «nadie contestó» de «se quedó a medias».
+ */
+function cerrarVisitasSinRespuesta() {
+  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return { ok: true, cerradas: 0 };
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iEs = h.indexOf('estado'), iFe = h.indexOf('fecha');
+  var limite = new Date().getTime() - ACC_MINUTOS_RESPUESTA * 60 * 1000;
+  var cerradas = 0;
+
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iEs] || '') !== 'pendiente') continue;
+    var f = vals[r][iFe];
+    if (!(f instanceof Date) || f.getTime() >= limite) continue;
+    // Sólo las que de verdad se preguntaron: una visita sin unidad nunca se preguntó a
+    // nadie, y marcarla «sin respuesta» sería culpar a un residente que no fue avisado.
+    if (!String(vals[r][h.indexOf('clave')] || '').trim()) continue;
+
+    sh.getRange(r + 1, iEs + 1).setValue('sin-respuesta');
+    cerradas++;
+    var visita = {};
+    h.forEach(function (k, i) { visita[k] = vals[r][i]; });
+    _accAvisarGarita(visita,
+      '⏰ NADIE CONTESTÓ\n\nPasaron los ' + ACC_MINUTOS_RESPUESTA + ' minutos y el ' +
+      _acUnidad() + ' ' + String(visita.clave || '') + ' no respondió por ' +
+      String(visita.visitante || '') + '. Según lo que se le dijo a la casa, NO pasa.');
+    _reg('visita.resuelve', { entidad: 'visita', clave: String(visita.clave || ''),
+      propietario: String(visita.visitante || ''),
+      detalle: 'sin-respuesta · nadie contestó en ' + ACC_MINUTOS_RESPUESTA + ' minutos' });
+  }
+  if (cerradas) console.log('Cerradas %s visita(s) que nadie contestó.', cerradas);
+  return { ok: true, cerradas: cerradas };
+}
+
+/** Instala el disparador que cierra las visitas sin respuesta. Sin argumentos. */
+function instalarCierreDeVisitas() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'cerrarVisitasSinRespuesta') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('cerrarVisitasSinRespuesta').timeBased().everyMinutes(5).create();
+  console.log('✓ Instalado. Cada 5 minutos se cierran las visitas que nadie contestó');
+  console.log('  y se le avisa a la garita. El plazo que se le promete a la casa es de');
+  console.log('  %s minutos, así que una visita se cierra entre los %s y los %s.',
+    ACC_MINUTOS_RESPUESTA, ACC_MINUTOS_RESPUESTA, ACC_MINUTOS_RESPUESTA + 5);
+  return { ok: true };
 }

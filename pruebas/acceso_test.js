@@ -538,17 +538,18 @@ ok(hablo().botones && hablo().botones.length === 2,
 ok(_sheetRows('Visitas')[0].estado === 'pendiente',
    'y la visita NO se marca autorizada mientras él no conteste: ' + _sheetRows('Visitas')[0].estado);
 
-console.log('\n── SIN PERMISO SE DICE QUE NO HAY PERMISO ──');
-// Y no «estoy preguntando a la casa». Todavía no se le puede escribir al residente
-// —falta que Meta apruebe la plantilla— y fingir que se está preguntando, en una
-// garita, es peor que callarse.
+console.log('\n── SIN PERMISO Y SIN SABER A QUÉ UNIDAD VA ──');
+// Con la plantilla aprobada, lo normal es preguntarle a la casa. Pero si el guardia no
+// dijo a qué unidad va el visitante, no hay casa a la que preguntar: eso se dice tal
+// cual, en vez de fingir una consulta que no se está haciendo.
 reiniciar();
 CLAUDE = { visitante: 'Un Desconocido', cedula: '7-111-222', lote: '' };
 anuncia('Un Desconocido 7-111-222');
 ok(/SIN PERMISO PREVIO/.test(hablo().texto), 'se dice claro que no hay autorización');
-ok(!/pregunt[áa]ndole|estoy preguntando|le consulto/i.test(hablo().texto),
-   'y no se promete una consulta que el sistema todavía no puede hacer');
-ok(/llame usted/i.test(hablo().texto), 'se le dice qué hacer mientras tanto');
+ok(/no sé a quién preguntarle/.test(hablo().texto),
+   'y por qué no se puede preguntar: falta la unidad, no es que el sistema no sepa hacerlo');
+ok(!/PREGUNTÁNDOLE A LA CASA/.test(hablo().texto),
+   'sobre todo, NO se dice que se está preguntando cuando no se preguntó nada');
 ok(_sheetRows('Visitas').length === 1,
    'la visita sin permiso queda anotada IGUAL: la que no entró es justo la que después ' +
    'hace falta poder mirar');
@@ -832,6 +833,167 @@ ok(_sheetRows('Visitas').length === 2,
    _sheetRows('Visitas').length);
 ok(_sheetRows('Visitas')[0].estado === 'autorizada',
    'y la decisión que tomó no se pierde: ' + _sheetRows('Visitas')[0].estado);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Fase 4: preguntarle a la casa en vivo
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+let PLANTILLAS = [];
+global.enviarPlantillaWhatsApp = (tel, nombre, params, opts) => {
+  PLANTILLAS.push({ tel, nombre, params, opts });
+  return { ok: true, id: 'wamid.' + PLANTILLAS.length };
+};
+global.identificarPorCelular = tel => {
+  const p = PADRON.find(x => _accTel(x.celular) === _accTel(tel));
+  return p ? { nombre: p.nombre, claves: [p.clave] } : { nombre: '', claves: [] };
+};
+const reiniciarF4 = () => { PLANTILLAS = []; reiniciarWA(); };
+
+console.log('\n── SIN PERMISO PREVIO, AHORA SE LE PREGUNTA A LA CASA ──');
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si', orden: 1 });
+guardarContacto({ clave: 'Q-9', nombre: 'Carlos el inquilino', celular: '6000-1111', autoriza: 'si', orden: 2 });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '9' };
+anuncia('Luis Mendoza 8-123-456 va al 9');
+ok(PLANTILLAS.length === 2,
+   'se le escribe a LOS DOS que autorizan, no al primero: a esa hora contesta quien ' +
+   'tiene el teléfono a mano → ' + PLANTILLAS.length);
+ok(PLANTILLAS[0].nombre === 'lobby_autorizacion_visita', 'con la plantilla aprobada');
+ok(PLANTILLAS[0].params.length === 5, 'con sus cinco valores: ' + PLANTILLAS[0].params.length);
+ok(PLANTILLAS[0].params.indexOf('8-123-456') < 0 && PLANTILLAS[0].params.join(' ').indexOf('8-123') < 0,
+   'y la CÉDULA no viaja: es el documento de un tercero y el residente no la necesita ' +
+   'para decidir → ' + JSON.stringify(PLANTILLAS[0].params));
+ok(/PREGUNTÁNDOLE A LA CASA/.test(hablo().texto),
+   'al guardia se le dice que está preguntando: ' + hablo().texto.split('\n')[0]);
+ok(/Ana Rosa Tejada/.test(hablo().texto) && /Carlos/.test(hablo().texto),
+   'y a quién, para que sepa a quién reclamarle');
+ok(!/Todavía no puedo preguntarle/.test(hablo().texto), 'ya no se le dice que no se puede');
+
+console.log('\n── LA CASA CONTESTA Y LA GARITA SE ENTERA ──');
+reiniciarF4();
+let resF4 = _botRespuestaDeAcceso('+50769812266',
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(resF4 && resF4.contesto, 'un «Autorizo» de un residente se atiende');
+const v4 = _sheetRows('Visitas')[0];
+ok(v4.estado === 'autorizada' && /Residente · Ana Rosa Tejada/.test(String(v4.autorizadoPor)),
+   'la visita queda autorizada POR LA CASA, no por el guardia: ' + v4.autorizadoPor);
+ok(ENVIADO.some(e => /Autorizado/.test(e.texto) && /Luis Mendoza/.test(e.texto)),
+   'al residente se le repite el nombre del visitante, por si contestó por la que no era');
+ok(ENVIADO.some(e => e.tel === '+50760000000' && /AUTORIZADA por Ana Rosa Tejada/.test(e.texto)),
+   'y a la garita se le avisa quién lo autorizó');
+
+console.log('\n── UN «NO AUTORIZO» NO DEJA AL GUARDIA DISCUTIENDO ──');
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Un Desconocido', cedula: '', lote: '9' };
+anuncia('Un Desconocido va al 9');
+reiniciarF4();
+_botRespuestaDeAcceso('+50769812266',
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_no' } } });
+ok(_sheetRows('Visitas')[0].estado === 'rechazada', 'queda rechazada');
+ok(ENVIADO.some(e => e.tel === '+50760000000' && /es cosa de la administración, no suya/.test(e.texto)),
+   'y al guardia se le quita el problema de encima: no tiene que discutirlo él');
+
+console.log('\n── UNA RESPUESTA QUE LLEGA TARDE NO CAMBIA NADA ──');
+// Y se le dice, en vez de dejarle creer que autorizó algo.
+reiniciarF4();
+resF4 = _botRespuestaDeAcceso('+50769812266',
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(resF4 && /ya está resuelta/.test(hablo().texto),
+   'se le dice que ya estaba decidida: ' + hablo().texto.slice(0, 60));
+ok(_sheetRows('Visitas')[0].estado === 'rechazada', 'y la decisión anterior NO se toca');
+
+console.log('\n── UN BOTÓN DE ACCESO DE ALGUIEN QUE NO ES NADIE NO HACE NADA ──');
+reiniciarF4();
+resF4 = _botRespuestaDeAcceso('+50799999999',
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(resF4 && resF4.contesto && _sheetRows('Visitas')[0].estado === 'rechazada',
+   'un número que no autoriza en ninguna unidad no puede abrir nada');
+ok(_botRespuestaDeAcceso('+50769812266', { type: 'text', text: { body: 'hola' } }) === null,
+   'y un mensaje que no es uno de esos botones devuelve null, para que el bot siga su camino');
+
+console.log('\n── UN VECINO NO PUEDE AUTORIZAR LA VISITA DE OTRA CASA ──');
+// Es el agujero serio de este flujo: los botones de una plantilla llevan un
+// identificador FIJO, así que un «acceso_si» no dice a qué visita se refiere. Si la
+// búsqueda no se limitara a las unidades que esa persona autoriza, cualquier vecino que
+// hubiera recibido alguna vez la plantilla podría abrirle la puerta a la casa de al lado.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9',  nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+guardarContacto({ clave: 'L-14', nombre: 'El del 14',       celular: '6555-7777', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Visita del nueve', cedula: '', lote: '9' };
+anuncia('Visita del nueve va al 9');
+ok(_sheetRows('Visitas')[0].clave === 'Q-9', 'la visita es para Q-9');
+
+reiniciarF4();
+_botRespuestaDeAcceso('+50765557777',    // el del 14, que no tiene nada que ver
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(_sheetRows('Visitas')[0].estado === 'pendiente',
+   'el vecino del 14 NO puede autorizarla: sigue pendiente → ' + _sheetRows('Visitas')[0].estado);
+ok(!ENVIADO.some(e => /Autorizado/.test(e.texto)), 'y no se le dice que autorizó nada');
+
+reiniciarF4();
+_botRespuestaDeAcceso('+50769812266',    // la de Q-9, que sí
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(_sheetRows('Visitas')[0].estado === 'autorizada',
+   'y la de Q-9 sí, con el mismo botón: lo que decide es de quién es el número');
+
+console.log('\n── PASADO EL PLAZO, EL BOTÓN YA NO ABRE ──');
+// La plantilla dice «si no responde en X minutos, la garita no la deja pasar». Si a los
+// veinte minutos el botón siguiera abriendo, esa frase sería mentira y el visitante ya
+// se habría ido hace rato — o peor, estaría entrando con permiso de una hora antes.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Llega Tarde', cedula: '', lote: '9' };
+anuncia('Llega Tarde va al 9');
+HOJAS.Visitas[1][1] = new Date(Date.now() - (ACC_MINUTOS_RESPUESTA + 2) * 60000);
+reiniciarF4();
+_botRespuestaDeAcceso('+50769812266',
+  { type: 'interactive', interactive: { button_reply: { id: 'acceso_si' } } });
+ok(_sheetRows('Visitas')[0].estado === 'pendiente',
+   'un «Autorizo» fuera de plazo no la abre: ' + _sheetRows('Visitas')[0].estado);
+ok(/ya está resuelta|se pasó el plazo/.test(hablo().texto),
+   'y se le dice, en vez de dejarle creer que autorizó: ' + hablo().texto.slice(0, 50));
+
+console.log('\n── SI NADIE CONTESTA, SE CIERRA Y SE AVISA ──');
+// La plantilla PROMETE el plazo. Dejar la visita en «pendiente» para siempre es tener
+// al guardia esperando una respuesta que ya no va a llegar.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Nadie Contesta', cedula: '', lote: '9' };
+anuncia('Nadie Contesta va al 9');
+reiniciarF4();
+ok(cerrarVisitasSinRespuesta().cerradas === 0, 'recién llegada no se cierra nada');
+
+// Se retrasa la fila a mano: el plazo es de minutos y la prueba no va a esperarlos.
+HOJAS.Visitas[1][1] = new Date(Date.now() - (ACC_MINUTOS_RESPUESTA + 2) * 60000);
+ok(cerrarVisitasSinRespuesta().cerradas === 1, 'pasado el plazo, se cierra');
+ok(_sheetRows('Visitas')[0].estado === 'sin-respuesta',
+   'como «sin-respuesta», que no es lo mismo que rechazada: ' + _sheetRows('Visitas')[0].estado);
+ok(ENVIADO.some(e => e.tel === '+50760000000' && /NADIE CONTESTÓ/.test(e.texto)),
+   'y la garita se entera, en vez de seguir esperando');
+
+console.log('\n── UNA VISITA QUE NUNCA SE PREGUNTÓ NO SE MARCA «SIN RESPUESTA» ──');
+// Sin unidad no se le preguntó a nadie. Decir que no contestaron sería culpar a un
+// residente que jamás recibió el mensaje.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+CLAUDE = { visitante: 'Sin Unidad', cedula: '', lote: '' };
+anuncia('Sin Unidad');
+ok(/no sé a quién preguntarle/.test(hablo().texto),
+   'al guardia se le dice que falta el ' + 'lote' + ': ' + hablo().texto.split('\n')[2]);
+HOJAS.Visitas[1][1] = new Date(Date.now() - (ACC_MINUTOS_RESPUESTA + 2) * 60000);
+ok(cerrarVisitasSinRespuesta().cerradas === 0,
+   'y nunca se marca «sin respuesta»: nadie dejó de contestar, es que no se preguntó');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
