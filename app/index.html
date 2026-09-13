@@ -92,21 +92,101 @@ const money=n=>'B/.'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigit
 function jsonp(action,params={}){return new Promise((res,rej)=>{const cb='__cb'+Math.random().toString(36).slice(2);
   const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
   const s=document.createElement('script');s.src=GAS_URL+'?'+qs;window[cb]=d=>{delete window[cb];s.remove();d.ok?res(d.data):rej(d.error)};s.onerror=()=>{s.remove();rej('network')};document.body.appendChild(s);});}
-// El servidor exige saber QUIÉN hace cada cambio: sin autor devuelve «sin-autor» y no
-// escribe nada. El móvil no lo mandaba, así que el botón de enviar el estado de cuenta
-// nunca llegó a funcionar. Se pregunta una vez y se guarda en el teléfono.
-let AUTOR=localStorage.getItem('ac_autor')||'';
-let DISPOSITIVO=localStorage.getItem('ac_disp')||'';
-if(!DISPOSITIVO){DISPOSITIVO='m'+Math.random().toString(36).slice(2,10);localStorage.setItem('ac_disp',DISPOSITIVO);}
-function pedirAutor(){const n=(prompt('¿Quién eres? Tu nombre queda en el registro de cada cambio.','')||'').trim();
-  if(!n)return false; AUTOR=n.slice(0,60); localStorage.setItem('ac_autor',AUTOR); pintarAutor(); return true;}
-function exigirAutor(){return AUTOR?true:pedirAutor();}
+/* ───────── Quién usa la app ─────────
+ * El servidor exige saber QUIÉN hace cada cambio: sin autor devuelve «sin-autor» y no
+ * escribe nada. El móvil no lo mandaba, así que el botón de enviar el estado de cuenta
+ * nunca llegó a funcionar.
+ *
+ * Y no basta con preguntar el nombre: el servidor lleva un padrón donde cada nombre
+ * queda apartado para UN dispositivo, y rechaza con «autor-de-otro» lo que se firme
+ * con el nombre de otro equipo. Por eso se usan las MISMAS claves de navegador que el
+ * panel de escritorio (bc_autor / bc_dev): el panel y la app viven en el mismo dominio,
+ * así que si cada uno inventara su propio identificador de equipo, el mismo teléfono
+ * sería dos dispositivos distintos y el nombre reservado desde el panel no serviría
+ * aquí. */
+let AUTOR=localStorage.getItem('bc_autor')||'';
+let DISPOSITIVO=localStorage.getItem('bc_dev')||'';
+if(!DISPOSITIVO){
+  DISPOSITIVO=(window.crypto&&crypto.randomUUID)?crypto.randomUUID()
+             :'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  try{localStorage.setItem('bc_dev',DISPOSITIVO);}catch(e){}
+}
+function _setAutor(n){AUTOR=String(n||'').trim().slice(0,60);
+  if(AUTOR)localStorage.setItem('bc_autor',AUTOR);else localStorage.removeItem('bc_autor');pintarAutor();}
 function pintarAutor(){const e=document.getElementById('quien'); if(e)e.textContent=AUTOR||'Identifícate';}
-async function post(action,data={}){
-  if(!exigirAutor())throw 'sin-autor';
+// Misma normalización que el servidor: mayúsculas y tildes no distinguen.
+const _nomClave=n=>String(n||'').replace(/\s+/g,' ').trim().toUpperCase()
+  .replace(/[ÁÀÄÂ]/g,'A').replace(/[ÉÈËÊ]/g,'E').replace(/[ÍÌÏÎ]/g,'I')
+  .replace(/[ÓÒÖÔ]/g,'O').replace(/[ÚÙÜÛ]/g,'U').replace(/Ñ/g,'N');
+/** El padrón manda sobre lo guardado en el teléfono, igual que en el escritorio. */
+function _sincronizarAutor(d){
+  const yo=(d&&d.yo)||'', lista=(d&&d.usuarios)||[];
+  if(yo){if(yo!==AUTOR)_setAutor(yo);return;}
+  if(!AUTOR)return;
+  const mismo=lista.find(u=>_nomClave(u.nombre)===_nomClave(AUTOR));
+  if(mismo&&!mismo.mio)_setAutor('');   // es de otro equipo: aquí ya no se puede firmar
+}
+/** El selector de identidad: el padrón, no un campo libre. */
+async function pedirAutor(){
+  document.getElementById('sheetHd').innerHTML=
+    `<div style="font-weight:700">¿Quién usa la app?</div><button class="close" onclick="closeSheet()">×</button>`;
+  document.getElementById('sheetBd').innerHTML='<p style="color:var(--ac-muted)">Leyendo los nombres registrados…</p>';
+  document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');
+  let d=null;
+  try{d=await jsonp('getAutores',{dispositivo:DISPOSITIVO});}
+  catch(e){if(authErr(e))return;}
+  if(d)_sincronizarAutor(d);
+  const otros=((d&&d.usuarios)||[]).filter(u=>!u.mio);
+  const mio=((d&&d.usuarios)||[]).find(u=>u.mio);
+  document.getElementById('sheetBd').innerHTML=`
+    <p style="font-size:.8rem;color:var(--ac-muted);margin-top:0">Tu nombre queda anotado en <b>cada cambio</b> y no se borra de la bitácora. Cada nombre se reserva para un equipo.</p>
+    ${d?'':'<div class="aviso warn">No se pudo leer la lista de nombres. Puedes escribir el tuyo igual.</div>'}
+    ${mio?`<div class="aviso" style="background:#e4f5ec;border-color:#bfe5d0;color:#14663f">En este teléfono eres <b>${mio.nombre}</b>.</div>`:''}
+    ${otros.length?`<div style="font-size:.72rem;color:var(--ac-muted);font-weight:600;margin:10px 0 4px">NOMBRES YA TOMADOS</div>
+      <p style="font-size:.76rem;color:var(--ac-muted);margin:0 0 8px">Están apartados para otro equipo. Si alguno es tuyo y cambiaste de teléfono, pásalo desde el panel de escritorio con la contraseña.</p>
+      ${otros.map(u=>`<div class="vis"><b>${u.nombre}</b> <span style="color:var(--ac-muted);font-size:.76rem">· en otro dispositivo</span></div>`).join('')}`:''}
+    <label style="font-size:.72rem;color:var(--ac-muted);font-weight:600">Tu nombre</label>
+    <input id="idNom" maxlength="60" value="${(AUTOR||'').replace(/"/g,'&quot;')}" placeholder="Tu nombre"/>
+    <div id="idErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="guardarAutor(this)">Identificarme</button>`;
+  const i=document.getElementById('idNom'); if(i){i.focus();i.select();}
+  return false;   // identificarse es asíncrono: la acción que lo pidió no continúa
+}
+async function guardarAutor(btn){
+  const nombre=(document.getElementById('idNom').value||'').trim().slice(0,60);
+  const err=document.getElementById('idErr');err.textContent='';
+  if(!nombre){err.textContent='Escribe un nombre.';return;}
+  btn.disabled=true;const t=btn.textContent;btn.textContent='…';
+  let r;
+  try{r=await _enviar('claimAutor',{nombre,autor:nombre});}
+  catch(e){
+    btn.disabled=false;btn.textContent=t;
+    if(authErr(e))return;
+    err.textContent=String(e)==='nombre-tomado'
+      ? '«'+nombre+'» ya está tomado por otro equipo. Escoge otro, o pásalo a este teléfono desde el panel de escritorio.'
+      : 'No se pudo guardar: '+e;
+    return;
+  }
+  _setAutor((r&&r.nombre)||nombre);
+  closeSheet();
+}
+function exigirAutor(){if(AUTOR)return true;pedirAutor();return false;}
+/** El envío crudo. Lo usa claimAutor, que es justo la acción que todavía no tiene autor. */
+async function _enviar(action,data={}){
   const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,dispositivo:DISPOSITIVO,...data})});
   const j=await r.json();if(!j.ok)throw j.error;return j.data;}
-function authErr(e){if(String(e)==='no-auth'){TOKEN='';localStorage.removeItem('ac_token');gate('login');return true;}return false;}
+async function post(action,data={}){
+  if(!exigirAutor())throw 'sin-autor';
+  return _enviar(action,data);}
+function authErr(e){
+  if(String(e)==='no-auth'){TOKEN='';localStorage.removeItem('ac_token');gate('login');return true;}
+  // El nombre con el que se firmó está apartado para otro equipo. Sin esto el móvil
+  // enseñaba «Error: autor-de-otro» y dejaba el nombre inservible guardado para siempre.
+  if(String(e)==='autor-de-otro'){
+    alert('El cambio no se guardó.\n\n«'+AUTOR+'» está reservado para otro dispositivo, así que desde este teléfono no se puede firmar con ese nombre.\n\nIdentifícate con tu propio nombre.');
+    _setAutor('');pedirAutor();return true;
+  }
+  return false;}
 
 let MODE='login';
 function gate(m){MODE=m;document.getElementById('app').style.display='none';document.getElementById('gate').classList.add('show');
@@ -115,15 +195,25 @@ function gate(m){MODE=m;document.getElementById('app').style.display='none';docu
   document.getElementById('gp2').style.display=m==='setup'?'block':'none';document.getElementById('gb').textContent=m==='setup'?'Crear y entrar':'Entrar';
   document.getElementById('gp').value='';document.getElementById('gp2').value='';document.getElementById('ge').textContent='';}
 function showApp(){document.getElementById('gate').classList.remove('show');document.getElementById('app').style.display='block';}
-let MODULOS=null;
+let MODULOS=null, HAY_FIN=true, HAY_ACC=true;
 async function boot(){let st;try{st=await jsonp('getAuthState');}catch(e){st={hasPassword:false};}
   if(!st.hasPassword){gate('setup');return;} if(!TOKEN){gate('login');return;}
   MODULOS=st.modulos||null; pintarAutor();
   // Sin lista de módulos no se esconde nada: que falte un dato no puede dejar a nadie
-  // sin su panel. Con lista, el conmutador sólo aparece si el acceso está contratado.
-  const hayAcceso=!Array.isArray(MODULOS)||!MODULOS.length||MODULOS.indexOf('acceso')>=0;
-  if(hayAcceso)document.getElementById('seg').style.display='flex';
-  try{await load();showApp();}catch(e){if(!authErr(e))gate('login');}}
+  // sin su panel. Con lista, cada vista sólo aparece si su módulo está contratado —
+  // las cuentas también: una comunidad que sólo contrató el acceso abría la app en una
+  // vista cuyo getDashboard el servidor rechaza, y se quedaba fuera de su propia app.
+  const mods=(Array.isArray(MODULOS)&&MODULOS.length)?MODULOS:null;
+  HAY_FIN=!mods||mods.indexOf('financiero')>=0;
+  HAY_ACC=!mods||mods.indexOf('acceso')>=0;
+  if(HAY_FIN&&HAY_ACC)document.getElementById('seg').style.display='flex';
+  try{
+    if(HAY_FIN)await load();
+    else if(HAY_ACC)verVista('acceso');
+    else{document.getElementById('vCuentas').innerHTML=
+      '<div class="aviso warn">Esta comunidad no tiene ningún módulo con vista en el teléfono. Entra desde el panel de escritorio.</div>';}
+    showApp();
+  }catch(e){if(!authErr(e))gate('login');}}
 
 /* ───────── la vista de acceso ─────────
  * En un teléfono lo que hace falta es la bitácora: quién está adentro ahora y qué pasó
