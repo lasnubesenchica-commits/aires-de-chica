@@ -817,6 +817,16 @@ function getAccesoData(clave) {
       'trata como GUARDIA: a ese número deja de contestarle su estado de cuenta.' });
   });
 
+  // Entradas que nadie cerró. Las de hoy son normales —esa gente está dentro— pero las
+  // de hace días son un registro a medias, y no saber quién salió es no saber quién está.
+  var dentro = visitasAdentro(ACC_HORAS_ADENTRO);
+  var colgadas = visitasAdentro(0).length - dentro.length;
+  if (colgadas) {
+    avisos.push({ tipo: 'aviso', texto: colgadas + ' entrada(s) de hace más de ' +
+      ACC_HORAS_ADENTRO + ' horas sin salida anotada. No saber quién salió es no saber ' +
+      'quién está adentro.' });
+  }
+
   var sinVencer = autorizaciones.filter(function (a) { return a.activo && !a.hasta; }).length;
   if (sinVencer) {
     avisos.push({ tipo: 'aviso', texto: sinVencer + ' autorización(es) sin fecha de vencimiento. ' +
@@ -839,6 +849,7 @@ function getAccesoData(clave) {
     roles: ACC_ROLES, diasSemana: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
     contactos: contactos, garitas: garitas, autorizaciones: autorizaciones,
     visitas: visitas, sinContactos: sinContactos, avisos: avisos,
+    adentro: dentro.length, colgadas: colgadas, horasAdentro: ACC_HORAS_ADENTRO,
     purgaInstalada: !!purga
   };
 }
@@ -1256,6 +1267,7 @@ function _accLeerCedulaFoto(blob, tipo) {
 var ACC_BOT_SI  = 'acc_si_';      // el guardia dejó pasar
 var ACC_BOT_NO  = 'acc_no_';      // el guardia no dejó pasar
 var ACC_BOT_FIX = 'acc_fix_';     // el guardia va a teclear los datos buenos
+var ACC_BOT_SAL = 'acc_sal_';     // el guardia anota que alguien salió
 var ACC_CORRIGE_MIN = 15;         // minutos que se espera a que teclee la corrección
 
 /**
@@ -1325,6 +1337,17 @@ function _botGuardia(tel, garita, msg) {
     var i = msg.interactive || {};
     var b = i.button_reply || i.list_reply || {};
     var id = String(b.id || (msg.button && msg.button.payload) || '');
+    if (id.indexOf(ACC_BOT_SAL) === 0) {
+      var rs = registrarSalida(id.slice(ACC_BOT_SAL.length), garita.nombre);
+      if (rs.yaSalio) {
+        enviarWhatsAppTexto(tel, String(rs.visitante || 'Esa visita') +
+          ' ya tenía salida anotada: ' + rs.salida + '. No se cambió nada.');
+      } else {
+        enviarWhatsAppTexto(tel, '✅ Salió ' + String(rs.visitante || '') +
+          (rs.duracion ? '.\nEstuvo ' + rs.duracion + ' adentro.' : '.'));
+      }
+      return { contesto: true, avisar: false };
+    }
     if (id.indexOf(ACC_BOT_FIX) === 0) {
       _accEsperaCorreccion(tel, id.slice(ACC_BOT_FIX.length));
       enviarWhatsAppTexto(tel,
@@ -1342,6 +1365,18 @@ function _botGuardia(tel, garita, msg) {
         : 'Anotado: no entró. Queda en la bitácora a su nombre.');
       return { contesto: true, avisar: false };
     }
+  }
+
+  // 1a bis) La lista de quién está dentro.
+  //
+  // Va antes que la corrección y que cualquier lectura de texto: es una orden corta y
+  // exacta, como «menú» en el resto del bot, y quien la escribe está preguntando otra
+  // cosa. Si tenía una corrección a medias, se descarta — igual que «menú».
+  if (tipo === 'text' &&
+      /^\s*(adentro|dentro|salida|salidas|lista|qui[eé]n(es)? est[aá]n? (adentro|dentro))\s*[?¿]*\s*$/i
+        .test(String((msg.text && msg.text.body) || ''))) {
+    _accEsperaCorreccion(tel, null);
+    return _accListaAdentro(tel);
   }
 
   // 1b) ¿Es el texto con el que corrige una lectura que él mismo puso en duda?
@@ -2360,4 +2395,133 @@ function _accSoloSuyo(filas, id, puede) {
   if (!suya) throw new Error('Ya no existe.');
   if (puede.claves.indexOf(suya.clave) < 0) throw new Error('Eso no es de una ' + _acUnidad() + ' suya.');
   return suya;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LA SALIDA · cerrar el registro
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * La columna `salida` existía desde el primer día y NADA la escribía: la bitácora
+ * decía siempre «—». Un registro de entradas que nunca se cierra contesta media
+ * pregunta — sabe quién entró y no sabe quién sigue dentro, que es justo lo que hace
+ * falta a las dos de la mañana, o cuando alguien pregunta por un carro que lleva
+ * cuatro horas estacionado.
+ *
+ * ── Por qué por lista y no escribiendo ───────────────────────────────────────
+ * El guardia no va a teclear «salió Juan Pérez» cuatro horas después, con el nombre
+ * bien escrito. Pide la lista de quién está dentro y toca uno. De paso, esa misma
+ * lista es la respuesta a «¿quién hay adentro?», que es la pregunta que de verdad se
+ * hace. Una sola función para las dos cosas.
+ *
+ * ── Qué cuenta como «dentro» ─────────────────────────────────────────────────
+ * Sólo lo que el registro dice que ENTRÓ: autorizada o preautorizada, y sin salida
+ * anotada. Una visita «pendiente» no se pone en la lista aunque el guardia la haya
+ * dejado pasar de hecho: el sistema no sabe que entró, y ponerla ahí sería afirmar
+ * algo que nadie confirmó.
+ */
+
+var ACC_HORAS_ADENTRO = 24;   // hasta cuándo una entrada sin salida es «de ahora»
+
+function _accEntro(estado) {
+  var e = String(estado || '');
+  return e === 'autorizada' || e === 'preautorizada';
+}
+
+/**
+ * Quién sigue dentro. `horas` acota a las entradas recientes; sin acotar, todas.
+ *
+ * Las de hace tres días no se enseñan al guardia —son ruido en su lista, y casi
+ * siempre significan que nadie anotó la salida— pero no se borran ni se dan por
+ * cerradas: salen aparte, como lo que son, un registro a medias.
+ */
+function visitasAdentro(horas) {
+  _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var corte = horas ? (new Date().getTime() - horas * 3600 * 1000) : 0;
+  return _sheetRows(ACC_SH.VISITAS)
+    .filter(function (v) {
+      if (!_accEntro(v.estado)) return false;
+      if (String(v.salida || '').trim() || v.salida instanceof Date) return false;
+      if (!corte) return true;
+      return (v.fecha instanceof Date) && v.fecha.getTime() >= corte;
+    })
+    .map(function (v) {
+      return { id: String(v.id || ''), visitante: String(v.visitante || ''),
+               cedula: String(v.cedula || ''), clave: String(v.clave || ''),
+               lote: String(v.lote || ''), fecha: v.fecha,
+               desde: (v.fecha instanceof Date) ? _accFechaHora(v.fecha) : '',
+               guardia: String(v.guardia || '') };
+    })
+    .reverse();   // el último que entró, primero
+}
+
+/** «2 h 15 min», para decirle al guardia cuánto estuvo dentro. */
+function _accDuracion(entrada, salida) {
+  if (!(entrada instanceof Date)) return '';
+  var min = Math.round((salida.getTime() - entrada.getTime()) / 60000);
+  if (min < 1) return 'menos de un minuto';
+  if (min < 60) return min + ' min';
+  var h = Math.floor(min / 60), m = min % 60;
+  return h + ' h' + (m ? ' ' + m + ' min' : '');
+}
+
+/**
+ * Anota que alguien salió.
+ *
+ * No cambia el estado: quien entró autorizado sigue habiendo entrado autorizado. Lo
+ * único que se añade es cuándo se fue.
+ */
+function registrarSalida(id, guardia) {
+  id = String(id || '').trim();
+  if (!id) throw new Error('Falta el identificador de la visita.');
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iSal = h.indexOf('salida'), iFe = h.indexOf('fecha');
+
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId]).trim() !== id) continue;
+    if (vals[r][iSal] instanceof Date) {
+      return { ok: false, yaSalio: true, id: id,
+               visitante: String(vals[r][h.indexOf('visitante')] || ''),
+               salida: _accFechaHora(vals[r][iSal]) };
+    }
+    var ahora = new Date();
+    sh.getRange(r + 1, iSal + 1).setValue(ahora);
+    var dur = _accDuracion(vals[r][iFe], ahora);
+    _reg('visita.salida', { entidad: 'visita', clave: String(vals[r][h.indexOf('clave')] || ''),
+      propietario: String(vals[r][h.indexOf('visitante')] || ''),
+      detalle: 'Salida anotada' + (dur ? ' · estuvo ' + dur : '') +
+               (guardia ? ' · ' + guardia : '') });
+    return { ok: true, id: id, visitante: String(vals[r][h.indexOf('visitante')] || ''),
+             duracion: dur, salida: _accFechaHora(ahora) };
+  }
+  throw new Error('No se encontró la visita ' + id + '.');
+}
+
+/**
+ * La lista de quién está dentro, para que el guardia toque al que salió.
+ *
+ * WhatsApp admite diez filas por lista. Con más de diez dentro se enseñan las diez
+ * últimas y se dice cuántas quedan: cortar en silencio haría creer que no hay más.
+ */
+function _accListaAdentro(tel) {
+  var dentro = visitasAdentro(ACC_HORAS_ADENTRO);
+  if (!dentro.length) {
+    enviarWhatsAppTexto(tel,
+      'No hay nadie adentro con entrada anotada en las últimas ' + ACC_HORAS_ADENTRO + ' horas.');
+    return { contesto: true, avisar: false };
+  }
+
+  var filas = dentro.slice(0, 10).map(function (v) {
+    return { id: ACC_BOT_SAL + v.id,
+             title: String(v.visitante || 'Sin nombre').slice(0, 24),
+             description: ((v.lote || v.clave) ? _acUnidadCap() + ' ' + (v.lote || v.clave) + ' · ' : '') +
+                          'entró ' + v.desde };
+  });
+  var cabecera = dentro.length + (dentro.length === 1 ? ' visita adentro' : ' visitas adentro') +
+    '.\nToque a quien acaba de salir.' +
+    (dentro.length > 10 ? '\n\n_Se muestran las 10 últimas de ' + dentro.length + '._' : '');
+
+  _waEnviarLista(tel, cabecera, 'Ver quién está', [{ title: 'Adentro ahora', rows: filas }]);
+  return { contesto: true, avisar: false };
 }

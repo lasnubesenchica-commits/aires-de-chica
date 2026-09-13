@@ -1235,5 +1235,87 @@ ok(!/Maps:|Waze:/.test(sinDir), 'y no quedan etiquetas huérfanas colgando');
 ok(/Está autorizado para entrar/.test(sinDir), 'el resto del mensaje sigue sirviendo');
 CONFIG.NEGOCIO = 'Aires de Chicá';
 
+console.log('\n── LA SALIDA: EL REGISTRO SE CIERRA ──');
+// La columna `salida` existía desde el primer día y NADA la escribía. Un registro de
+// entradas que nunca se cierra sabe quién entró y no sabe quién sigue dentro, que es
+// justo lo que hace falta a las dos de la mañana.
+const pide = (t) => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' }, { type: 'text', text: { body: t } }); };
+
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-456' });
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '' };
+anuncia('Luis Mendoza 8-123-456');
+ok(_sheetRows('Visitas')[0].estado === 'preautorizada', 'entra con permiso');
+
+pide('adentro');
+ok(hablo().lista && hablo().lista[0].rows.length === 1,
+   'la palabra «adentro» devuelve la lista de quién está, no la trata como un anuncio');
+ok(/1 visita adentro/.test(hablo().texto), 'con la cuenta: ' + hablo().texto.split('\n')[0]);
+const filaSal = hablo().lista[0].rows[0];
+ok(/Luis Mendoza/.test(filaSal.title), 'con su nombre');
+ok(/entró/.test(filaSal.description), 'y desde cuándo está: ' + filaSal.description);
+
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: filaSal.id } } });
+ok(/Salió Luis Mendoza/.test(hablo().texto), 'al tocarlo se anota la salida: ' + hablo().texto.split('\n')[0]);
+ok(/Estuvo/.test(hablo().texto), 'y se le dice cuánto estuvo adentro');
+const vSal = _sheetRows('Visitas')[0];
+ok(vSal.salida instanceof Date, 'la columna salida queda escrita, que era lo que nunca pasaba');
+ok(vSal.estado === 'preautorizada',
+   'y el estado NO cambia: quien entró autorizado sigue habiendo entrado autorizado');
+ok(REGISTRO.some(r => r.accion === 'visita.salida'), 'queda en el registro');
+
+pide('adentro');
+ok(/No hay nadie adentro/.test(hablo().texto), 'y ya no está en la lista');
+
+console.log('\n── UNA SALIDA NO SE ANOTA DOS VECES ──');
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { button_reply: { id: filaSal.id } } });
+ok(/ya tenía salida anotada/.test(hablo().texto),
+   'se avisa en vez de pisar la hora buena con una falsa: ' + hablo().texto.slice(0, 55));
+ok(_sheetRows('Visitas')[0].salida.getTime() === vSal.salida.getTime(),
+   'y la hora original no se toca');
+
+console.log('\n── SÓLO ESTÁ DENTRO QUIEN EL REGISTRO DICE QUE ENTRÓ ──');
+// Una visita «pendiente» no se pone en la lista aunque el guardia la haya dejado pasar
+// de hecho: el sistema no sabe que entró, y ponerla ahí sería afirmar lo que nadie
+// confirmó. Una rechazada, menos todavía.
+reiniciar(); reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Sigue Pendiente', cedula: '', lote: '9' };
+anuncia('Sigue Pendiente va al 9');
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'queda pendiente, sin decidir');
+ok(visitasAdentro(24).length === 0,
+   'y NO figura adentro: el registro no dice que entrara');
+
+const idPend = _sheetRows('Visitas')[0].id;
+resolverVisita(idPend, 'rechazada', 'Garita principal');
+ok(visitasAdentro(24).length === 0, 'una rechazada tampoco, evidentemente');
+resolverVisita(idPend, 'autorizada', 'Garita principal');
+ok(visitasAdentro(24).length === 1, 'en cuanto se decide que entró, aparece');
+
+console.log('\n── LAS ENTRADAS QUE NADIE CERRÓ SE CUENTAN APARTE ──');
+// Las de hoy son normales: esa gente está dentro. Las de hace días son un registro a
+// medias, y no saber quién salió es no saber quién está.
+HOJAS.Visitas[1][1] = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+ok(visitasAdentro(24).length === 0, 'una entrada de hace tres días sale de la lista del guardia');
+ok(visitasAdentro(0).length === 1, 'pero NO se da por cerrada ni se borra');
+let dAcc = getAccesoData('');
+ok(dAcc.colgadas === 1 && dAcc.adentro === 0, 'el panel las cuenta aparte: ' +
+   dAcc.adentro + ' adentro, ' + dAcc.colgadas + ' sin cerrar');
+ok(dAcc.avisos.some(a => /sin salida anotada/.test(a.texto)), 'y avisa de ellas');
+
+reiniciarWA();
+pide('adentro');
+ok(/No hay nadie adentro/.test(hablo().texto),
+   'al guardia se le dice que no hay nadie de las últimas 24 h, sin llenarle la lista de ruido');
+
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

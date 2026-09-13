@@ -6855,10 +6855,19 @@ function accVisitasHTML(){
       <td>${v.tieneFoto?'📷':'—'}</td></tr>`;
   }).join('');
 
-  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
-      Las últimas ${vs.length} visitas, de la más reciente a la más vieja. La <b>foto de la
-      cédula</b> se borra sola a los ${ACC_DATA.diasFoto} días (Ley 81): la fila se queda —saber quién
-      entró es legítimo— pero la imagen del documento de un tercero que nunca firmó nada, no.
+  const dentro = Number(ACC_DATA.adentro) || 0;
+  return `<div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);display:flex;
+        flex-wrap:wrap;gap:10px 22px;align-items:baseline">
+      <span class="pill ${dentro?'ok':'warn'}" style="font-size:.8rem">${dentro} adentro ahora</span>
+      <span class="muted" style="font-size:.82rem">entradas de las últimas ${ACC_DATA.horasAdentro||24} h sin salida anotada</span>
+      ${ACC_DATA.colgadas?`<span class="pill warn" style="font-size:.8rem">${ACC_DATA.colgadas} sin cerrar de días anteriores</span>`:''}
+    </div>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
+      Las últimas ${vs.length} visitas, de la más reciente a la más vieja. La <b>salida</b> la
+      anota el guardia desde la garita: escribe «adentro», le sale la lista de quién está, y
+      toca a quien acaba de salir. La <b>foto de la cédula</b> se borra sola a los
+      ${ACC_DATA.diasFoto} días (Ley 81): la fila se queda —saber quién entró es legítimo— pero
+      la imagen del documento de un tercero que nunca firmó nada, no.
     </div>
     <div style="overflow:auto"><table>
       <thead><tr><th>Fecha</th><th>Unidad</th><th>Visitante</th><th>Cédula</th><th>Motivo</th>
