@@ -34,6 +34,18 @@ table{width:100%;border-collapse:collapse;font-size:.85rem} td,th{padding:7px 6p
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68rem;color:var(--ac-muted);text-transform:uppercase} tr{border-bottom:1px solid #eef5f8}
 .close{border:0;background:none;font-size:1.5rem;color:var(--ac-muted)}
 .tot{display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:8px}
+/* conmutador de vistas: en un teléfono no caben pestañas, y dos vistas no necesitan más */
+.seg{display:flex;gap:6px;margin-bottom:12px}
+.seg button{flex:1;border:1px solid var(--ac-border);background:#fff;border-radius:10px;padding:9px;font:inherit;font-weight:600;color:var(--ac-muted)}
+.seg button.on{background:var(--ac-teal);border-color:var(--ac-teal);color:#fff}
+.aviso{border-radius:10px;padding:10px 12px;font-size:.82rem;margin-bottom:8px;border:1px solid}
+.aviso.err{background:#fbe6e3;border-color:#f0c0b8;color:#8a2b1c}
+.aviso.warn{background:#fbf0dc;border-color:#f4d9b0;color:#7a4a12}
+.vis{background:#fff;border:1px solid var(--ac-border);border-radius:12px;padding:11px 13px;margin-bottom:8px;box-shadow:var(--ac-shadow)}
+.vis .l1{display:flex;align-items:baseline;gap:8px} .vis .l1 b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vis .l2{font-size:.74rem;color:var(--ac-muted);margin-top:3px}
+.acb{width:100%;padding:11px;border:1px solid var(--ac-border);border-radius:10px;background:#fff;font:inherit;font-weight:600;margin-top:8px}
+.acb.go{background:var(--ac-teal);border-color:var(--ac-teal);color:#fff}
 /* gate */
 #gate{position:fixed;inset:0;background:var(--ac-bg);display:none;align-items:center;justify-content:center;padding:22px;z-index:100} #gate.show{display:flex}
 .login{background:#fff;border:1px solid var(--ac-border);border-radius:16px;box-shadow:var(--ac-shadow);width:100%;max-width:360px;overflow:hidden}
@@ -54,12 +66,20 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68re
 <div id="app">
 <header><img src="../brand/logo.png" alt="Aires de Chicá"/>
   <div><h1>Aires de Chicá</h1><div class="sub">Estados de cuenta · 2026</div></div>
+  <button class="out" id="quien" onclick="pedirAutor()" title="Quién usa la app">Identifícate</button>
   <button class="out" onclick="logout()">Salir</button></header>
 <div class="grad"></div>
 <div class="pad">
-  <div class="summary" id="summary"></div>
-  <input type="search" id="q" placeholder="Buscar lote o propietario…"/>
-  <div id="list"></div>
+  <div class="seg" id="seg" style="display:none">
+    <button id="segCta" class="on" onclick="verVista('cuentas')">Cuentas</button>
+    <button id="segAcc" onclick="verVista('acceso')">Acceso</button>
+  </div>
+  <div id="vCuentas">
+    <div class="summary" id="summary"></div>
+    <input type="search" id="q" placeholder="Buscar lote o propietario…"/>
+    <div id="list"></div>
+  </div>
+  <div id="vAcceso" style="display:none"><p style="color:var(--ac-muted)">Cargando…</p></div>
 </div>
 <div class="sheet-bg" id="sheetBg" onclick="closeSheet()"></div>
 <div class="sheet" id="sheet"><div class="grad"></div><div class="sh" id="sheetHd"></div><div class="sb" id="sheetBd"></div></div>
@@ -72,7 +92,20 @@ const money=n=>'B/.'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigit
 function jsonp(action,params={}){return new Promise((res,rej)=>{const cb='__cb'+Math.random().toString(36).slice(2);
   const qs=Object.entries({action,token:TOKEN,...params,callback:cb}).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
   const s=document.createElement('script');s.src=GAS_URL+'?'+qs;window[cb]=d=>{delete window[cb];s.remove();d.ok?res(d.data):rej(d.error)};s.onerror=()=>{s.remove();rej('network')};document.body.appendChild(s);});}
-async function post(action,data={}){const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,...data})});const j=await r.json();if(!j.ok)throw j.error;return j.data;}
+// El servidor exige saber QUIÉN hace cada cambio: sin autor devuelve «sin-autor» y no
+// escribe nada. El móvil no lo mandaba, así que el botón de enviar el estado de cuenta
+// nunca llegó a funcionar. Se pregunta una vez y se guarda en el teléfono.
+let AUTOR=localStorage.getItem('ac_autor')||'';
+let DISPOSITIVO=localStorage.getItem('ac_disp')||'';
+if(!DISPOSITIVO){DISPOSITIVO='m'+Math.random().toString(36).slice(2,10);localStorage.setItem('ac_disp',DISPOSITIVO);}
+function pedirAutor(){const n=(prompt('¿Quién eres? Tu nombre queda en el registro de cada cambio.','')||'').trim();
+  if(!n)return false; AUTOR=n.slice(0,60); localStorage.setItem('ac_autor',AUTOR); pintarAutor(); return true;}
+function exigirAutor(){return AUTOR?true:pedirAutor();}
+function pintarAutor(){const e=document.getElementById('quien'); if(e)e.textContent=AUTOR||'Identifícate';}
+async function post(action,data={}){
+  if(!exigirAutor())throw 'sin-autor';
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action,token:TOKEN,autor:AUTOR,dispositivo:DISPOSITIVO,...data})});
+  const j=await r.json();if(!j.ok)throw j.error;return j.data;}
 function authErr(e){if(String(e)==='no-auth'){TOKEN='';localStorage.removeItem('ac_token');gate('login');return true;}return false;}
 
 let MODE='login';
@@ -82,9 +115,95 @@ function gate(m){MODE=m;document.getElementById('app').style.display='none';docu
   document.getElementById('gp2').style.display=m==='setup'?'block':'none';document.getElementById('gb').textContent=m==='setup'?'Crear y entrar':'Entrar';
   document.getElementById('gp').value='';document.getElementById('gp2').value='';document.getElementById('ge').textContent='';}
 function showApp(){document.getElementById('gate').classList.remove('show');document.getElementById('app').style.display='block';}
+let MODULOS=null;
 async function boot(){let st;try{st=await jsonp('getAuthState');}catch(e){st={hasPassword:false};}
   if(!st.hasPassword){gate('setup');return;} if(!TOKEN){gate('login');return;}
+  MODULOS=st.modulos||null; pintarAutor();
+  // Sin lista de módulos no se esconde nada: que falte un dato no puede dejar a nadie
+  // sin su panel. Con lista, el conmutador sólo aparece si el acceso está contratado.
+  const hayAcceso=!Array.isArray(MODULOS)||!MODULOS.length||MODULOS.indexOf('acceso')>=0;
+  if(hayAcceso)document.getElementById('seg').style.display='flex';
   try{await load();showApp();}catch(e){if(!authErr(e))gate('login');}}
+
+/* ───────── la vista de acceso ─────────
+ * En un teléfono lo que hace falta es la bitácora: quién está adentro ahora y qué pasó
+ * anoche. Cargar contactos y dejar permisos es trabajo de escritorio — y desde que el
+ * propietario se los gestiona por WhatsApp, cada vez menos de nadie.
+ */
+let ACC=null;
+function verVista(v){
+  document.getElementById('vCuentas').style.display=v==='cuentas'?'block':'none';
+  document.getElementById('vAcceso').style.display=v==='acceso'?'block':'none';
+  document.getElementById('segCta').className=v==='cuentas'?'on':'';
+  document.getElementById('segAcc').className=v==='acceso'?'on':'';
+  if(v==='acceso')cargarAcceso();
+}
+async function cargarAcceso(force){
+  const box=document.getElementById('vAcceso');
+  if(ACC&&!force){pintarAcceso();return;}
+  box.innerHTML='<p style="color:var(--ac-muted)">Cargando…</p>';
+  try{ACC=await jsonp('getAcceso');}
+  catch(e){if(authErr(e))return; box.innerHTML='<div class="aviso err">No se pudo cargar: '+e+'</div>';return;}
+  pintarAcceso();
+}
+const ACC_EST={autorizada:['ok','autorizada'],preautorizada:['ok','preautorizada'],
+  rechazada:['red','rechazada'],pendiente:['warn','pendiente'],'sin-respuesta':['warn','sin respuesta']};
+function pintarAcceso(){
+  const d=ACC,vs=d.visitas||[];
+  const avisos=(d.avisos||[]).map(a=>`<div class="aviso ${a.tipo==='error'?'err':'warn'}">${a.texto}</div>`).join('');
+  const filas=vs.length?vs.map(v=>{
+    const [c,t]=ACC_EST[v.estado]||['warn',v.estado||'—'];
+    return `<div class="vis" onclick="abrirVisita('${v.id}')">
+      <div class="l1"><b>${v.visitante||'Sin nombre'}</b><span class="pill ${c}">${t}</span></div>
+      <div class="l2">${v.fecha||''}${v.lote?' · '+(d.unidad||'unidad')+' '+v.lote:''}${v.salida?' · salió '+v.salida:''}</div>
+      ${v.autorizadoPor?`<div class="l2">${v.autorizadoPor}</div>`:''}</div>`;
+  }).join(''):'<p style="color:var(--ac-muted)">Todavía no ha entrado nadie.</p>';
+  document.getElementById('vAcceso').innerHTML=`${avisos}
+    <div class="summary">
+      <div class="card"><div class="label">Adentro ahora</div><div class="val">${d.adentro||0}</div></div>
+      <div class="card"><div class="label">Sin cerrar</div><div class="val" style="color:${d.colgadas?'var(--ac-warn)':'inherit'}">${d.colgadas||0}</div></div>
+    </div>
+    <button class="acb" onclick="cargarAcceso(true)">Actualizar</button>
+    <div style="margin-top:12px">${filas}</div>`;
+}
+function abrirVisita(id){
+  const v=(ACC.visitas||[]).find(x=>x.id===id); if(!v)return;
+  const entro=v.estado==='autorizada'||v.estado==='preautorizada';
+  document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${v.visitante||'Sin nombre'}</div>
+    <div style="font-size:.78rem;color:var(--ac-muted)">${v.fecha||''}${v.lote?' · '+(ACC.unidad||'unidad')+' '+v.lote:''}</div></div>
+    <button class="close" onclick="closeSheet()">×</button>`;
+  document.getElementById('sheetBd').innerHTML=`
+    <div style="font-size:.82rem;color:var(--ac-muted);margin-bottom:10px">
+      Estado: <b>${v.estado||'—'}</b>${v.autorizadoPor?' · '+v.autorizadoPor:''}${v.salida?'<br>Salió: '+v.salida:''}</div>
+    <label style="font-size:.72rem;color:var(--ac-muted);font-weight:600">Nombre</label>
+    <input id="mv_nom" value="${(v.visitante||'').replace(/"/g,'&quot;')}"/>
+    <label style="font-size:.72rem;color:var(--ac-muted);font-weight:600">Documento</label>
+    <input id="mv_ced" value="${(v.cedula||'').replace(/"/g,'&quot;')}"/>
+    <div id="mvErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="accionVisita('corregir','${id}',this)">Guardar corrección</button>
+    ${entro&&!v.salida?`<button class="acb" onclick="accionVisita('salida','${id}',this)">Anotar que salió</button>`:''}
+    ${v.estado==='pendiente'?`<button class="acb" onclick="accionVisita('cerrar','${id}',this)">Cerrar: nadie contestó</button>`:''}
+    <div style="font-size:.7rem;color:var(--ac-muted);margin-top:10px">
+      Desde aquí no se autoriza una entrada: eso lo decide quien tiene el documento delante.
+      Lo que cambies queda firmado con tu nombre.</div>`;
+  document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');
+}
+async function accionVisita(que,id,btn){
+  const err=document.getElementById('mvErr');err.textContent='';
+  btn.disabled=true;const t=btn.textContent;btn.textContent='…';
+  try{
+    if(que==='salida')      await post('anotarSalida',{id});
+    else if(que==='cerrar'){
+      if(!confirm('Cerrar como «sin respuesta»: nadie contestó y no consta que entrara.')){
+        btn.disabled=false;btn.textContent=t;return;}
+      await post('cerrarVisita',{id,estado:'sin-respuesta'});
+    } else {
+      const g=i=>(document.getElementById(i).value||'').trim();
+      await post('corregirVisita',{id,datos:{visitante:g('mv_nom'),cedula:g('mv_ced')}});
+    }
+    closeSheet();await cargarAcceso(true);
+  }catch(e){btn.disabled=false;btn.textContent=t;if(!authErr(e))err.textContent='Error: '+e;}
+}
 document.getElementById('gf').addEventListener('submit',async e=>{e.preventDefault();const err=document.getElementById('ge');err.textContent='';
   const pwd=document.getElementById('gp').value;
   try{let r; if(MODE==='setup'){if(pwd!==document.getElementById('gp2').value){err.textContent='No coinciden.';return;} r=await post('setPassword',{nueva:pwd});}
