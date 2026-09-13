@@ -850,9 +850,18 @@ global.enviarPlantillaWhatsApp = (tel, nombre, params, opts) => {
   PLANTILLAS.push({ tel, nombre, params, opts });
   return { ok: true, id: 'wamid.' + PLANTILLAS.length };
 };
+// Fiel al contrato de la función real: devuelve `prop`, `motivo` y `claves`, y
+// distingue «varias unidades de la MISMA persona» de «unidades de dueños distintos».
+// Un doble que devolviera sólo el nombre dejaría sin probar justo la verja que
+// impide que alguien gestione el acceso de una casa que no es suya.
 global.identificarPorCelular = tel => {
-  const p = PADRON.find(x => _accTel(x.celular) === _accTel(tel));
-  return p ? { nombre: p.nombre, claves: [p.clave] } : { nombre: '', claves: [] };
+  const hits = PADRON.filter(x => _accTel(x.celular) === _accTel(tel));
+  if (!hits.length) return { prop: null, motivo: 'no-esta-en-el-padron', claves: [] };
+  const nombres = [...new Set(hits.map(h => h.nombre.trim().toLowerCase()))];
+  if (nombres.length > 1) {
+    return { prop: null, motivo: 'varios-duenos', claves: hits.map(h => h.clave) };
+  }
+  return { prop: hits[0], motivo: '', nombre: hits[0].nombre, claves: hits.map(h => h.clave) };
 };
 const reiniciarF4 = () => { PLANTILLAS = []; reiniciarWA(); };
 
@@ -1001,6 +1010,126 @@ ok(/no sé a quién preguntarle/.test(hablo().texto),
 HOJAS.Visitas[1][1] = new Date(Date.now() - (ACC_MINUTOS_RESPUESTA + 2) * 60000);
 ok(cerrarVisitasSinRespuesta().cerradas === 0,
    'y nunca se marca «sin respuesta»: nadie dejó de contestar, es que no se preguntó');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * El propietario se gestiona lo suyo desde WhatsApp
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Es lo PRIMERO que el bot escribe, y encima datos de seguridad. Las afirmaciones que
+ * más importan aquí son las negativas.
+ */
+global._waEnviarLista = (tel, texto, btn, secciones) => {
+  ENVIADO.push({ tel, texto, botones: null, lista: secciones }); return { ok: true };
+};
+global._botDice = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
+
+const lista = () => (hablo().lista || []).reduce((a, s) => a.concat(s.rows), []);
+const toca = (tel, id) => { reiniciarWA(); return _botGestionAcceso(tel,
+  { type: 'interactive', interactive: { button_reply: { id } } }, id); };
+const escribe = (tel, t) => { reiniciarWA(); return _botGestionAcceso(tel,
+  { type: 'text', text: { body: t } }, ''); };
+
+console.log('\n── UN PROPIETARIO CARGA SU PROPIO CONTACTO ──');
+reiniciar(); reiniciarF4(); CACHE = {}; PROPS = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_quien');
+ok(/Quién puede autorizar/.test(hablo().texto), 'se le enseña quién autoriza hoy');
+ok(/todavía ninguno/.test(hablo().texto), 'y que hoy no hay nadie, que es el caso de los 71 lotes');
+
+CLAUDE = { visitante: 'Carlos Pérez', cedula: '', lote: '' };
+escribe('+50769812266', 'Carlos Pérez 6000-1111');
+ok(/¿Guardo esto\?/.test(hablo().texto) && /Carlos Pérez/.test(hablo().texto),
+   'se le repite lo que va a guardarse antes de escribir nada');
+ok(getContactos('Q-9').length === 0, 'y todavía NO se ha escrito: primero confirma');
+
+toca('+50769812266', 'bot_acc_si');
+ok(getContactos('Q-9').length === 1 && getContactos('Q-9')[0].celular === '+50760001111',
+   'al confirmar se guarda, con el celular normalizado: ' + JSON.stringify(getContactos('Q-9')[0].celular));
+ok(getContactos('Q-9')[0].autoriza === true, 'y puede autorizar visitas, que es para lo que se carga');
+ok(REGISTRO.some(r => r.accion === 'contacto.alta'), 'queda en el registro, como todo lo que cambia');
+
+console.log('\n── «NO» NO ESCRIBE NADA ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_quien');
+CLAUDE = { visitante: 'Otro Más', cedula: '', lote: '' };
+escribe('+50769812266', 'Otro Más 6000-2222');
+toca('+50769812266', 'bot_acc_no');
+ok(getContactos('Q-9').length === 0, 'no se guardó nada');
+ok(/No se guardó nada/.test(hablo().texto), 'y se le dice');
+
+console.log('\n── UN PERMISO DEJADO POR WHATSAPP CADUCA ──');
+// Un permiso sin vencimiento es la forma más común de perder el control de quién entra.
+// Darlo por un mensaje de dos líneas es pedirlo: eso se queda en el panel.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
+escribe('+50769812266', 'Juan Pérez 8-123-456');
+ok(/Vale hasta el/.test(hablo().texto), 'se le dice hasta cuándo vale antes de dejarlo');
+toca('+50769812266', 'bot_acc_si');
+const permWA = getAutorizaciones('Q-9')[0];
+ok(permWA && permWA.hasta instanceof Date, 'el permiso se guarda CON fecha de vencimiento');
+const dias = Math.round((permWA.hasta - new Date()) / 86400000);
+ok(dias > 85 && dias < 95, 'de unos 90 días: ' + dias);
+ok(permWA.cedula === '8-123-456', 'con la cédula, que es lo que hace firme la coincidencia');
+
+console.log('\n── Y ESE PERMISO SIRVE DE VERDAD EN LA GARITA ──');
+// La prueba de que el círculo se cierra: lo que el dueño dejó por WhatsApp es lo que
+// el guardia se encuentra cuando el visitante llega.
+reiniciarF4(); CACHE = {};
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
+anuncia('Juan Pérez 8-123-456');
+ok(/PUEDE PASAR/.test(hablo().texto),
+   'el visitante que el dueño autorizó por WhatsApp entra sin molestar a nadie');
+
+console.log('\n── UN NÚMERO COMPARTIDO POR DOS DUEÑOS NO GESTIONA ──');
+// Para las cifras ya se le negaba —vería el saldo de otro—. Aquí sería peor: podría
+// nombrarse a sí mismo autorizante de una casa que no es suya.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON.push({ clave: 'Q-40', nombre: 'Otro Dueño Distinto', celular: '+50769812266', lote: '40' });
+let res = toca('+50769812266', 'bot_acc_quien');
+ok(res && res.contesto, 'se le contesta');
+ok(/personas distintas/.test(hablo().texto), 'y se le dice por qué no: ' + hablo().texto.slice(0, 60));
+ok(getContactos('Q-9').length === 0, 'no se le deja tocar nada');
+
+console.log('\n── UN CONTACTO DE ACCESO NO PUEDE NOMBRAR A OTROS ──');
+// El inquilino puede abrirle a quien llegue hoy. Lo que no puede es nombrar a otros
+// cinco que abran mañana: eso es del dueño.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+guardarContacto({ clave: 'Q-9', nombre: 'El inquilino', celular: '6555-8888', autoriza: 'si' });
+res = toca('+50765558888', 'bot_acc_quien');
+ok(/sólo lo puede gestionar el propietario/.test(hablo().texto),
+   'se le dice que no, aunque él sí autorice visitas');
+ok(getContactos('Q-9').length === 1, 'y no se agregó nada');
+
+console.log('\n── NO SE PUEDE GESTIONAR UNA UNIDAD AJENA ──');
+// La charla vive en una caché de diez minutos y lo que escribe es de seguridad: se
+// vuelve a comprobar de quién es la unidad en el momento de escribir.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+CACHE['acc_res_50769812266'] = JSON.stringify(
+  { que: 'contacto', clave: 'L-14', paso: 'confirma-contacto', nombre: 'Colado', celular: '+50760009999' });
+toca('+50769812266', 'bot_acc_si');
+ok(getContactos('L-14').length === 0,
+   'una unidad que no es suya no se toca, aunque la charla dijera que sí');
+ok(/no figura a su nombre/.test(hablo().texto), 'y se le dice');
+
+console.log('\n── «MENÚ» SIEMPRE SACA DE UN FORMULARIO ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_quien');
+escribe('+50769812266', 'menu');
+ok(!CACHE['acc_res_50769812266'], 'la conversación a medias se borra');
+ok(getContactos('Q-9').length === 0, 'sin escribir nada');
+
+console.log('\n── UN TEXTO SIN CONVERSACIÓN VIVA NO ES PARA AQUÍ ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+ok(_botGestionAcceso('+50769812266', { type: 'text', text: { body: 'cuanto debo?' } }, '') === null,
+   'devuelve null y el bot sigue su camino normal');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

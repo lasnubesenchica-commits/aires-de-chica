@@ -1859,3 +1859,353 @@ function instalarCierreDeVisitas() {
     ACC_MINUTOS_RESPUESTA, ACC_MINUTOS_RESPUESTA, ACC_MINUTOS_RESPUESTA + 5);
   return { ok: true };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EL PROPIETARIO SE GESTIONA LO SUYO, DESDE WHATSAPP
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Hasta aquí, cargar contactos de acceso y dejar permisos era cosa del panel, o sea
+ * de la administración. Con setenta unidades eso significa que no se carga nunca: el
+ * padrón de Aires de Chicá lleva 71 unidades sin un solo contacto, y no es descuido de
+ * nadie — es que hacerlo por otro, uno a uno, no lo hace nadie.
+ *
+ * ── Esto es lo primero que el bot ESCRIBE ────────────────────────────────────
+ * El resto del bot lee: dice saldos, manda estados de cuenta, recibe comprobantes y
+ * avisa. No aplica pagos ni toca el padrón, y eso no cambia. Pero aquí un mensaje de
+ * WhatsApp modifica datos, y además datos de SEGURIDAD: quién puede abrirle la puerta
+ * a un desconocido. De ahí las verjas de abajo, que son más estrictas que las del
+ * saldo y no menos.
+ *
+ * ── Quién puede gestionar ────────────────────────────────────────────────────
+ * SÓLO el número del padrón, y sólo cuando es el de un dueño único de esa unidad.
+ *
+ *   · Un número que aparece en unidades de dueños DISTINTOS no gestiona nada. Para
+ *     las cifras ya se le negaba —enseñarle el saldo de otro—; aquí sería peor:
+ *     podría añadirse a sí mismo como autorizante de una casa que no es suya.
+ *   · Un contacto de acceso TAMPOCO gestiona, aunque autorice visitas. El inquilino
+ *     puede abrirle a quien llegue hoy; lo que no puede es nombrar a otros cinco que
+ *     abran mañana. Eso es del dueño.
+ *
+ * ── Qué no puede hacer por aquí ──────────────────────────────────────────────
+ * Un permiso SIN vencimiento —el jardinero de todos los martes para siempre— se queda
+ * en el panel. Desde WhatsApp todo caduca, y se le dice cuándo. Un permiso que nadie
+ * recuerda haber dado es la forma más común de perder el control de quién entra, y
+ * dar esa herramienta por un mensaje de dos líneas es pedirlo.
+ */
+
+var ACC_DIAS_PERMISO_BOT = 90;   // lo que dura un permiso dejado por WhatsApp
+var ACC_RES_MIN = 10;            // minutos que se recuerda una conversación a medias
+
+/**
+ * ¿Puede este número gestionar el acceso, y de qué unidades?
+ *
+ * Devuelve `{ ok, claves, nombre }` o `{ ok:false, por }` con el motivo en claro, que
+ * es lo que se le va a decir.
+ */
+function _accPuedeGestionar(telefono) {
+  if (typeof identificarPorCelular !== 'function') return { ok: false, por: 'sin-padron' };
+  var q = identificarPorCelular(telefono);
+  if (q.motivo === 'varios-duenos') return { ok: false, por: 'varios-duenos' };
+  if (!q.prop) return { ok: false, por: 'no-esta-en-el-padron' };
+  var claves = (q.claves && q.claves.length) ? q.claves : [q.prop.clave];
+  return { ok: true, claves: claves, nombre: String(q.prop.nombre || '') };
+}
+
+/** La conversación a medias de este propietario. `null` la borra. */
+function _accCharla(tel, obj) {
+  var k = 'acc_res_' + String(tel).replace(/\D/g, '');
+  try {
+    var c = CacheService.getScriptCache();
+    if (obj === null) { c.remove(k); return null; }
+    if (obj) { c.put(k, JSON.stringify(obj), ACC_RES_MIN * 60); return obj; }
+    var v = c.get(k);
+    return v ? JSON.parse(v) : null;
+  } catch (e) { return null; }
+}
+
+/** Fecha de caducidad de un permiso dejado por WhatsApp. */
+function _accHasta() {
+  var d = new Date();
+  d.setDate(d.getDate() + ACC_DIAS_PERMISO_BOT);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+}
+
+/* ─────────────── la conversación con el propietario ─────────────── */
+
+var ACC_RES_QUIEN   = 'bot_acc_quien';     // «Quién autoriza mis visitas»
+var ACC_RES_PERMISO = 'bot_acc_permiso';   // «Dejar un permiso»
+var ACC_RES_QUITA   = 'bot_acc_quita_';    // quitar un contacto o un permiso
+var ACC_RES_SI      = 'bot_acc_si';        // confirmar lo que se va a guardar
+var ACC_RES_NO      = 'bot_acc_no';
+var ACC_RES_UNIDAD  = 'bot_acc_unidad_';   // elegir unidad cuando tiene varias
+
+/**
+ * Todo lo que el propietario puede hacer con su acceso. Devuelve null si el mensaje
+ * no era para aquí, y entonces el bot sigue su camino normal.
+ */
+function _botGestionAcceso(tel, msg, accion) {
+  accion = String(accion || '');
+  var charla = _accCharla(tel);
+  var esTexto = String(msg.type || '') === 'text';
+  var texto = esTexto ? String((msg.text && msg.text.body) || '').trim() : '';
+
+  var mio = (accion === ACC_RES_QUIEN || accion === ACC_RES_PERMISO ||
+             accion.indexOf(ACC_RES_QUITA) === 0 || accion === ACC_RES_SI ||
+             accion === ACC_RES_NO || accion.indexOf(ACC_RES_UNIDAD) === 0);
+  if (!mio && !(charla && esTexto)) return null;
+
+  // «menú» sale de aquí siempre: quedarse atrapado en un formulario es la peor forma
+  // de usar un bot, y quien escribe eso está pidiendo salir.
+  if (esTexto && /^\s*(menu|menú|salir|cancelar)\s*$/i.test(texto)) {
+    _accCharla(tel, null);
+    _botDice(tel, 'Listo, lo dejamos ahí. ¿En qué le ayudamos?');
+    return { contesto: true, avisar: false };
+  }
+
+  var puede = _accPuedeGestionar(tel);
+  if (!puede.ok) {
+    _accCharla(tel, null);
+    if (puede.por === 'varios-duenos') {
+      enviarWhatsAppTexto(tel,
+        'Este número figura en más de ' + _acUn() + ' ' + _acUnidad() + ' a nombre de personas ' +
+        'distintas, así que por aquí no podemos dejarle cambiar quién autoriza las visitas. ' +
+        'La administración lo hace por usted.');
+    } else {
+      enviarWhatsAppTexto(tel,
+        'Esto sólo lo puede gestionar el propietario desde el número que tenemos en el padrón. ' +
+        'Si es usted, escríbanos y lo actualizamos.');
+    }
+    return { contesto: true, avisar: true };
+  }
+
+  if (accion === ACC_RES_NO) {
+    _accCharla(tel, null);
+    _botDice(tel, 'No se guardó nada.');
+    return { contesto: true, avisar: false };
+  }
+
+  // ¿De qué unidad hablamos? Con una sola no se pregunta.
+  if (accion.indexOf(ACC_RES_UNIDAD) === 0 && charla) {
+    charla.clave = accion.slice(ACC_RES_UNIDAD.length);
+    _accCharla(tel, charla);
+    return _accSeguir(tel, charla, puede);
+  }
+
+  if (accion === ACC_RES_QUIEN || accion === ACC_RES_PERMISO) {
+    var nueva = { que: (accion === ACC_RES_QUIEN ? 'contacto' : 'permiso'),
+                  clave: puede.claves.length === 1 ? puede.claves[0] : '' };
+    _accCharla(tel, nueva);
+    if (!nueva.clave) return _accPreguntarUnidad(tel, puede);
+    return _accSeguir(tel, nueva, puede);
+  }
+
+  if (accion.indexOf(ACC_RES_QUITA) === 0) return _accQuitar(tel, accion.slice(ACC_RES_QUITA.length), puede);
+  if (accion === ACC_RES_SI) return _accGuardarLoDicho(tel, charla, puede);
+
+  // Un texto suelto: o es el dato que se le pidió, o no hay conversación viva.
+  if (charla && esTexto) return _accRecibirDato(tel, charla, texto, puede);
+  return null;
+}
+
+/** Con varias unidades a su nombre hay que saber de cuál habla. */
+function _accPreguntarUnidad(tel, puede) {
+  var filas = puede.claves.slice(0, 10).map(function (c) {
+    return { id: ACC_RES_UNIDAD + c, title: String(c).slice(0, 24),
+             description: _accDeQuien(c).slice(0, 72) };
+  });
+  _waEnviarLista(tel, '¿De cuál de sus ' + _acPlural(_acUnidad()) + ' hablamos?',
+    'Elegir', [{ title: _acUnidadCap(), rows: filas }]);
+  return { contesto: true, avisar: false };
+}
+
+function _acUnidadCap() {
+  var u = _acUnidad();
+  return u.charAt(0).toUpperCase() + u.slice(1);
+}
+
+/** Enseña lo que hay y pide lo que falta. */
+function _accSeguir(tel, charla, puede) {
+  var clave = charla.clave;
+  if (charla.que === 'contacto') {
+    var cs = getContactos(clave).filter(function (c) { return c.activo; });
+    var quedan = ACC_MAX_CONTACTOS - cs.filter(function (c) { return c.autoriza; }).length;
+    var lista = cs.length
+      ? cs.map(function (c) { return '· ' + c.nombre + (c.autoriza ? ' — ' + c.celular : ' (no autoriza)'); }).join('\n')
+      : '(todavía ninguno: hoy sus visitas se le preguntan a este mismo número)';
+
+    var cuerpo = 'Quién puede autorizar las visitas del ' + _acUnidad() + ' ' + clave + ':\n\n' + lista +
+      '\n\nPuede tener hasta ' + ACC_MAX_CONTACTOS + '. ' +
+      (quedan > 0
+        ? 'Para agregar a alguien, mándeme su nombre y su celular en un mensaje. Por ejemplo:\n' +
+          '«Carlos Pérez 6000-1111»'
+        : 'Ya está en el tope; quite a uno para agregar otro.');
+
+    var botones = [];
+    if (cs.length) botones.push(_botBoton(ACC_RES_QUITA + 'c|' + clave, 'Quitar a alguien'));
+    if (botones.length) _waEnviarBotones(tel, cuerpo, botones);
+    else enviarWhatsAppTexto(tel, cuerpo);
+    charla.paso = 'espera-contacto';
+    _accCharla(tel, charla);
+    return { contesto: true, avisar: false };
+  }
+
+  var as = getAutorizaciones(clave).filter(function (a) { return a.activo; });
+  var lp = as.length
+    ? as.map(function (a) { return '· ' + a.visitante + (a.cedula ? ' — ' + a.cedula : ' (sin cédula)'); }).join('\n')
+    : '(ninguno todavía)';
+  var txt = 'Permisos dejados para el ' + _acUnidad() + ' ' + clave + ':\n\n' + lp +
+    '\n\nPara dejar uno nuevo, mándeme el nombre de quien va a visitarle y su cédula si la sabe:\n' +
+    '«Juan Pérez 8-123-456»\n\n' +
+    'Sin la cédula, la garita sólo puede comparar el nombre, y así se lo dirá al guardia.';
+  var bs = [];
+  if (as.length) bs.push(_botBoton(ACC_RES_QUITA + 'a|' + clave, 'Quitar un permiso'));
+  if (bs.length) _waEnviarBotones(tel, txt, bs);
+  else enviarWhatsAppTexto(tel, txt);
+  charla.paso = 'espera-permiso';
+  _accCharla(tel, charla);
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * Lo que el propietario tecleó. Se lee con el mismo candado que el anuncio del
+ * guardia: de lo que devuelve el modelo no se usa nada que no estuviera escrito.
+ */
+function _accRecibirDato(tel, charla, texto, puede) {
+  var d = _accLeerVisitaTexto(texto);
+  var nombre = String(d.visitante || '').trim();
+  var cel = '';
+  var ced = String(d.cedula || '').trim();
+
+  if (charla.paso === 'espera-contacto') {
+    // Para un contacto lo que hace falta es el CELULAR, no la cédula.
+    var m = /(\+?\d[\d\s\-()]{6,})/.exec(texto);
+    cel = m ? m[1].trim() : '';
+    if (!nombre) nombre = texto.replace(/(\+?\d[\d\s\-()]{6,})/, '').replace(/[,;]/g, ' ').trim();
+    if (!nombre || !cel) {
+      enviarWhatsAppTexto(tel,
+        'Me falta ' + (!nombre ? 'el nombre' : 'el celular') + '. Mándemelo así:\n' +
+        '«Carlos Pérez 6000-1111»');
+      return { contesto: true, avisar: false };
+    }
+    var n = normalizarCelular(cel);
+    if (!n.ok) {
+      enviarWhatsAppTexto(tel, 'Ese celular no se puede usar: ' + (n.por || 'no se entiende') +
+        '. Mándemelo otra vez.');
+      return { contesto: true, avisar: false };
+    }
+    charla.nombre = nombre; charla.celular = n.e164; charla.paso = 'confirma-contacto';
+    _accCharla(tel, charla);
+    _waEnviarBotones(tel,
+      '¿Guardo esto?\n\n*' + nombre + '*\n' + n.e164 + '\n' + _acUnidadCap() + ' ' + charla.clave +
+      '\n\nCuando llegue una visita para usted, se le preguntará también a este número.',
+      [_botBoton(ACC_RES_SI, 'Sí, guardar'), _botBoton(ACC_RES_NO, 'No')]);
+    return { contesto: true, avisar: false };
+  }
+
+  if (charla.paso === 'espera-permiso') {
+    if (!nombre) {
+      enviarWhatsAppTexto(tel,
+        'No saqué de ahí el nombre del visitante. Mándemelo así:\n«Juan Pérez 8-123-456»');
+      return { contesto: true, avisar: false };
+    }
+    charla.nombre = nombre; charla.cedula = ced; charla.paso = 'confirma-permiso';
+    _accCharla(tel, charla);
+    var hasta = _accHasta();
+    _waEnviarBotones(tel,
+      '¿Dejo el permiso?\n\n*' + nombre + '*\n' + (ced ? 'Cédula ' + ced : '_sin cédula_') +
+      '\n' + _acUnidadCap() + ' ' + charla.clave +
+      '\n\nVale hasta el ' + _fechaCorta(hasta) + '. Después hay que volver a dejarlo.' +
+      (ced ? '' : '\n\nSin cédula, el guardia sabrá que la coincidencia es sólo por el nombre.'),
+      [_botBoton(ACC_RES_SI, 'Sí, dejarlo'), _botBoton(ACC_RES_NO, 'No')]);
+    return { contesto: true, avisar: false };
+  }
+  return null;
+}
+
+/** Escribe lo que se acaba de confirmar. */
+function _accGuardarLoDicho(tel, charla, puede) {
+  if (!charla || !charla.clave) { _accCharla(tel, null); return null; }
+  // Cinturón: la unidad de la charla tiene que seguir siendo suya. La charla vive en
+  // una caché de diez minutos y lo que se escribe con ella es de seguridad.
+  if (puede.claves.indexOf(charla.clave) < 0) {
+    _accCharla(tel, null);
+    enviarWhatsAppTexto(tel, 'Esa ' + _acUnidad() + ' no figura a su nombre. No se guardó nada.');
+    return { contesto: true, avisar: true };
+  }
+
+  try {
+    if (charla.paso === 'confirma-contacto') {
+      guardarContacto({ clave: charla.clave, nombre: charla.nombre, celular: charla.celular,
+                        rol: 'otro', autoriza: true, activo: true, orden: 1,
+                        notas: 'Cargado por el propietario desde WhatsApp.' });
+      _accCharla(tel, null);
+      enviarWhatsAppTexto(tel, '✅ Guardado. A *' + charla.nombre +
+        '* se le preguntará cuando llegue una visita para su ' + _acUnidad() + '.');
+      return { contesto: true, avisar: false };
+    }
+    if (charla.paso === 'confirma-permiso') {
+      var hasta = _accHasta();
+      guardarAutorizacion({ clave: charla.clave, visitante: charla.nombre, cedula: charla.cedula,
+                            desde: new Date(), hasta: hasta, creadoPor: puede.nombre,
+                            activo: true, notas: 'Dejado por el propietario desde WhatsApp.' });
+      _accCharla(tel, null);
+      enviarWhatsAppTexto(tel, '✅ Listo. *' + charla.nombre + '* puede entrar sin que le llamemos, ' +
+        'hasta el ' + _fechaCorta(hasta) + '.');
+      return { contesto: true, avisar: false };
+    }
+  } catch (e) {
+    _accCharla(tel, null);
+    enviarWhatsAppTexto(tel, 'No pude guardarlo: ' + (e && e.message || e));
+    return { contesto: true, avisar: true };
+  }
+  return null;
+}
+
+/** Quitar: se enseña la lista y se quita de un toque. */
+function _accQuitar(tel, resto, puede) {
+  var partes = String(resto).split('|');
+  var tipo = partes[0], clave = partes[1] || '';
+
+  // Segundo toque: viene el id concreto.
+  if (tipo === 'C' || tipo === 'A') {
+    var id = partes[1] || '';
+    try {
+      if (tipo === 'C') { _accSoloSuyo(getContactos(''), id, puede); eliminarContacto(id); }
+      else { _accSoloSuyo(getAutorizaciones(''), id, puede); eliminarAutorizacion(id); }
+      enviarWhatsAppTexto(tel, '✅ Quitado.');
+    } catch (e) {
+      enviarWhatsAppTexto(tel, 'No pude quitarlo: ' + (e && e.message || e));
+    }
+    _accCharla(tel, null);
+    return { contesto: true, avisar: false };
+  }
+
+  // Primer toque: la lista.
+  if (puede.claves.indexOf(clave) < 0) return null;
+  var filas = (tipo === 'c'
+    ? getContactos(clave).filter(function (c) { return c.activo; })
+        .map(function (c) { return { id: ACC_RES_QUITA + 'C|' + c.id, title: c.nombre.slice(0, 24),
+                                     description: (c.celular || '').slice(0, 72) }; })
+    : getAutorizaciones(clave).filter(function (a) { return a.activo; })
+        .map(function (a) { return { id: ACC_RES_QUITA + 'A|' + a.id, title: a.visitante.slice(0, 24),
+                                     description: (a.cedula || 'sin cédula').slice(0, 72) }; })
+  ).slice(0, 10);
+
+  if (!filas.length) { enviarWhatsAppTexto(tel, 'No hay nada que quitar.'); return { contesto: true, avisar: false }; }
+  _waEnviarLista(tel, '¿Cuál quito?', 'Ver', [{ title: 'Toque uno', rows: filas }]);
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * Que la fila que va a borrarse sea de una unidad suya.
+ *
+ * Los identificadores viajan dentro del botón, y un botón es un dato que vuelve del
+ * teléfono de alguien: no se borra nada sin comprobar de quién era.
+ */
+function _accSoloSuyo(filas, id, puede) {
+  var suya = null;
+  filas.forEach(function (f) { if (f.id === id) suya = f; });
+  if (!suya) throw new Error('Ya no existe.');
+  if (puede.claves.indexOf(suya.clave) < 0) throw new Error('Eso no es de una ' + _acUnidad() + ' suya.');
+  return suya;
+}

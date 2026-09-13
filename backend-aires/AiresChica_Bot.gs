@@ -68,6 +68,18 @@ function _botSilenciado(tel) {
  * texto libre sí, y ahí entra Claude. Lo que no es ni una cosa ni la otra —una nota
  * de voz, una ubicación, un sticker— va a un humano en vez de fingir que se entendió.
  */
+/** El identificador de un botón o fila de lista, sin interpretar nada. */
+function _botIdDeBoton(msg) {
+  var tipo = String(msg.type || '');
+  if (tipo === 'interactive') {
+    var i = msg.interactive || {};
+    var b = i.button_reply || i.list_reply || {};
+    return String(b.id || '');
+  }
+  if (tipo === 'button' && msg.button && msg.button.payload) return String(msg.button.payload);
+  return '';
+}
+
 function _botAccion(msg) {
   var tipo = String(msg.type || '');
   if (tipo === 'interactive') {
@@ -197,6 +209,12 @@ function _botSecciones() {
     { title: 'La comunidad', rows: [
       { id: 'bot_comunicado', title: 'Último comunicado',    description: 'El último aviso de la administración' }
     ] },
+    // El propietario se gestiona lo suyo. Sin esto hay que pedírselo a la administración,
+    // y con setenta unidades eso significa que no se carga nunca.
+    { title: 'Mis visitas', rows: [
+      { id: 'bot_acc_quien',   title: 'Quién autoriza',      description: 'A quién le preguntamos cuando llega una visita suya' },
+      { id: 'bot_acc_permiso', title: 'Dejar un permiso',    description: 'Para que alguien entre sin que le llamemos' }
+    ] },
     { title: 'Ayuda', rows: [
       { id: 'bot_comopago', title: 'Cómo pago',              description: 'La cuenta de la Asociación y qué poner' },
       { id: 'bot_datos',    title: 'Mis datos',              description: 'El correo y el celular que tenemos suyos' },
@@ -209,7 +227,10 @@ function _botSecciones() {
 var BOT_MODULO_DE = {
   bot_saldo: 'financiero', bot_pagos: 'financiero', bot_detalle: 'financiero',
   bot_cuota: 'financiero', bot_comopago: 'financiero', bot_comprobante: 'financiero',
-  bot_comunicado: 'comunicaciones'
+  bot_comunicado: 'comunicaciones',
+  // Igual que en AC_MODULO_DE: lo que no está aquí no depende de ningún módulo, así
+  // que olvidar una de éstas se la ofrecería a un PH que no contrató el acceso.
+  bot_acc_quien: 'acceso', bot_acc_permiso: 'acceso'
 };
 
 function _botModuloDe(id) { return BOT_MODULO_DE[String(id)] || ''; }
@@ -277,6 +298,14 @@ function _botAtender(info, msg) {
     if (typeof _botRespuestaDeAcceso === 'function') {
       var r = _botRespuestaDeAcceso(tel, msg);
       if (r) return r;
+    }
+
+    // Un propietario a medio cargar un contacto: lo que escriba es el dato que se le
+    // pidió, no una pregunta. Va ANTES de _botAccion() para no gastar una llamada al
+    // modelo clasificando «Carlos Pérez 6000-1111» como si fuera una consulta.
+    if (typeof _botGestionAcceso === 'function') {
+      var g = _botGestionAcceso(tel, msg, _botIdDeBoton(msg));
+      if (g) return g;
     }
   }
 

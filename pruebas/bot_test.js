@@ -193,8 +193,15 @@ ok(menu().type === 'list',
    'es una LISTA: su botón abre el menú de una, mientras que un botón de respuesta ' +
    'sólo manda un mensaje y obliga a un toque más');
 ok(filas.map(f => f.id).join() ===
-   'bot_saldo,bot_pagos,bot_detalle,bot_cuota,bot_comunicado,bot_comopago,bot_datos,bot_humano',
-   'con las ocho opciones en orden: ' + filas.map(f => f.title).join(' · '));
+   'bot_saldo,bot_pagos,bot_detalle,bot_cuota,bot_comunicado,bot_acc_quien,bot_acc_permiso,' +
+   'bot_comopago,bot_datos,bot_humano',
+   'con las diez opciones en orden: ' + filas.map(f => f.title).join(' · '));
+// WhatsApp corta los títulos de una lista a los 24 caracteres sin avisar, y una opción
+// cortada a la mitad deja al propietario adivinando qué hace.
+ok(filas.every(f => f.title.length <= 24),
+   'ningún título pasa de 24 caracteres: ' +
+   (filas.filter(f => f.title.length > 24).map(f => f.title).join(' · ') || 'ninguno'));
+ok(filas.every(f => f.description.length <= 72), 'ni ninguna descripción de 72');
 ok(filas.length <= 10, 'sin pasar de las 10 que admite WhatsApp');
 ok(filas.every(f => f.title.length <= 24 && (!f.description || f.description.length <= 72)),
    'y sin títulos ni descripciones que WhatsApp corte por largos');
