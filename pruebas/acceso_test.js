@@ -460,6 +460,13 @@ ok(!d.avisos.some(a => /garita/i.test(a.texto)) && !d.avisos.some(a => /Ley 81/.
 ok(d.sinContactos.length === 2 && d.sinContactos.every(s => s.clave !== 'Q-9'),
    'Q-9 sale de la lista de pendientes al cargarle un contacto que autoriza');
 ok(d.purgaInstalada === true, 'y el panel sabe que la purga quedó instalada');
+// El padrón ENTERO, no sólo las unidades pendientes: el formulario de un contacto o de
+// un permiso tiene que poder escoger cualquiera. El panel lo sacaba de getPropietarios,
+// que es del módulo FINANCIERO — así que una comunidad que sólo contrató el acceso se
+// quedaba con un desplegable vacío y claves en bruto donde debería leer nombres.
+ok(d.unidades.length === 3 && d.unidades.some(u => u.clave === 'Q-9'),
+   'las tres unidades del padrón viajan en getAcceso, incluida la que ya tiene contacto: ' + d.unidades.length);
+ok(d.unidades.every(u => u.nombre), 'cada una con su nombre, que es lo que se lee en el desplegable');
 
 console.log('\n── UN NÚMERO QUE ES GARITA Y RESIDENTE A LA VEZ SE DICE ──');
 // El caso del piloto: el administrador pone su propio número como garita para probar,

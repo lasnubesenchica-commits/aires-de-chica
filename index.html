@@ -6503,9 +6503,17 @@ async function accProps(){
 }
 function accVista(v){ ACC_VISTA=v; paintAcceso(); window.scrollTo({top:0,behavior:'smooth'}); }
 
+/* El padrón para el módulo de acceso. getPropietarios es una acción del módulo
+ * FINANCIERO: en una comunidad que sólo contrató el acceso, el servidor la rechaza y
+ * PROPS queda vacío. Por eso getAcceso trae su propia lista de unidades — con ella los
+ * desplegables siguen teniendo nombres en vez de claves en bruto. */
+function accPadron(){
+  if(PROPS && PROPS.length) return PROPS;
+  return (ACC_DATA && ACC_DATA.unidades) || [];
+}
 /** Nombre legible de una unidad: «L-14 · Judith Araúz». Si no está en el padrón, la clave. */
 function accNombreDe(clave){
-  const p=(PROPS||[]).find(x=>x.clave===clave);
+  const p=accPadron().find(x=>x.clave===clave);
   if(!p) return clave;
   return (p.lote?p.lote+' · ':'')+(p.nombre||clave);
 }
@@ -6611,7 +6619,7 @@ function accAbrirUnidad(clave){
 
 /** Desplegable de unidades del padrón, con la que ya viene marcada. */
 function accOptsUnidad(sel){
-  const ps=(PROPS||[]).slice().sort((a,b)=>String(a.lote||a.clave).localeCompare(String(b.lote||b.clave),'es',{numeric:true}));
+  const ps=accPadron().slice().sort((a,b)=>String(a.lote||a.clave).localeCompare(String(b.lote||b.clave),'es',{numeric:true}));
   const hay=ps.some(p=>p.clave===sel);
   return (sel&&!hay?`<option value="${_esc(sel)}" selected>${_esc(sel)}</option>`:'')
     + ps.map(p=>`<option value="${_esc(p.clave)}"${p.clave===sel?' selected':''}>${_esc(accNombreDe(p.clave))}</option>`).join('');

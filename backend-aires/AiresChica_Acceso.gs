@@ -803,8 +803,15 @@ function getAccesoData(clave) {
     if (c.activo && c.autoriza && c.celular) conContacto[c.clave] = true;
   });
   var sinContactos = [];
+  // El padrón completo va en la respuesta, no sólo las unidades sin contactos: el
+  // formulario de un contacto o de un permiso necesita escoger CUALQUIER unidad. El
+  // panel lo sacaba de getPropietarios, que es una acción del módulo FINANCIERO — así
+  // que una comunidad que sólo contrató el acceso se quedaba sin desplegable y leía
+  // claves en bruto donde debería ver nombres.
+  var unidades = [];
   try {
     (getPropietarios() || []).forEach(function (pr) {
+      unidades.push({ clave: pr.clave, nombre: pr.nombre, lote: pr.lote });
       if (!conContacto[pr.clave]) sinContactos.push({ clave: pr.clave, nombre: pr.nombre });
     });
   } catch (e) {}
@@ -854,7 +861,7 @@ function getAccesoData(clave) {
     maxContactos: ACC_MAX_CONTACTOS, diasFoto: ACC_DIAS_FOTO,
     roles: ACC_ROLES, diasSemana: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
     contactos: contactos, garitas: garitas, autorizaciones: autorizaciones,
-    visitas: visitas, sinContactos: sinContactos, avisos: avisos,
+    visitas: visitas, unidades: unidades, sinContactos: sinContactos, avisos: avisos,
     adentro: dentro.length, colgadas: colgadas, horasAdentro: ACC_HORAS_ADENTRO,
     purgaInstalada: !!purga
   };

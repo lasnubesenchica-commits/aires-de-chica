@@ -34,10 +34,31 @@ table{width:100%;border-collapse:collapse;font-size:.85rem} td,th{padding:7px 6p
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68rem;color:var(--ac-muted);text-transform:uppercase} tr{border-bottom:1px solid #eef5f8}
 .close{border:0;background:none;font-size:1.5rem;color:var(--ac-muted)}
 .tot{display:flex;justify-content:space-between;padding:10px 12px;background:var(--ac-teal-50);border-radius:8px;margin-top:8px}
-/* conmutador de vistas: en un teléfono no caben pestañas, y dos vistas no necesitan más */
-.seg{display:flex;gap:6px;margin-bottom:12px}
-.seg button{flex:1;border:1px solid var(--ac-border);background:#fff;border-radius:10px;padding:9px;font:inherit;font-weight:600;color:var(--ac-muted)}
+/* Conmutador de vistas. En un teléfono no caben pestañas de escritorio, así que se
+   desliza de lado en vez de encoger las etiquetas hasta que no se lean. */
+.seg{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:0 0 auto;border:1px solid var(--ac-border);background:#fff;border-radius:10px;padding:9px 14px;font:inherit;font-weight:600;color:var(--ac-muted);white-space:nowrap}
 .seg button.on{background:var(--ac-teal);border-color:var(--ac-teal);color:#fff}
+.seg.sub button{padding:7px 11px;font-size:.84rem}
+select,textarea{width:100%;padding:11px 14px;border:1px solid var(--ac-border);border-radius:10px;font:inherit;margin-bottom:12px;background:#fff}
+label.lb{display:block;font-size:.72rem;color:var(--ac-muted);font-weight:600;margin-bottom:3px}
+label.chk{display:flex;align-items:center;gap:9px;margin-bottom:12px;font-size:.88rem}
+label.chk input{width:auto;margin:0}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.lnk{background:none;border:0;font:inherit;font-weight:600;color:var(--ac-teal);padding:0;text-decoration:underline}
+.lnk.del{color:var(--ac-danger)}
+details{margin-top:12px} summary{cursor:pointer;font-weight:600;font-size:.86rem;padding:6px 0}
+.badge{display:inline-block;font-size:.66rem;font-weight:700;border-radius:6px;padding:1px 6px;border:1px solid}
+.badge.ok{color:#16a34a;background:#ecfdf5;border-color:#16a34a44}
+.badge.warn{color:#b45309;background:#fffbeb;border-color:#b4530944}
+.badge.bad{color:#b91c1c;background:#fef2f2;border-color:#b91c1c44}
+.dia{font-size:.72rem;font-weight:700;color:var(--ac-muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px}
+.flash{font-size:.8rem;color:var(--ac-teal);font-weight:600;min-height:16px}
+.dias{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.dias label{flex:1;min-width:40px;text-align:center;border:1px solid var(--ac-border);border-radius:9px;padding:7px 0;font-size:.82rem;font-weight:600;background:#fff}
+.dias input{display:none} .dias input:checked+span{color:var(--ac-teal)}
+.dias label:has(input:checked){background:var(--ac-teal-50);border-color:var(--ac-teal)}
 .aviso{border-radius:10px;padding:10px 12px;font-size:.82rem;margin-bottom:8px;border:1px solid}
 .aviso.err{background:#fbe6e3;border-color:#f0c0b8;color:#8a2b1c}
 .aviso.warn{background:#fbf0dc;border-color:#f4d9b0;color:#7a4a12}
@@ -73,6 +94,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68re
   <div class="seg" id="seg" style="display:none">
     <button id="segCta" class="on" onclick="verVista('cuentas')">Cuentas</button>
     <button id="segAcc" onclick="verVista('acceso')">Acceso</button>
+    <button id="segCmp" onclick="verVista('comprob')">Comprobantes</button>
+    <button id="segReg" onclick="verVista('registro')">Registro</button>
   </div>
   <div id="vCuentas">
     <div class="summary" id="summary"></div>
@@ -80,6 +103,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums} th{font-size:.68re
     <div id="list"></div>
   </div>
   <div id="vAcceso" style="display:none"><p style="color:var(--ac-muted)">Cargando…</p></div>
+  <div id="vComprob" style="display:none"><p style="color:var(--ac-muted)">Cargando…</p></div>
+  <div id="vRegistro" style="display:none"><p style="color:var(--ac-muted)">Cargando…</p></div>
 </div>
 <div class="sheet-bg" id="sheetBg" onclick="closeSheet()"></div>
 <div class="sheet" id="sheet"><div class="grad"></div><div class="sh" id="sheetHd"></div><div class="sb" id="sheetBd"></div></div>
@@ -195,39 +220,73 @@ function gate(m){MODE=m;document.getElementById('app').style.display='none';docu
   document.getElementById('gp2').style.display=m==='setup'?'block':'none';document.getElementById('gb').textContent=m==='setup'?'Crear y entrar':'Entrar';
   document.getElementById('gp').value='';document.getElementById('gp2').value='';document.getElementById('ge').textContent='';}
 function showApp(){document.getElementById('gate').classList.remove('show');document.getElementById('app').style.display='block';}
-let MODULOS=null, HAY_FIN=true, HAY_ACC=true;
+/* ───────── las vistas y el módulo que las paga ─────────
+ * Que una vista se esconda es cortesía: el servidor ya rechaza las acciones del módulo
+ * que no se contrató. Pero ofrecer algo que al tocarlo contesta «ese módulo no está
+ * activo» es una mala primera impresión, y abrir en una vista que no carga deja al
+ * dueño fuera de su propia app sin saber por qué. */
+const VISTAS=[
+  {v:'cuentas',  b:'segCta', box:'vCuentas',  mod:'financiero'},
+  {v:'acceso',   b:'segAcc', box:'vAcceso',   mod:'acceso'},
+  {v:'comprob',  b:'segCmp', box:'vComprob',  mod:'financiero'},
+  {v:'registro', b:'segReg', box:'vRegistro', mod:'financiero'}
+];
+let MODULOS=null, VISIBLES=[], VISTA='';
+function hayModulo(m){
+  // Sin lista no se esconde nada: que falte un dato no puede dejar a nadie sin su panel.
+  const mods=(Array.isArray(MODULOS)&&MODULOS.length)?MODULOS:null;
+  return !mods||mods.indexOf(m)>=0;
+}
 async function boot(){let st;try{st=await jsonp('getAuthState');}catch(e){st={hasPassword:false};}
   if(!st.hasPassword){gate('setup');return;} if(!TOKEN){gate('login');return;}
   MODULOS=st.modulos||null; pintarAutor();
-  // Sin lista de módulos no se esconde nada: que falte un dato no puede dejar a nadie
-  // sin su panel. Con lista, cada vista sólo aparece si su módulo está contratado —
-  // las cuentas también: una comunidad que sólo contrató el acceso abría la app en una
-  // vista cuyo getDashboard el servidor rechaza, y se quedaba fuera de su propia app.
-  const mods=(Array.isArray(MODULOS)&&MODULOS.length)?MODULOS:null;
-  HAY_FIN=!mods||mods.indexOf('financiero')>=0;
-  HAY_ACC=!mods||mods.indexOf('acceso')>=0;
-  if(HAY_FIN&&HAY_ACC)document.getElementById('seg').style.display='flex';
-  try{
-    if(HAY_FIN)await load();
-    else if(HAY_ACC)verVista('acceso');
-    else{document.getElementById('vCuentas').innerHTML=
-      '<div class="aviso warn">Esta comunidad no tiene ningún módulo con vista en el teléfono. Entra desde el panel de escritorio.</div>';}
-    showApp();
-  }catch(e){if(!authErr(e))gate('login');}}
+  VISIBLES=VISTAS.filter(x=>hayModulo(x.mod));
+  VISTAS.forEach(x=>{const b=document.getElementById(x.b);
+    if(b)b.style.display=VISIBLES.indexOf(x)>=0?'':'none';});
+  if(VISIBLES.length>1)document.getElementById('seg').style.display='flex';
+  if(!VISIBLES.length){
+    document.getElementById('vCuentas').innerHTML=
+      '<div class="aviso warn">Esta comunidad no tiene ningún módulo con vista en el teléfono. Entra desde el panel de escritorio.</div>';
+    showApp();return;
+  }
+  try{await verVista(VISIBLES[0].v);showApp();}
+  catch(e){if(!authErr(e))gate('login');}}
 
-/* ───────── la vista de acceso ─────────
- * En un teléfono lo que hace falta es la bitácora: quién está adentro ahora y qué pasó
- * anoche. Cargar contactos y dejar permisos es trabajo de escritorio — y desde que el
- * propietario se los gestiona por WhatsApp, cada vez menos de nadie.
- */
-let ACC=null;
-function verVista(v){
-  document.getElementById('vCuentas').style.display=v==='cuentas'?'block':'none';
-  document.getElementById('vAcceso').style.display=v==='acceso'?'block':'none';
-  document.getElementById('segCta').className=v==='cuentas'?'on':'';
-  document.getElementById('segAcc').className=v==='acceso'?'on':'';
-  if(v==='acceso')cargarAcceso();
+async function verVista(v){
+  VISTA=v;
+  VISTAS.forEach(x=>{
+    document.getElementById(x.box).style.display=x.v===v?'block':'none';
+    const b=document.getElementById(x.b); if(b)b.className=x.v===v?'on':'';
+  });
+  window.scrollTo({top:0});
+  if(v==='cuentas')  return load();
+  if(v==='acceso')   return cargarAcceso();
+  if(v==='comprob')  return cargarComprob();
+  if(v==='registro') return cargarRegistro();
 }
+const _esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const hoyISO=()=>new Date().toISOString().slice(0,10);
+/* Las cuentas bancarias de la asociación. Se piden una vez: la lista cambia poco y el
+ * selector sale en el pago manual y en cada comprobante. Si falla, el selector queda
+ * vacío y el servidor pone la cuenta de cobro, que es lo correcto por defecto. */
+let BANCOS=null;
+async function bancos(){
+  if(BANCOS)return BANCOS;
+  try{const d=await jsonp('getCuentasData');BANCOS=(d.cuentas||[]).filter(c=>c.activa);}
+  catch(e){BANCOS=[];}
+  return BANCOS;
+}
+function optsBanco(sel){
+  return (BANCOS||[]).map(c=>`<option value="${_esc(c.id)}"${c.id===sel?' selected':''}>${_esc(c.nombre)}${c.esCobro?' · cobro':''}</option>`).join('');
+}
+
+/* ───────── acceso ─────────
+ * Las mismas cuatro vistas del escritorio. La bitácora es la que más se mira desde el
+ * teléfono, así que abre en ella; pero cargar un contacto o dejar un permiso también
+ * pasa estando de pie frente a alguien, no sentado en un escritorio.
+ */
+let ACC=null, ACC_VISTA='visitas';
 async function cargarAcceso(force){
   const box=document.getElementById('vAcceso');
   if(ACC&&!force){pintarAcceso();return;}
@@ -238,23 +297,225 @@ async function cargarAcceso(force){
 }
 const ACC_EST={autorizada:['ok','autorizada'],preautorizada:['ok','preautorizada'],
   rechazada:['red','rechazada'],pendiente:['warn','pendiente'],'sin-respuesta':['warn','sin respuesta']};
+function accVista(v){ACC_VISTA=v;pintarAcceso();window.scrollTo({top:0});}
+function accUnidad(){return (ACC&&ACC.unidad)||'unidad';}
+/** Nombre legible de una unidad. getAcceso trae su propio padrón, así que esto funciona
+ *  también donde el módulo financiero no está contratado y getPropietarios se rechaza. */
+function accNombreDe(clave){
+  const p=((ACC&&ACC.unidades)||[]).find(x=>x.clave===clave);
+  return p?((p.lote?p.lote+' · ':'')+(p.nombre||clave)):clave;
+}
+function accOptsUnidad(sel){
+  const ps=((ACC&&ACC.unidades)||[]).slice()
+    .sort((a,b)=>String(a.lote||a.clave).localeCompare(String(b.lote||b.clave),'es',{numeric:true}));
+  const hay=ps.some(p=>p.clave===sel);
+  return (sel&&!hay?`<option value="${_esc(sel)}" selected>${_esc(sel)}</option>`:'')
+    +ps.map(p=>`<option value="${_esc(p.clave)}"${p.clave===sel?' selected':''}>${_esc(accNombreDe(p.clave))}</option>`).join('');
+}
+/** dd/mm/aaaa a partir del AAAA-MM-DD que edita el formulario. */
+function accFecha(iso){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));return m?`${m[3]}/${m[2]}/${m[1]}`:'—';}
+
 function pintarAcceso(){
+  const d=ACC;
+  const avisos=(d.avisos||[]).map(a=>`<div class="aviso ${a.tipo==='error'?'err':'warn'}">${_esc(a.texto)}</div>`).join('');
+  const sg=(v,t)=>`<button class="${ACC_VISTA===v?'on':''}" onclick="accVista('${v}')">${t}</button>`;
+  const cuerpo=ACC_VISTA==='contactos'?accContactosHTML()
+             :ACC_VISTA==='permisos' ?accPermisosHTML()
+             :ACC_VISTA==='garita'   ?accGaritaHTML()
+             :accVisitasHTML();
+  document.getElementById('vAcceso').innerHTML=`${avisos}
+    <div class="seg sub" id="segAccSub">${sg('visitas','Bitácora')}${sg('contactos','Contactos')}${sg('permisos','Permisos')}${sg('garita','Garita')}</div>
+    ${cuerpo}
+    <button class="acb" onclick="cargarAcceso(true)">Actualizar</button>`;
+}
+function accVisitasHTML(){
   const d=ACC,vs=d.visitas||[];
-  const avisos=(d.avisos||[]).map(a=>`<div class="aviso ${a.tipo==='error'?'err':'warn'}">${a.texto}</div>`).join('');
   const filas=vs.length?vs.map(v=>{
     const [c,t]=ACC_EST[v.estado]||['warn',v.estado||'—'];
-    return `<div class="vis" onclick="abrirVisita('${v.id}')">
-      <div class="l1"><b>${v.visitante||'Sin nombre'}</b><span class="pill ${c}">${t}</span></div>
-      <div class="l2">${v.fecha||''}${v.lote?' · '+(d.unidad||'unidad')+' '+v.lote:''}${v.salida?' · salió '+v.salida:''}</div>
-      ${v.autorizadoPor?`<div class="l2">${v.autorizadoPor}</div>`:''}</div>`;
+    return `<div class="vis" onclick="abrirVisita('${_esc(v.id)}')">
+      <div class="l1"><b>${_esc(v.visitante||'Sin nombre')}</b><span class="pill ${c}">${t}</span></div>
+      <div class="l2">${_esc(v.fecha||'')}${v.lote?' · '+_esc(d.unidad||'unidad')+' '+_esc(v.lote):''}${v.salida?' · salió '+_esc(v.salida):''}</div>
+      ${v.autorizadoPor?`<div class="l2">${_esc(v.autorizadoPor)}</div>`:''}</div>`;
   }).join(''):'<p style="color:var(--ac-muted)">Todavía no ha entrado nadie.</p>';
-  document.getElementById('vAcceso').innerHTML=`${avisos}
-    <div class="summary">
+  return `<div class="summary">
       <div class="card"><div class="label">Adentro ahora</div><div class="val">${d.adentro||0}</div></div>
       <div class="card"><div class="label">Sin cerrar</div><div class="val" style="color:${d.colgadas?'var(--ac-warn)':'inherit'}">${d.colgadas||0}</div></div>
+    </div>${filas}`;
+}
+
+/* ── contactos: a quién se le pregunta por WhatsApp cuando llega una visita ── */
+function accContactosHTML(){
+  const d=ACC,U=accUnidad(),porClave={};
+  (d.contactos||[]).forEach(c=>{(porClave[c.clave]=porClave[c.clave]||[]).push(c);});
+  const claves=Object.keys(porClave).sort();
+  const filas=claves.length?claves.map(k=>{
+    const cs=porClave[k],autorizan=cs.filter(c=>c.activo&&c.autoriza).length;
+    return `<div class="vis" onclick="accAbrirUnidad('${_esc(k)}')">
+      <div class="l1"><b>${_esc(accNombreDe(k))}</b><span class="pill ${autorizan?'ok':'warn'}">${autorizan} de ${d.maxContactos}</span></div>
+      <div class="l2">${cs.map(c=>_esc(c.nombre)+(c.activo&&c.autoriza?'':' (no autoriza)')).join(' · ')}</div></div>`;
+  }).join(''):`<p style="color:var(--ac-muted);font-size:.85rem">Todavía no hay contactos de acceso cargados.
+      Mientras tanto las visitas se preguntan al celular del padrón —que es el de <b>cobro</b>,
+      no necesariamente el de quien está en la casa a las nueve de la noche.</p>`;
+  const sin=(d.sinContactos||[]);
+  return `<p style="color:var(--ac-muted);font-size:.8rem;margin-top:0">A quién se le pregunta, en orden.
+      Hasta <b>${d.maxContactos}</b> por ${_esc(U)}: cada uno que autoriza es un mensaje más por visita,
+      y con diez nadie se siente responsable de contestar.</p>
+    ${filas}
+    ${sin.length?`<details><summary>${sin.length} ${_esc(sin.length===1?U:d.unidadPlural)} sin contactos</summary>
+      <div class="dias" style="margin-top:8px">${sin.map(s=>
+        `<button class="acb" style="margin:0;flex:0 0 auto;width:auto;padding:7px 11px;font-size:.82rem"
+           onclick="accFormContacto('${_esc(s.clave)}','')">+ ${_esc(s.clave)}</button>`).join('')}</div></details>`:''}
+    <button class="acb go" onclick="accFormContacto('','')">+ Agregar contacto</button>`;
+}
+function accAbrirUnidad(clave){
+  const d=ACC,cs=(d.contactos||[]).filter(c=>c.clave===clave);
+  const autorizan=cs.filter(c=>c.activo&&c.autoriza).length;
+  abrirHoja(accNombreDe(clave),`Contactos de acceso · ${autorizan} de ${d.maxContactos} autorizan`,
+    (cs.length?cs.map(c=>`<div class="vis">
+        <div class="l1"><b>${_esc(c.nombre)}</b><span class="pill ${c.activo&&c.autoriza?'ok':'warn'}">${c.autoriza?'autoriza':'sólo avisos'}</span></div>
+        <div class="l2">${_esc(c.rol)} · ${_esc(c.celular||'sin celular')}${c.activo?'':' · inactivo'}</div>
+        <div class="l2" style="margin-top:6px">
+          <button class="lnk" onclick="accFormContacto('${_esc(clave)}','${_esc(c.id)}')">Editar</button>
+          &nbsp;&nbsp;<button class="lnk del" onclick="accBorrarContacto('${_esc(c.id)}',this)">Quitar</button></div></div>`).join('')
+      :`<p style="color:var(--ac-muted);font-size:.85rem">Esta ${_esc(accUnidad())} no tiene contactos de acceso.
+          Sus visitas se preguntan al celular del padrón, que es el de cobro.</p>`)
+    +`<div id="acErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+      <button class="acb go" onclick="accFormContacto('${_esc(clave)}','')">+ Agregar contacto</button>`);
+}
+function accFormContacto(clave,id){
+  const d=ACC;
+  const c=(d.contactos||[]).find(x=>x.id===id)||{clave:clave,rol:'otro',autoriza:true,activo:true,orden:1};
+  const roles=d.roles||['propietario','inquilino','familiar','cuidador','otro'];
+  abrirHoja(id?'Editar contacto':'Nuevo contacto',_esc(accNombreDe(c.clave||clave)),`
+    <label class="lb">${_esc(accUnidad())} *</label><select id="ac_clave">${accOptsUnidad(c.clave||clave)}</select>
+    <label class="lb">Nombre *</label><input id="ac_nombre" value="${_esc(c.nombre||'')}" placeholder="Nombre y apellido"/>
+    <div class="dos">
+      <div><label class="lb">Celular</label><input id="ac_cel" value="${_esc(c.celular||'')}" placeholder="6000-0000"/></div>
+      <div><label class="lb">Orden</label><input id="ac_orden" type="number" min="1" max="9" value="${Number(c.orden)||1}"/></div>
     </div>
-    <button class="acb" onclick="cargarAcceso(true)">Actualizar</button>
-    <div style="margin-top:12px">${filas}</div>`;
+    <label class="lb">Rol</label><select id="ac_rol">${roles.map(r=>`<option value="${_esc(r)}"${r===c.rol?' selected':''}>${_esc(r)}</option>`).join('')}</select>
+    <label class="chk"><input id="ac_autoriza" type="checkbox"${c.autoriza?' checked':''}><span>Puede autorizar visitas</span></label>
+    <label class="chk"><input id="ac_activo" type="checkbox"${c.activo!==false?' checked':''}><span>Activo</span></label>
+    <label class="lb">Notas</label><input id="ac_notas" value="${_esc(c.notas||'')}" placeholder="Opcional"/>
+    <p style="font-size:.74rem;color:var(--ac-muted);margin:0 0 8px">El <b>orden</b> decide a quién se le
+      pregunta primero. Quien autoriza necesita celular.</p>
+    <div id="acErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="accGuardarContacto('${_esc(id||'')}',this)">Guardar</button>
+    ${id?`<button class="acb" style="color:var(--ac-danger)" onclick="accBorrarContacto('${_esc(id)}',this)">Quitar contacto</button>`:''}`);
+}
+const _g=i=>((document.getElementById(i)||{}).value||'').trim();
+const _ck=i=>!!(document.getElementById(i)||{}).checked;
+async function accGuardarContacto(id,btn){
+  const err=document.getElementById('acErr');
+  const contacto={id:id,clave:_g('ac_clave'),nombre:_g('ac_nombre'),celular:_g('ac_cel'),
+    rol:_g('ac_rol'),orden:Number(_g('ac_orden'))||1,notas:_g('ac_notas'),
+    autoriza:_ck('ac_autoriza'),activo:_ck('ac_activo')};
+  if(!contacto.clave||!contacto.nombre){err.textContent='La unidad y el nombre no pueden quedar vacíos.';return;}
+  await _accEscribir(btn,err,()=>post('guardarContacto',{contacto}));
+}
+async function accBorrarContacto(id,btn){
+  if(!confirm('¿Quitar este contacto de acceso?\n\nDeja de recibir las consultas de visita de su unidad. Las visitas ya registradas no se tocan.'))return;
+  await _accEscribir(btn,document.getElementById('acErr'),()=>post('eliminarContacto',{id}));
+}
+/** Escribe, cierra la hoja y repinta. Un fallo deja el botón vivo y el mensaje puesto. */
+async function _accEscribir(btn,err,fn){
+  if(err)err.textContent='';
+  btn.disabled=true;const t=btn.textContent;btn.textContent='…';
+  try{await fn();closeSheet();await cargarAcceso(true);}
+  catch(e){btn.disabled=false;btn.textContent=t;
+    if(!authErr(e)){if(err)err.textContent='Error: '+e;else alert('Error: '+e);}}
+}
+
+/* ── permisos: un visitante autorizado de antemano ── */
+function accPermisosHTML(){
+  const as=ACC.autorizaciones||[];
+  const filas=as.length?as.map(a=>{
+    const cuando=a.recurrente?('Todos los '+(a.dias||[]).join(', ')):('Desde '+accFecha(a.desde));
+    return `<div class="vis" onclick="accFormPermiso('${_esc(a.id)}')">
+      <div class="l1"><b>${_esc(a.visitante)}</b><span class="pill ${a.activo?(a.vigente?'ok':'warn'):'red'}">${a.activo?(a.vigente?'vigente':'no vigente'):'inactiva'}</span></div>
+      <div class="l2">${_esc(accNombreDe(a.clave))}${a.cedula?' · '+_esc(a.cedula):''}</div>
+      <div class="l2">${_esc(cuando)}${a.hasta?' · hasta '+accFecha(a.hasta):' · <b>sin vencimiento</b>'}</div></div>`;
+  }).join(''):'<p style="color:var(--ac-muted);font-size:.85rem">No hay ninguna autorización permanente.</p>';
+  return `<p style="color:var(--ac-muted);font-size:.8rem;margin-top:0">Permisos dejados puestos de antemano:
+      el jardinero, la empleada. Con uno vigente la garita no pregunta nada.</p>
+    ${filas}<button class="acb go" onclick="accFormPermiso('')">+ Nueva autorización</button>`;
+}
+function accFormPermiso(id){
+  const d=ACC;
+  const a=(d.autorizaciones||[]).find(x=>x.id===id)||{recurrente:false,activo:true,dias:[]};
+  const dias=d.diasSemana||['L','M','X','J','V','S','D'];
+  const marc=a.dias||[];
+  abrirHoja(id?'Editar autorización':'Nueva autorización','Un permiso dejado puesto de antemano',`
+    <label class="lb">${_esc(accUnidad())} que autoriza *</label><select id="au_clave">${accOptsUnidad(a.clave||'')}</select>
+    <label class="lb">Visitante *</label><input id="au_vis" value="${_esc(a.visitante||'')}" placeholder="Nombre y apellido"/>
+    <div class="dos">
+      <div><label class="lb">Cédula</label><input id="au_ced" value="${_esc(a.cedula||'')}" placeholder="8-123-456"/></div>
+      <div><label class="lb">Quién autoriza</label><input id="au_por" value="${_esc(a.creadoPor||'')}" placeholder="Opcional"/></div>
+      <div><label class="lb">Desde</label><input id="au_desde" type="date" value="${_esc(a.desde||'')}"/></div>
+      <div><label class="lb">Hasta</label><input id="au_hasta" type="date" value="${_esc(a.hasta||'')}"/></div>
+    </div>
+    <label class="chk"><input id="au_rec" type="checkbox"${a.recurrente?' checked':''}
+      onchange="document.getElementById('au_diasBox').style.display=this.checked?'':'none'"><span>Se repite todas las semanas</span></label>
+    <div id="au_diasBox" style="display:${a.recurrente?'':'none'}">
+      <label class="lb">Días</label>
+      <div class="dias">${dias.map(x=>`<label><input type="checkbox" class="au_dia" value="${_esc(x)}"${marc.indexOf(x)>=0?' checked':''}><span>${_esc(x)}</span></label>`).join('')}</div>
+    </div>
+    <label class="chk"><input id="au_activo" type="checkbox"${a.activo!==false?' checked':''}><span>Activa</span></label>
+    <label class="lb">Notas</label><input id="au_notas" value="${_esc(a.notas||'')}" placeholder="Jardinero, empleada…"/>
+    <p style="font-size:.74rem;color:var(--ac-muted);margin:0 0 8px">Dejar <b>Hasta</b> vacío es un permiso sin
+      vencimiento. Es lo que hace falta para el jardinero de siempre, pero un permiso que nadie recuerda haber
+      dado es la forma más común de perder el control de quién entra.</p>
+    <div id="auErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="accGuardarPermiso('${_esc(id||'')}',this)">Guardar</button>
+    ${id?`<button class="acb" style="color:var(--ac-danger)" onclick="accBorrarPermiso('${_esc(id)}',this)">Eliminar</button>`:''}`);
+}
+async function accGuardarPermiso(id,btn){
+  const err=document.getElementById('auErr');
+  const dias=[...document.querySelectorAll('.au_dia')].filter(x=>x.checked).map(x=>x.value);
+  const autorizacion={id:id,clave:_g('au_clave'),visitante:_g('au_vis'),cedula:_g('au_ced'),
+    desde:_g('au_desde'),hasta:_g('au_hasta'),recurrente:_ck('au_rec'),dias:dias.join(','),
+    creadoPor:_g('au_por'),activo:_ck('au_activo'),notas:_g('au_notas')};
+  if(!autorizacion.clave||!autorizacion.visitante){err.textContent='La unidad y el nombre del visitante no pueden quedar vacíos.';return;}
+  if(autorizacion.recurrente&&!dias.length){err.textContent='Una autorización que se repite necesita al menos un día.';return;}
+  await _accEscribir(btn,err,()=>post('guardarAutorizacion',{autorizacion}));
+}
+async function accBorrarPermiso(id,btn){
+  if(!confirm('¿Eliminar esta autorización?\n\nA partir de ahora esa visita vuelve a preguntarse por WhatsApp cada vez.'))return;
+  await _accEscribir(btn,document.getElementById('auErr'),()=>post('eliminarAutorizacion',{id}));
+}
+
+/* ── garita: el teléfono del puesto de vigilancia ── */
+function accGaritaHTML(){
+  const gs=ACC.garitas||[];
+  const filas=gs.length?gs.map(g=>`<div class="vis" onclick="accFormGarita('${_esc(g.id)}')">
+      <div class="l1"><b>${_esc(g.nombre)}</b><span class="pill ${g.activo?'ok':'warn'}">${g.activo?'activa':'inactiva'}</span></div>
+      <div class="l2">${_esc(g.celular||'sin celular')}${g.turno?' · '+_esc(g.turno):''}</div></div>`).join('')
+    :`<p style="color:var(--ac-muted);font-size:.85rem">No hay ninguna garita registrada. Sin eso ningún guardia
+       puede usar el sistema: los mensajes de un número desconocido se tratan como de un residente.</p>`;
+  return filas+`<button class="acb go" onclick="accFormGarita('')">+ Nueva garita</button>`;
+}
+function accFormGarita(id){
+  const g=(ACC.garitas||[]).find(x=>x.id===id)||{activo:true};
+  abrirHoja(id?'Editar garita':'Nueva garita','El teléfono del puesto de vigilancia',`
+    <label class="lb">Nombre del puesto *</label><input id="ga_nombre" value="${_esc(g.nombre||'')}" placeholder="Garita principal"/>
+    <div class="dos">
+      <div><label class="lb">Celular *</label><input id="ga_cel" value="${_esc(g.celular||'')}" placeholder="6000-0000"/></div>
+      <div><label class="lb">Turno</label><input id="ga_turno" value="${_esc(g.turno||'')}" placeholder="24 h / diurno"/></div>
+    </div>
+    <label class="chk"><input id="ga_activo" type="checkbox"${g.activo!==false?' checked':''}><span>Activa</span></label>
+    <label class="lb">Notas</label><input id="ga_notas" value="${_esc(g.notas||'')}" placeholder="Opcional"/>
+    <p style="font-size:.74rem;color:var(--ac-muted);margin:0 0 8px">Un mensaje que llegue de este número se
+      trata como del <b>guardia</b>. Si el número es además el de un residente, el sistema lo tomará como
+      guardia: no lo uses para las dos cosas.</p>
+    <div id="gaErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="accGuardarGarita('${_esc(id||'')}',this)">Guardar</button>`);
+}
+async function accGuardarGarita(id,btn){
+  const err=document.getElementById('gaErr');
+  const garita={id:id,nombre:_g('ga_nombre'),celular:_g('ga_cel'),turno:_g('ga_turno'),
+    notas:_g('ga_notas'),activo:_ck('ga_activo')};
+  if(!garita.nombre||!garita.celular){err.textContent='El nombre del puesto y el celular hacen falta.';return;}
+  await _accEscribir(btn,err,()=>post('guardarGarita',{garita}));
 }
 function abrirVisita(id){
   const v=(ACC.visitas||[]).find(x=>x.id===id); if(!v)return;
@@ -298,13 +559,18 @@ document.getElementById('gf').addEventListener('submit',async e=>{e.preventDefau
   const pwd=document.getElementById('gp').value;
   try{let r; if(MODE==='setup'){if(pwd!==document.getElementById('gp2').value){err.textContent='No coinciden.';return;} r=await post('setPassword',{nueva:pwd});}
     else{r=await post('verifyPassword',{password:pwd}); if(!r.ok){err.textContent='Contraseña incorrecta.';return;}}
-    TOKEN=r.token;localStorage.setItem('ac_token',TOKEN);await load();showApp();}catch(ex){err.textContent='Error: '+ex;}});
+    // boot() y no load(): hay que volver a leer los módulos para saber qué vistas
+    // enseñar. Con load() a secas se entraba siempre por Cuentas, contratadas o no.
+    TOKEN=r.token;localStorage.setItem('ac_token',TOKEN);await boot();}catch(ex){err.textContent='Error: '+ex;}});
 function logout(){TOKEN='';localStorage.removeItem('ac_token');gate('login');}
 
-let CUENTAS=[];
+let CUENTAS=[], CUENTAS_STALE=false;
 const pill=e=>e==='Al día'?'<span class="pill ok">Al día</span>':e==='Pendiente'?'<span class="pill warn">Pendiente</span>':'<span class="pill red">Moroso</span>';
 async function load(){
-  const d=await jsonp('getDashboard'); CUENTAS=d.cuentas;
+  // Aplicar un comprobante o registrar un pago cambia los saldos. Sin esto se volvía a
+  // Cuentas y se leía la cartera de antes del pago, que es peor que no verla.
+  if(CUENTAS.length&&!CUENTAS_STALE){draw();return;}
+  const d=await jsonp('getDashboard'); CUENTAS=d.cuentas; CUENTAS_STALE=false;
   const con=CUENTAS.filter(c=>c.saldoConMora>0.009).length, cartera=CUENTAS.reduce((a,c)=>a+c.saldoConMora,0);
   document.getElementById('summary').innerHTML=
     `<div class="card"><div class="label">Por cobrar</div><div class="val" style="color:var(--ac-coral)">${money(cartera)}</div></div>
@@ -339,22 +605,290 @@ function _expMes(e,b,esUltimo){
   return L.join('<br>');
 }
 function expMes(tr){const n=tr.nextElementSibling;if(n&&n.classList.contains('exp'))n.style.display=n.style.display==='table-row'?'none':'table-row';}
-function openSheet(clave){const e=CUENTAS.find(c=>c.clave===clave);if(!e||!e.mensual)return;
+/* El detalle de una cuenta. Se pide al servidor con getEstadoCuenta en vez de usar la
+ * fila del tablero: condonar una mora o registrar un pago obliga a recalcular, y
+ * repintar con los números viejos enseñaría un cambio que no ocurrió. */
+let EST=null, PG_ULTIMO=null;
+async function openSheet(clave){
+  const base=CUENTAS.find(c=>c.clave===clave);
+  abrirHoja(base?base.nombre:clave,base?`${_esc(base.residencial)} · Lote ${_esc(base.lote)}`:'',
+    '<p style="color:var(--ac-muted)">Calculando el estado de cuenta…</p>');
+  await bancos();
+  try{EST=await jsonp('getEstadoCuenta',{clave});}
+  catch(e){if(authErr(e))return;
+    document.getElementById('sheetBd').innerHTML='<div class="aviso err">No se pudo cargar: '+_esc(e)+'</div>';return;}
+  pintarEstado();
+}
+function pintarEstado(){
+  const e=EST;if(!e||!e.mensual)return;
   const color=e.saldoConMora>0.009?(e.diasVencido>0?'var(--ac-danger)':'var(--ac-warn)'):'var(--ac-ok)';
-  document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${e.nombre}</div>
-    <div style="font-size:.78rem;color:var(--ac-muted)">${e.residencial} · Lote ${e.lote} · Cuota ${money(e.cuota)}</div></div><button class="close" onclick="closeSheet()">×</button>`;
-  document.getElementById('sheetBd').innerHTML=`<table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Mora</th><th class="n">Pagado</th><th class="n">Saldo total</th></tr></thead>
+  const all=!!e.moraCondonAll;
+  document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${_esc(e.nombre)}</div>
+    <div style="font-size:.78rem;color:var(--ac-muted)">${_esc(e.residencial)} · Lote ${_esc(e.lote)} · Cuota ${money(e.cuota)}</div></div>
+    <button class="close" onclick="closeSheet()">×</button>`;
+  document.getElementById('sheetBd').innerHTML=`${_pgAviso()}
+    <table><thead><tr><th>Mes</th><th class="n">Cuota</th><th class="n">Mora</th><th class="n">Pagado</th><th class="n">Saldo total</th></tr></thead>
     <tbody>${e.mensual.map((b,i,arr)=>`<tr onclick="expMes(this)" style="cursor:pointer"><td>${b.label}</td><td class="n">${b.cuota?money(b.cuota):'—'}</td>
       <td class="n" style="${b.mora>0.009?'color:var(--ac-coral)':''}">${b.condonada?'condon.':(b.mora>0.009?money(b.mora):'—')}</td>
       <td class="n">${b.pagado?money(b.pagado):(b.cuota?'0.00':'—')}</td>
       <td class="n" style="font-weight:600;${b.saldo>0.009?'color:var(--ac-danger)':b.saldo<-0.009?'color:var(--ac-ok)':''}">${money(b.saldo)}</td></tr>
       <tr class="exp" style="display:none"><td colspan="5" style="font-size:.72rem;line-height:1.6;color:var(--ac-muted);background:#f7f9fa;padding:8px 10px">${_expMes(e,b,i===arr.length-1)}</td></tr>`).join('')}</tbody></table>
     <div class="tot"><b>SALDO TOTAL</b><b style="color:${color}">${money(e.saldoNeto)}</b></div>
-    <div class="muted" style="font-size:.7rem;margin-top:8px">Toca cualquier mes para ver cómo se calculó.</div>
-    <button style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--ac-teal);color:#fff;font:inherit;font-weight:600" onclick="mail('${e.clave}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>`;
-  document.getElementById('sheetBg').classList.add('show');document.getElementById('sheet').classList.add('show');}
+    <div style="color:var(--ac-muted);font-size:.7rem;margin-top:8px">Toca cualquier mes para ver cómo se calculó.</div>
+    <div id="ctaErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="mail('${_esc(e.clave)}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>
+    <button class="acb" onclick="pgForm(this)">＋ Registrar pago</button>
+    ${(e.moraCargada>0.009||all)?`<button class="acb" onclick="condonarMora(${!all},this)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
+    <div id="pgBox" style="display:none;margin-top:12px;border-top:1px dashed var(--ac-border);padding-top:12px">
+      <div style="font-weight:600">Registrar pago manual</div>
+      <p style="font-size:.76rem;color:var(--ac-muted);margin:2px 0 10px">Para pagos verificados en la banca en
+        línea, sin comprobante por correo. Al guardarlo se emite la <b>constancia en PDF</b>.</p>
+      <div class="dos">
+        <div><label class="lb">Fecha</label><input type="date" id="pg_fecha" value="${hoyISO()}" max="${hoyISO()}"/></div>
+        <div><label class="lb">Monto (B/.)</label><input type="number" id="pg_monto" step="0.01" min="0" placeholder="0.00" inputmode="decimal"/></div>
+      </div>
+      <label class="lb">¿A qué cuenta entró?</label><select id="pg_cuenta">${optsBanco(((BANCOS||[]).find(x=>x.esCobro)||{}).id||'')}</select>
+      <label class="lb">Referencia (opcional)</label><input id="pg_ref" placeholder="Nº de transacción / ACH"/>
+      <button class="acb go" onclick="pgGuardar(this)">Guardar pago</button>
+    </div>`;
+}
+/** La constancia del pago recién registrado. Si Drive falló, el pago quedó igual. */
+function _pgAviso(){
+  const u=PG_ULTIMO;if(!u||!EST||u.clave!==EST.clave)return '';
+  return `<div class="aviso" style="background:#e4f5ec;border-color:#bfe5d0;color:#14663f">
+    ✓ Pago de ${money(u.monto)} registrado con fecha ${accFecha(u.fecha)}<br>
+    ${u.voucher?`<a href="${_esc(u.voucher.url)}" target="_blank" style="font-weight:700;color:#14663f">📄 Ver constancia${u.voucher.numero?' · '+_esc(u.voucher.numero):''}</a>`
+      :'El pago quedó registrado, pero no se pudo emitir la constancia.'}</div>`;
+}
+function pgForm(btn){
+  const b=document.getElementById('pgBox');
+  b.style.display=b.style.display==='none'?'block':'none';
+  if(b.style.display==='block')b.scrollIntoView({block:'nearest'});
+}
+async function pgGuardar(btn){
+  const err=document.getElementById('ctaErr');err.textContent='';
+  const fecha=_g('pg_fecha'),monto=+_g('pg_monto'),ref=_g('pg_ref'),cuenta=_g('pg_cuenta');
+  if(!(monto>0)){err.textContent='Indica un monto válido.';return;}
+  if(!fecha){err.textContent='Indica la fecha del pago.';return;}
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Guardando…';
+  try{
+    // La fecha a mediodía para que ninguna zona horaria la corra al día anterior.
+    const r=await post('registrarPago',{pago:{clave:EST.clave,monto,fecha:fecha+'T12:00:00',
+      referencia:ref,origen:'manual',cuenta,notas:'Registro manual (banca en línea)',generarVoucher:true}});
+    PG_ULTIMO={clave:EST.clave,monto,fecha,
+      voucher:(r&&r.voucherUrl)?{url:r.voucherUrl,numero:r.voucherNumero||''}:null};
+    CUENTAS_STALE=true;
+    EST=await jsonp('getEstadoCuenta',{clave:EST.clave});
+    pintarEstado();
+  }catch(e){btn.disabled=false;btn.textContent=t;if(!authErr(e))err.textContent='Error: '+e;}
+}
+async function condonarMora(condonar,btn){
+  if(!confirm(condonar?'¿Condonar TODA la mora de este propietario?':'¿Reactivar toda la mora de este propietario?'))return;
+  const err=document.getElementById('ctaErr');err.textContent='';
+  btn.disabled=true;const t=btn.textContent;btn.textContent='…';
+  try{
+    await post('setMoraCondon',{clave:EST.clave,mes:'ALL',condonar});
+    CUENTAS_STALE=true;
+    EST=await jsonp('getEstadoCuenta',{clave:EST.clave});
+    pintarEstado();
+  }catch(e){btn.disabled=false;btn.textContent=t;if(!authErr(e))err.textContent='Error: '+e;}
+}
 function closeSheet(){document.getElementById('sheetBg').classList.remove('show');document.getElementById('sheet').classList.remove('show');}
+/** La hoja de abajo, que es el modal del teléfono. Título, subtítulo y cuerpo. */
+function abrirHoja(titulo,sub,cuerpo){
+  document.getElementById('sheetHd').innerHTML=`<div><div style="font-weight:700">${_esc(titulo)}</div>
+    ${sub?`<div style="font-size:.78rem;color:var(--ac-muted)">${sub}</div>`:''}</div>
+    <button class="close" onclick="closeSheet()">×</button>`;
+  document.getElementById('sheetBd').innerHTML=cuerpo;
+  document.getElementById('sheetBg').classList.add('show');
+  document.getElementById('sheet').classList.add('show');
+  document.getElementById('sheet').scrollTop=0;
+}
 async function mail(clave){try{const r=await post('enviarEstado',{clave});alert(r.enviado?'Enviado':'No enviado');}catch(e){if(!authErr(e))alert('Error: '+e);}}
+
+/* ───────── comprobantes por email ─────────
+ * La vista que más gana con estar en el teléfono: llega el aviso, se revisa el monto y
+ * la cuenta, y el pago queda aplicado sin esperar a sentarse. Nada se aplica solo —
+ * confirmar es siempre una decisión de una persona.
+ */
+let CMP=null, CMP_PROPS=null;
+async function cargarComprob(force){
+  const box=document.getElementById('vComprob');
+  if(CMP&&!force){pintarComprob();return;}
+  box.innerHTML='<p style="color:var(--ac-muted)">Cargando…</p>';
+  try{
+    const [all,props]=await Promise.all([
+      jsonp('getComprobantes',{}),
+      CMP_PROPS?Promise.resolve(CMP_PROPS):jsonp('getPropietarios')]);
+    CMP=all;CMP_PROPS=props;await bancos();
+  }catch(e){if(authErr(e))return;box.innerHTML='<div class="aviso err">No se pudo cargar: '+_esc(e)+'</div>';return;}
+  pintarComprob();
+}
+function optsProp(sel){
+  return (CMP_PROPS||[]).slice()
+    .sort((a,b)=>String(a.residencial).localeCompare(String(b.residencial))||String(a.lote).localeCompare(String(b.lote),'es',{numeric:true}))
+    .map(p=>`<option value="${_esc(p.clave)}"${p.clave===sel?' selected':''}>${_esc(p.residencial)} · L${_esc(p.lote)} · ${_esc(p.nombre)}</option>`).join('');
+}
+/** La señal de si el dinero entró a una cuenta de la asociación. La manda el servidor. */
+function verifBadge(v){
+  if(!v||!v.nivel)return '';
+  const t={ok:'✓ Cuenta Aires de Chicá',warn:'⚠ Verificar cuenta',bad:'⚠ Cuenta no coincide'}[v.nivel]||'⚠ Verificar cuenta';
+  return `<div class="badge ${_esc(v.nivel)}" style="margin-top:4px">${t}</div>`;
+}
+function pintarComprob(){
+  const all=CMP||[];
+  const pend=all.filter(c=>c.estado==='pendiente');
+  const desc=all.filter(c=>c.estado==='descartado');
+  const apl =all.filter(c=>c.estado==='aplicado').slice(0,30);
+  const rech=all.filter(c=>c.estado==='rechazado').slice(0,30);
+  const adj=c=>c.adjuntoUrl?`<a href="${_esc(c.adjuntoUrl)}" target="_blank" style="font-size:.78rem;font-weight:600;color:var(--ac-teal)">📎 Ver comprobante</a>`
+                           :'<span style="font-size:.74rem;color:var(--ac-muted)">sin adjunto</span>';
+  const conf=c=>(c.metodo==='email'||c.metodo==='lote+nombre')?'ok':(c.metodo==='sin-match'?'red':'warn');
+  const detectada=c=>(c.verif&&c.verif.cuentaId)||((BANCOS||[]).find(x=>x.esCobro)||{}).id||'';
+  const tarjetas=pend.length?pend.map(c=>`<div class="vis" id="cmp_${_esc(c.id)}">
+      <div class="l1"><b>${_esc(c.nombre||'—')}</b><span class="pill ${conf(c)}">${_esc(c.metodo||'')}</span></div>
+      <div class="l2">${_esc(c.remitente||'')} · ${_esc(c.fecha||'')}</div>
+      <div class="l2" style="white-space:normal;margin-top:4px">${_esc(c.asunto||'(sin asunto)')}</div>
+      <div class="l2">${adj(c)}</div>${verifBadge(c.verif)}
+      ${c.referencia?`<div class="l2">Ref: ${_esc(c.referencia)}</div>`:''}
+      <div style="margin-top:9px">
+        <label class="lb">Monto</label><input type="number" step="0.01" min="0" id="cm_m_${_esc(c.id)}" value="${c.monto||''}" placeholder="0.00"/>
+        <label class="lb">Aplicar a</label><select id="cm_p_${_esc(c.id)}"><option value="">— asignar —</option>${optsProp(c.clave||'')}</select>
+        <label class="lb">Entró a</label><select id="cm_b_${_esc(c.id)}">${optsBanco(detectada(c))}</select>
+      </div>
+      <button class="acb go" onclick="cmpPrevio('${_esc(c.id)}',this)">Confirmar</button>
+      <button class="acb" style="color:var(--ac-danger)" onclick="cmpRechazar('${_esc(c.id)}',this)">Rechazar</button>
+    </div>`).join('')
+    :`<p style="color:var(--ac-muted);font-size:.85rem">No hay comprobantes pendientes.
+       Pulsa <b>Revisar correo ahora</b> para leer el buzón.</p>`;
+  const lista=(t,cs,acc)=>!cs.length?'':`<details><summary>${t} (${cs.length})</summary>${cs.map(c=>`<div class="vis">
+      <div class="l1"><b>${_esc(c.nombre||'—')}</b>${c.monto?`<span style="font-weight:700">${money(c.monto)}</span>`:''}</div>
+      <div class="l2">${_esc(c.fecha||'')}${c.motivo?' · '+_esc(c.motivo):''}</div>
+      <div class="l2">${adj(c)}${acc?' &nbsp; '+acc(c):''}</div></div>`).join('')}</details>`;
+  document.getElementById('vComprob').innerHTML=`
+    <p style="color:var(--ac-muted);font-size:.8rem;margin-top:0">Los propietarios envían su comprobante por
+      correo. El sistema empareja al propietario y lo deja <b>pendiente</b>. Revisa el monto y la cuenta y
+      confirma para registrar el pago. <b>Nada se aplica solo.</b></p>
+    <button class="acb" onclick="cmpCapturar(this)">Revisar correo ahora</button>
+    <div class="flash" id="cmpFlash"></div>
+    <div style="margin-top:10px">${tarjetas}</div>
+    ${lista('Descartados — sin adjunto o no parecen pago',desc,c=>`<button class="lnk" onclick="cmpAccion('recuperar','${_esc(c.id)}',this)">Recuperar</button>`)}
+    ${lista('Aplicados — pagos ya registrados',apl,c=>`<button class="lnk del" onclick="cmpDesaplicar('${_esc(c.id)}',this)">Desaplicar</button>`)}
+    ${lista('Rechazados',rech,null)}`;
+}
+async function cmpCapturar(btn){
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Revisando…';
+  const fl=document.getElementById('cmpFlash');fl.textContent='';
+  try{const r=await post('capturarComprobantes',{});
+    await cargarComprob(true);
+    const f=document.getElementById('cmpFlash');
+    if(f)f.textContent=`${r.nuevos||0} pendiente(s) capturado(s)`+(r.descartados?` · ${r.descartados} descartado(s)`:'')+'.';
+  }catch(e){if(!authErr(e))alert('Error: '+e);}
+  finally{btn.disabled=false;btn.textContent=t;}
+}
+/** Antes de aplicar, cómo va a quedar la cuenta. Es la única parte que quien confirma
+ *  todavía puede cambiar, así que se enseña entera y no se aplica desde la lista. */
+async function cmpPrevio(id,btn){
+  const clave=_g('cm_p_'+id),monto=+_g('cm_m_'+id);
+  if(!clave)return alert('Asigna una cuenta.');
+  if(!(monto>0))return alert('Indica el monto.');
+  btn.disabled=true;const t=btn.textContent;btn.textContent='Calculando…';
+  let d;
+  try{d=await jsonp('previsualizarComprobante',{clave,monto});}
+  catch(e){btn.disabled=false;btn.textContent=t;if(!authErr(e))alert('Error: '+e);return;}
+  btn.disabled=false;btn.textContent=t;
+  const c=(CMP||[]).find(x=>x.id===id)||{};
+  const fila=a=>`<tr><td>${_esc(a.label)}</td><td class="n">${money(a.cuota!=null?a.cuota:a.mora)}</td>
+    <td class="n" style="font-weight:700;color:var(--ac-teal)">${money(a.aplicado)}</td>
+    <td class="n">${a.quedaPendiente>0.009?money(a.quedaPendiente):'saldada ✓'}</td></tr>`;
+  const pmD=Number(d.despues&&d.despues.pendienteMes)||0;
+  const cierre=!d.cuotaMes?'':(pmD<=0.009
+    ? `<div class="aviso" style="background:#eefaf2;border-color:#cfe8d8;color:#14663f">
+         <b>✓ La cuota de ${_esc(d.mesActual)} queda cubierta.</b> Al cerrar el mes no generará recargo.</div>`
+    : `<div class="aviso warn"><b>Quedan ${money(pmD)} sin cubrir de la cuota de ${_esc(d.mesActual)}.</b>
+         Si no se completan antes del cierre, esa cuota generará un recargo de <b>${money(d.moraSiNoCubre)}</b>.</div>`);
+  abrirHoja('Así se aplicará',`${_esc(d.nombre)} · L${_esc(d.lote)} · pago ${money(d.monto)}`,`
+    ${verifBadge(c.verif)}
+    <table><thead><tr><th>Cuota / saldo</th><th class="n">Monto</th><th class="n">Se aplica</th><th class="n">Queda</th></tr></thead>
+      <tbody>${(d.aplicacion||[]).length?d.aplicacion.map(fila).join('')
+        :'<tr><td colspan="4" style="color:var(--ac-muted)">Este pago no cubre cuotas pendientes; entra completo como crédito a favor.</td></tr>'}
+        ${(d.aplicacionMora||[]).map(a=>fila({label:a.label+' · mora',cuota:a.mora,aplicado:a.aplicado,quedaPendiente:a.quedaPendiente})).join('')}</tbody></table>
+    ${cierre}
+    <div class="tot"><b>Total aplicado</b><b>${money(d.totalAplicado)}</b></div>
+    <div class="tot"><span>Saldo con mora</span><b>${money(d.antes.saldoConMora)} → ${money(d.despues.saldoConMora)}</b></div>
+    <div id="cmpErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
+    <button class="acb go" onclick="cmpAplicar('${_esc(id)}',this)">Aplicar pago</button>
+    <button class="acb" onclick="closeSheet()">Cancelar</button>`);
+}
+async function cmpAplicar(id,btn){
+  const clave=_g('cm_p_'+id),monto=+_g('cm_m_'+id),cuenta=_g('cm_b_'+id);
+  const err=document.getElementById('cmpErr');err.textContent='';
+  btn.disabled=true;btn.textContent='Aplicando…';
+  try{await post('resolverComprobante',{id,accion:'aplicar',clave,monto,cuenta});
+    closeSheet();CUENTAS_STALE=true;await cargarComprob(true);}
+  catch(e){btn.disabled=false;btn.textContent='Aplicar pago';if(!authErr(e))err.textContent='Error: '+e;}
+}
+async function cmpRechazar(id,btn){
+  if(!confirm('¿Rechazar este comprobante? No se registrará ningún pago.'))return;
+  await cmpAccion('rechazar',id,btn);
+}
+async function cmpDesaplicar(id,btn){
+  if(!confirm('¿Desaplicar este comprobante?\n\nSe eliminará el pago que registró y volverá a «Pendientes».'))return;
+  CUENTAS_STALE=true;
+  await cmpAccion('desaplicar',id,btn);
+}
+async function cmpAccion(accion,id,btn){
+  btn.disabled=true;const t=btn.textContent;btn.textContent='…';
+  try{await post('resolverComprobante',{id,accion});await cargarComprob(true);}
+  catch(e){btn.disabled=false;btn.textContent=t;if(!authErr(e))alert('Error: '+e);}
+}
+
+/* ───────── registro de cambios ─────────
+ * Sólo de lectura, aquí y en el escritorio: la bitácora no se edita ni se borra desde
+ * ningún panel. En el teléfono sirve para responder «¿quién tocó esto?» sin ir a una
+ * computadora. La descarga a Excel se queda en el escritorio.
+ */
+let REG=null;
+async function cargarRegistro(force){
+  const box=document.getElementById('vRegistro');
+  if(REG&&!force){pintarRegistro();return;}
+  if(!REG)box.innerHTML='<p style="color:var(--ac-muted)">Cargando…</p>';
+  let d;
+  try{d=await jsonp('getRegistro',{desde:_g('rg_desde'),hasta:_g('rg_hasta'),autor:_g('rg_autor'),
+      accionFiltro:_g('rg_accion'),q:_g('rg_q'),limite:400});}
+  catch(e){if(authErr(e))return;box.innerHTML='<div class="aviso err">No se pudo cargar: '+_esc(e)+'</div>';return;}
+  REG=d;pintarRegistro();
+}
+const REG_MES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function pintarRegistro(){
+  const d=REG,f=d.filas||[];
+  const dias=[],porDia={};
+  f.forEach(r=>{if(!porDia[r.ymd]){porDia[r.ymd]=[];dias.push(r.ymd);}porDia[r.ymd].push(r);});
+  const dLbl=ymd=>{const p=String(ymd).split('-');return p[2]?`${+p[2]} de ${REG_MES[+p[1]-1]} ${p[0]}`:ymd;};
+  const cuerpo=f.length?dias.map(dia=>`<div class="dia">${dLbl(dia)} · ${porDia[dia].length} cambio(s)</div>
+    ${porDia[dia].map(r=>`<div class="vis">
+      <div class="l1"><b>${_esc(r.accionLbl)}</b>${r.monto==null?'':`<span style="font-weight:700">${money(r.monto)}</span>`}</div>
+      <div class="l2">${_esc(r.hora)} · ${_esc(r.autor)}${r.propietario?' · '+_esc(r.propietario):''}${r.clave?' ('+_esc(r.clave)+')':''}</div>
+      ${(r.campo||r.antes||r.despues)?`<div class="l2" style="white-space:normal">${r.campo?_esc(r.campo)+': ':''}${r.antes?_esc(r.antes)+' → ':''}<b>${_esc(r.despues||'—')}</b></div>`:''}
+      ${r.detalle?`<div class="l2" style="white-space:normal">${_esc(r.detalle)}</div>`:''}</div>`).join('')}`).join('')
+    :'<div class="aviso" style="background:#e4f5ec;border-color:#bfe6cf;color:#14663f">No hay cambios con esos filtros.</div>';
+  // Los selectores conservan lo ya elegido: repintar no puede deshacer el filtro puesto.
+  const va=_g('rg_autor'),vac=_g('rg_accion');
+  document.getElementById('vRegistro').innerHTML=`
+    <p style="color:var(--ac-muted);font-size:.8rem;margin-top:0">Toda acción que <b>modifica datos</b> queda
+      anotada con su autor. Las consultas no se registran. <b>La bitácora no se puede editar ni borrar.</b></p>
+    <details><summary>Filtrar${f.length?` · ${f.length} cambio(s)${d.total>f.length?' de '+d.total:''}`:''}</summary>
+      <div class="dos" style="margin-top:8px">
+        <div><label class="lb">Desde</label><input type="date" id="rg_desde" value="${_esc(_g('rg_desde'))}"/></div>
+        <div><label class="lb">Hasta</label><input type="date" id="rg_hasta" value="${_esc(_g('rg_hasta'))}"/></div>
+      </div>
+      <label class="lb">Autor</label><select id="rg_autor"><option value="">Todos</option>${(d.autores||[]).map(a=>`<option${a===va?' selected':''}>${_esc(a)}</option>`).join('')}</select>
+      <label class="lb">Acción</label><select id="rg_accion"><option value="">Todas</option>${Object.entries(d.acciones||{}).map(([k,v])=>`<option value="${_esc(k)}"${k===vac?' selected':''}>${_esc(v)}</option>`).join('')}</select>
+      <label class="lb">Buscar</label><input type="search" id="rg_q" value="${_esc(_g('rg_q'))}" placeholder="lote, propietario, campo…"/>
+      <button class="acb go" onclick="cargarRegistro(true)">Aplicar</button>
+    </details>
+    <div>${cuerpo}</div>`;
+}
 boot();
 </script>
 </body>

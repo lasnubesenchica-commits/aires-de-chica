@@ -60,7 +60,44 @@ async function abrir(b, modulos) {
       getDashboard: { cuentas: [{ clave: 'Q-9', lote: '9', nombre: 'Ana Rosa Tejada',
         residencial: 'El Quirá', saldoConMora: 245, saldoNeto: 245, cuota: 45,
         estado: 'Moroso', email: 'a@b.c', mensual: [] }] },
-      getAcceso: { unidad: 'lote', adentro: 2, colgadas: 1, avisos: [],
+      getEstadoCuenta: { clave: 'Q-9', lote: '9', nombre: 'Ana Rosa Tejada', residencial: 'El Quirá',
+        cuota: 45, email: 'a@b.c', saldoNeto: 245, saldoConMora: 245, mora: 4.5, moraCargada: 4.5,
+        moraCondonAll: false, diasVencido: 12,
+        mensual: [{ label: 'Ago 2026', ym: '2026-08', cuota: 45, mora: 4.5, pagado: 0, saldo: 245 }] },
+      getCuentasData: { cuentas: [{ id: 'BG1', nombre: 'Banco General', activa: true, esCobro: true, clase: 'banco' },
+                                  { id: 'CJ', nombre: 'Caja menuda', activa: true, esCobro: false, clase: 'caja' }] },
+      getPropietarios: [{ clave: 'Q-9', lote: '9', nombre: 'Ana Rosa Tejada', residencial: 'El Quirá' },
+                        { clave: 'L-14', lote: '14', nombre: 'Judith Araúz', residencial: 'Aires' }],
+      getComprobantes: [
+        { id: 'C1', estado: 'pendiente', fecha: '12/09/2026', nombre: 'Ana Rosa Tejada',
+          remitente: 'ana@correo.com', asunto: 'Pago cuota', adjuntoUrl: 'https://x/y.pdf',
+          monto: 45, clave: 'Q-9', metodo: 'email', verif: { nivel: 'ok', mensaje: 'Cuenta Aires de Chicá', cuentaId: 'BG1' } },
+        { id: 'C2', estado: 'aplicado', fecha: '10/09/2026', nombre: 'Judith Araúz', monto: 90, lote: '14' },
+        { id: 'C3', estado: 'descartado', fecha: '09/09/2026', nombre: '—', motivo: 'sin adjunto' }],
+      previsualizarComprobante: { nombre: 'Ana Rosa Tejada', lote: '9', cuota: 45, monto: 45,
+        aplicacion: [{ label: 'Ago 2026', cuota: 45, aplicado: 45, quedaPendiente: 0 }],
+        aplicacionMora: [], antes: { saldoConMora: 245, mora: 4.5, pendienteMes: 45 },
+        despues: { saldoConMora: 200, mora: 4.5, pendienteMes: 0 }, totalAplicado: 45,
+        creditoResultante: 0, pendienteResultante: 200, orden: 'cuota', cuotaMes: 45,
+        mesActual: 'septiembre', moraSiNoCubre: 4.5, moraPct: 10 },
+      getRegistro: { total: 2, autores: ['Iris', 'Josué'], acciones: { 'pago.alta': 'Pago registrado' },
+        filas: [{ ymd: '2026-09-12', hora: '09:14', autor: 'Iris', accion: 'pago.alta',
+                  accionLbl: 'Pago registrado', clave: 'Q-9', propietario: 'Ana Rosa Tejada',
+                  monto: 45, campo: '', antes: '', despues: '', detalle: 'Banca en línea', origen: 'panel' },
+                { ymd: '2026-09-11', hora: '17:02', autor: 'Josué', accion: 'prop.edita',
+                  accionLbl: 'Propietario editado', clave: 'L-14', propietario: 'Judith Araúz',
+                  monto: null, campo: 'celular', antes: '6000-0000', despues: '6111-1111', detalle: '', origen: 'panel' }] },
+      getAcceso: { unidad: 'lote', unidadPlural: 'lotes', maxContactos: 5, adentro: 2, colgadas: 1, avisos: [],
+        roles: ['propietario', 'inquilino', 'otro'], diasSemana: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+        unidades: [{ clave: 'Q-9', lote: '9', nombre: 'Ana Rosa Tejada' },
+                   { clave: 'L-14', lote: '14', nombre: 'Judith Araúz' }],
+        sinContactos: [{ clave: 'L-14', nombre: 'Judith Araúz' }],
+        contactos: [{ id: 'K1', clave: 'Q-9', nombre: 'Ana Rosa Tejada', celular: '6000-1111',
+                      rol: 'propietario', orden: 1, autoriza: true, activo: true, notas: '' }],
+        autorizaciones: [{ id: 'A1', clave: 'Q-9', lote: '9', visitante: 'Pedro el jardinero',
+                           cedula: '8-700-100', desde: '2026-01-01', hasta: '', recurrente: true,
+                           dias: ['L', 'X'], creadoPor: 'Ana', activo: true, vigente: true, notas: '' }],
+        garitas: [{ id: 'G1', nombre: 'Garita principal', celular: '6000-9999', turno: '24 h', activo: true, notas: '' }],
         visitas: [{ id: 'VI1', visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '9',
                     fecha: '13/09/2026 14:00', estado: 'autorizada', autorizadoPor: 'Guardia · Garita principal', salida: '' },
                   { id: 'VI2', visitante: 'Sin Decidir', cedula: '', lote: '14',
@@ -159,8 +196,11 @@ async function abrir(b, modulos) {
 
   console.log('\n── LA VISTA DE ACCESO SÓLO SI SE CONTRATÓ ──');
   const soloFin = (await abrir(b, ['financiero'])).pg;
-  ok(await soloFin.evaluate(() => document.getElementById('seg').style.display) === 'none',
-     'sin el módulo, el conmutador no aparece: no se ofrece lo que no se puede usar');
+  ok(await soloFin.evaluate(() => document.getElementById('segAcc').style.display) === 'none',
+     'sin el módulo, su botón no aparece: no se ofrece lo que no se puede usar');
+  ok(await soloFin.evaluate(() => document.getElementById('segCmp').style.display) !== 'none'
+     && await soloFin.evaluate(() => document.getElementById('segReg').style.display) !== 'none',
+     'y las que sí se pagaron siguen ahí: comprobantes y registro son del módulo financiero');
 
   const conAcc = (await abrir(b, ['financiero', 'acceso'])).pg;
   ok(await conAcc.evaluate(() => document.getElementById('seg').style.display) === 'flex',
@@ -182,6 +222,9 @@ async function abrir(b, modulos) {
      'y las cuentas no se ven');
   ok(await soloAcc.pg.evaluate(() => document.getElementById('seg').style.display) === 'none',
      'ni el conmutador, que no conmuta a nada');
+  ok(!soloAcc.pedidos.includes('getPropietarios'),
+     'y tampoco getPropietarios: el padrón de unidades viene dentro de getAcceso, ' +
+     'porque getPropietarios también es del módulo financiero');
   ok(!soloAcc.pedidos.includes('getDashboard'),
      'y no se pide getDashboard: el servidor lo rechaza por módulo y tumbaba el arranque');
   await soloAcc.pg.waitForFunction(() => document.querySelectorAll('#vAcceso .vis').length > 0,
@@ -218,6 +261,135 @@ async function abrir(b, modulos) {
      'en ninguna aparece «autorizar»: eso lo decide quien tiene el documento delante');
   const pie = await p3.evaluate(() => document.getElementById('sheetBd').textContent);
   ok(/no se autoriza una entrada/.test(pie), 'y se dice, para que nadie lo busque');
+
+  console.log('\n── CONTACTOS, PERMISOS Y GARITA DESDE EL TELÉFONO ──');
+  // Cargar a quién se le pregunta, o dejar un permiso, pasa de pie frente a alguien —
+  // no sentado en un escritorio. Antes sólo estaba la bitácora.
+  const pa = await abrir(b, ['financiero', 'acceso']);
+  await pa.pg.evaluate(() => verVista('acceso'));
+  await pa.pg.waitForFunction(() => !!document.getElementById('segAccSub'), null, { timeout: 5000 });
+
+  await pa.pg.evaluate(() => accVista('contactos'));
+  ok(/Ana Rosa Tejada/.test(await pa.pg.evaluate(() => document.getElementById('vAcceso').textContent)),
+     'los contactos salen por unidad, con su nombre y no con la clave en bruto');
+  await pa.pg.evaluate(() => accFormContacto('Q-9', 'K1'));
+  const selUnidad = await pa.pg.evaluate(() =>
+    [...document.querySelectorAll('#ac_clave option')].map(o => o.textContent));
+  ok(selUnidad.length === 2 && selUnidad.some(x => /Judith/.test(x)),
+     'y el desplegable de unidades sale del padrón que trae getAcceso: ' + selUnidad.length + ' opciones');
+  await pa.pg.fill('#ac_nombre', 'Ana Rosa Tejada Q.');
+  await pa.pg.evaluate(() => accGuardarContacto('K1', document.querySelector('#sheetBd .acb.go')));
+  let g1 = pa.enviados.filter(x => x.action === 'guardarContacto')[0];
+  ok(!!g1 && g1.contacto.id === 'K1' && g1.contacto.nombre === 'Ana Rosa Tejada Q.',
+     'guardar manda el contacto entero con su id, que es lo que el servidor espera');
+  ok(g1 && g1.contacto.autoriza === true && g1.contacto.orden === 1,
+     'con «autoriza» y el orden, que deciden a quién se le pregunta primero');
+
+  await pa.pg.evaluate(() => accVista('permisos'));
+  const perm = await pa.pg.evaluate(() => document.getElementById('vAcceso').textContent);
+  ok(/Pedro el jardinero/.test(perm), 'los permisos también');
+  ok(/sin vencimiento/.test(perm),
+     'y uno sin fecha de vencimiento se dice: un permiso que nadie recuerda haber dado ' +
+     'es la forma más común de perder el control de quién entra');
+  await pa.pg.evaluate(() => accFormPermiso('A1'));
+  ok(await pa.pg.evaluate(() => [...document.querySelectorAll('.au_dia')].filter(x => x.checked).map(x => x.value).join('')) === 'LX',
+     'el formulario trae marcados los días que ya tenía');
+  await pa.pg.evaluate(() => accGuardarPermiso('A1', document.querySelector('#sheetBd .acb.go')));
+  const g2 = pa.enviados.filter(x => x.action === 'guardarAutorizacion')[0];
+  ok(!!g2 && g2.autorizacion.dias === 'L,X',
+     'y los devuelve como los pide el servidor, separados por coma: ' + (g2 && g2.autorizacion.dias));
+
+  await pa.pg.evaluate(() => accVista('garita'));
+  ok(/Garita principal/.test(await pa.pg.evaluate(() => document.getElementById('vAcceso').textContent)),
+     'y la garita, sin la cual ningún guardia puede usar el sistema');
+
+  console.log('\n── UN PERMISO SIN UNIDAD O SIN NOMBRE NO SE GUARDA ──');
+  await pa.pg.evaluate(() => accFormPermiso(''));
+  await pa.pg.evaluate(() => accGuardarPermiso('', document.querySelector('#sheetBd .acb.go')));
+  const antes = pa.enviados.filter(x => x.action === 'guardarAutorizacion').length;
+  ok(antes === 1 && /no pueden quedar vacíos/.test(await pa.pg.evaluate(() => document.getElementById('auErr').textContent)),
+     'se corta aquí y se dice por qué, en vez de mandar un permiso a nombre de nadie');
+
+  console.log('\n── COMPROBANTES: CONFIRMAR UN PAGO DESDE EL TELÉFONO ──');
+  const pc = await abrir(b, ['financiero']);
+  await pc.pg.evaluate(() => verVista('comprob'));
+  await pc.pg.waitForFunction(() => !!document.getElementById('cmp_C1'), null, { timeout: 5000 });
+  const cmpTxt = await pc.pg.evaluate(() => document.getElementById('vComprob').textContent);
+  ok(/Ana Rosa Tejada/.test(cmpTxt), 'el pendiente sale');
+  ok(/Cuenta Aires de Chicá/.test(cmpTxt),
+     'con la señal de a qué cuenta entró el dinero, que es lo que hay que verificar');
+  ok(await pc.pg.evaluate(() => document.getElementById('cm_b_C1').value) === 'BG1',
+     'y la cuenta detectada del aviso viene preseleccionada, no en blanco');
+  ok(await pc.pg.evaluate(() => document.getElementById('cm_p_C1').value) === 'Q-9',
+     'igual que el propietario que el sistema emparejó');
+
+  // Confirmar NO aplica: primero enseña cómo va a quedar la cuenta. Es la última
+  // oportunidad de ver que el monto o la cuenta están mal.
+  await pc.pg.evaluate(() => cmpPrevio('C1', document.querySelector('#cmp_C1 .acb.go')));
+  await pc.pg.waitForFunction(() => /Así se aplicará/.test(document.getElementById('sheetHd').textContent),
+    null, { timeout: 5000 });
+  ok(!pc.enviados.some(x => x.action === 'resolverComprobante'),
+     'confirmar NO aplica todavía: primero se ve cómo queda la cuenta');
+  const prev = await pc.pg.evaluate(() => document.getElementById('sheetBd').textContent);
+  ok(/queda cubierta/.test(prev),
+     'y se dice si la cuota del mes queda cubierta, que es lo único que quien confirma ' +
+     'todavía puede cambiar');
+  await pc.pg.evaluate(() => cmpAplicar('C1', document.querySelector('#sheetBd .acb.go')));
+  const apl = pc.enviados.filter(x => x.action === 'resolverComprobante')[0];
+  ok(!!apl && apl.accion === 'aplicar' && apl.clave === 'Q-9' && apl.monto === 45 && apl.cuenta === 'BG1',
+     'aplicar manda las cuatro cosas: quién, cuánto, a qué cuenta y cuál comprobante');
+  // Aplicar un pago cambia la cartera. Volver a Cuentas y leer los saldos de antes del
+  // pago es peor que no verlos: se toma una decisión sobre un número que ya no es cierto.
+  const antesDash = pc.pedidos.filter(x => x === 'getDashboard').length;
+  await pc.pg.evaluate(() => verVista('cuentas'));
+  ok(pc.pedidos.filter(x => x === 'getDashboard').length > antesDash,
+     'y al volver a Cuentas se recargan los saldos, que acaban de cambiar');
+
+  console.log('\n── REGISTRAR UN PAGO Y CONDONAR MORA ──');
+  const pp = await abrir(b, ['financiero']);
+  await pp.pg.evaluate(() => openSheet('Q-9'));
+  await pp.pg.waitForFunction(() => !!document.getElementById('pgBox'), null, { timeout: 5000 });
+  ok(pp.pedidos.includes('getEstadoCuenta'),
+     'el detalle se pide al servidor y no se arma con la fila del tablero: condonar o ' +
+     'registrar obliga a recalcular');
+  ok(await pp.pg.evaluate(() => document.getElementById('pgBox').style.display) === 'none',
+     'el formulario de pago empieza cerrado: en un teléfono el saldo es lo que se viene a ver');
+  await pp.pg.evaluate(() => pgForm([...document.querySelectorAll('#sheetBd .acb')].find(x => /Registrar pago/.test(x.textContent))));
+  await pp.pg.fill('#pg_monto', '45');
+  await pp.pg.evaluate(() => pgGuardar(document.querySelector('#pgBox .acb.go')));
+  const pago = pp.enviados.filter(x => x.action === 'registrarPago')[0];
+  ok(!!pago && pago.pago.monto === 45 && pago.pago.clave === 'Q-9', 'el pago sale');
+  ok(pago && /T12:00:00$/.test(pago.pago.fecha),
+     'con la fecha a mediodía, para que ninguna zona horaria la corra al día anterior: ' + (pago && pago.pago.fecha));
+  ok(pago && pago.pago.generarVoucher === true,
+     'y pidiendo la constancia en PDF, igual que un pago aplicado desde Conciliación');
+  ok(pago && pago.pago.cuenta === 'BG1', 'a la cuenta de cobro, que es donde llega el dinero salvo excepción');
+
+  await pp.pg.evaluate(() => { window.confirm = () => true; });
+  await pp.pg.evaluate(() => condonarMora(true, [...document.querySelectorAll('#sheetBd .acb')].find(x => /Condonar/.test(x.textContent))));
+  const cond = pp.enviados.filter(x => x.action === 'setMoraCondon')[0];
+  ok(!!cond && cond.mes === 'ALL' && cond.condonar === true && cond.clave === 'Q-9',
+     'y condonar la mora manda el propietario entero, no un mes suelto');
+
+  console.log('\n── EL REGISTRO DE CAMBIOS ──');
+  const pr = await abrir(b, ['financiero']);
+  await pr.pg.evaluate(() => verVista('registro'));
+  await pr.pg.waitForFunction(() => /Pago registrado/.test(document.getElementById('vRegistro').textContent),
+    null, { timeout: 5000 });
+  const reg = await pr.pg.evaluate(() => document.getElementById('vRegistro').textContent);
+  ok(/12 de Sep 2026/.test(reg), 'agrupado por día, con el día escrito y no en AAAA-MM-DD');
+  ok(/Iris/.test(reg) && /Josué/.test(reg), 'con el autor de cada cambio');
+  ok(/6000-0000/.test(reg) && /6111-1111/.test(reg), 'y el antes y el después de lo que cambió');
+  ok(!/Descargar/.test(reg) && !/Eliminar/.test(reg),
+     'sin botones de escribir ni de borrar: la bitácora no se edita desde ningún panel');
+  await pr.pg.evaluate(() => { document.querySelector('#vRegistro details').open = true; });
+  await pr.pg.selectOption('#rg_autor', 'Josué');
+  await pr.pg.evaluate(() => cargarRegistro(true));
+  await pr.pg.waitForFunction(() => window.__f !== undefined || true, null, { timeout: 1000 }).catch(() => {});
+  ok(pr.pedidos.filter(x => x === 'getRegistro').length >= 2,
+     'y el filtro vuelve a preguntarle al servidor, que es quien tiene los 400 cambios');
+  ok(await pr.pg.evaluate(() => document.getElementById('rg_autor').value) === 'Josué',
+     'sin perder lo que se acaba de escoger al repintar');
 
   await b.close();
   console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
