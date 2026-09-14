@@ -62,7 +62,23 @@ var ACC_COL_CONTAC  = ['id', 'clave', 'nombre', 'celular', 'rol', 'autoriza', 'o
                        'activo', 'notas', 'creado'];
 
 var ACC_MAX_CONTACTOS = 5;      // cuántos pueden autorizar por unidad
-var ACC_DIAS_FOTO     = 90;     // cuánto se guarda la foto de la cédula
+
+/* La foto del documento ya no se guarda.
+ *
+ * Se guardaba 90 días, y eso dejaba la imagen del documento de un tercero en Drive y
+ * —peor— en el chat y la galería del guardia, que es donde el borrado automático no
+ * llega. Un competidor lo tiene escrito en su web como ataque, y tiene razón.
+ *
+ * Ahora la imagen se lee y se borra en el acto. Lo que queda es el TEXTO: nombre,
+ * documento, hora, quién autorizó y qué guardia lo confirmó teniendo la cédula física
+ * en la mano. Esa confirmación humana es lo que da fe; la imagen no aportaba nada que
+ * el texto no dijera ya.
+ *
+ * La única excepción es cuando la lectura sale dudosa o falla del todo: ahí el texto
+ * NO es de fiar y la imagen es el único respaldo para revisar qué pasó. Esas se
+ * guardan las horas de abajo y se borran solas.
+ */
+var ACC_HORAS_FOTO    = 72;     // sólo para las lecturas dudosas; las buenas se borran ya
 var ACC_ROLES = ['propietario', 'inquilino', 'familiar', 'cuidador', 'otro'];
 var ACC_ESTADOS = ['pendiente', 'autorizada', 'rechazada', 'sin-respuesta', 'preautorizada'];
 
@@ -358,14 +374,19 @@ function _accGaritasDeResidente() {
 /* ─────────────── Ley 81: las fotos de cédula no se quedan ─────────────── */
 
 /**
- * Borra de Drive las fotos de cédula con más de 90 días y marca la fila.
+ * Borra de Drive las fotos de documento vencidas.
+ *
+ * Barre la CARPETA, no las filas. Y eso no es un detalle: la versión anterior recorría
+ * las visitas buscando `fotoUrl`, así que una foto cuya lectura falló —que se guarda
+ * antes de leerse y nunca llega a escribirse en ninguna fila— quedaba huérfana en Drive
+ * para siempre. Justo la que más tiempo se queda era la que nadie borraba.
  *
  * La visita NO se borra: saber quién entró y cuándo es legítimo y la comunidad lo
- * necesita. Lo que se borra es la imagen del documento de un tercero que nunca
- * firmó nada con la asociación.
+ * necesita. Lo que se borra es la imagen del documento de un tercero que nunca firmó
+ * nada con la asociación.
  *
- * Pensada para un disparador diario. Sin argumentos dice qué haría y no borra:
- * está en el mismo desplegable que todo lo demás.
+ * Pensada para un disparador diario. Sin argumentos dice qué haría y no borra: está en
+ * el mismo desplegable que todo lo demás.
  */
 function borrarFotosVencidas(confirmar) {
   // Igual que arriba: corre desde un disparador diario y no puede crear las hojas del
@@ -374,28 +395,27 @@ function borrarFotosVencidas(confirmar) {
     console.log('El módulo de acceso no está activo en esta copia. No hay nada que borrar.');
     return { ok: true, borradas: 0, motivo: 'el módulo de acceso no está activo' };
   }
-  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
-  var vals = sh.getDataRange().getValues();
-  if (vals.length < 2) { console.log('No hay visitas registradas.'); return { ok: true, borradas: 0 }; }
 
-  var h = vals[0].map(function (x) { return String(x).trim(); });
-  var iFecha = h.indexOf('fecha'), iUrl = h.indexOf('fotoUrl'), iBor = h.indexOf('fotoBorrada');
-  var corte = new Date();
-  corte.setDate(corte.getDate() - ACC_DIAS_FOTO);
+  var corte = new Date(new Date().getTime() - ACC_HORAS_FOTO * 3600 * 1000);
 
-  var vencidas = [];
-  for (var r = 1; r < vals.length; r++) {
-    var url = String(vals[r][iUrl] || '').trim();
-    if (!url) continue;
-    if (String(vals[r][iBor] || '').trim()) continue;
-    var f = vals[r][iFecha];
-    var d = (f instanceof Date) ? f : new Date(f);
-    if (isNaN(d.getTime()) || d.getTime() > corte.getTime()) continue;
-    vencidas.push({ fila: r + 1, url: url, fecha: d });
+  var carpeta = _accCarpetaFotos(false);
+  if (!carpeta) {
+    console.log('Todavía no existe la carpeta «%s». No hay nada que borrar.', ACC_CARPETA_FOTOS);
+    return { ok: true, borradas: 0 };
   }
 
-  console.log('════ FOTOS DE CÉDULA ════');
-  console.log('Se guardan %s días. Corte: %s', ACC_DIAS_FOTO, _fechaCorta(corte));
+  var vencidas = [];
+  var it = carpeta.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    var creado = f.getDateCreated();
+    if (creado && creado.getTime() > corte.getTime()) continue;
+    vencidas.push({ id: f.getId(), nombre: f.getName(), fecha: creado });
+  }
+
+  console.log('════ FOTOS DE DOCUMENTO ════');
+  console.log('Una lectura buena se borra en el acto. Lo que queda aquí son las dudosas.');
+  console.log('Se guardan %s horas. Corte: %s', ACC_HORAS_FOTO, _accFechaHora(corte));
   console.log('Vencidas: %s', vencidas.length);
   if (!vencidas.length) return { ok: true, borradas: 0 };
 
@@ -407,37 +427,54 @@ function borrarFotosVencidas(confirmar) {
     return { ok: true, borradas: 0, seBorrarian: vencidas.length };
   }
 
-  var n = 0, sinBorrar = [];
-  vencidas.forEach(function (v) {
-    // Marcar la fila sin haber borrado el archivo sería decir que la foto ya no
-    // está cuando sigue en Drive. Es peor que no hacer nada: nadie vuelve a mirar
-    // una fila que dice «borrada», y el dato del tercero se queda ahí para siempre.
-    var id = _accIdDeDrive(v.url);
-    if (!id) {
-      sinBorrar.push({ fila: v.fila, por: 'la URL no lleva un id de Drive reconocible' });
-      return;
+  // Índice id de Drive → fila, para marcar las que sí estaban referenciadas. Las
+  // huérfanas no aparecen aquí y se borran igual: por eso se barre por carpeta.
+  var porId = {}, sh = null, iUrl = -1, iBor = -1;
+  try {
+    sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length > 1) {
+      var h = vals[0].map(function (x) { return String(x).trim(); });
+      iUrl = h.indexOf('fotoUrl'); iBor = h.indexOf('fotoBorrada');
+      for (var r = 1; r < vals.length; r++) {
+        var id = _accIdDeDrive(vals[r][iUrl]);
+        if (id) porId[id] = r + 1;
+      }
     }
+  } catch (e) { _accApunte('no se pudo indexar las visitas para la purga — ' + (e && e.message || e)); }
+
+  var n = 0, huerfanas = 0, sinBorrar = [];
+  vencidas.forEach(function (v) {
     try {
-      DriveApp.getFileById(id).setTrashed(true);
-      sh.getRange(v.fila, iBor + 1).setValue(new Date());
-      sh.getRange(v.fila, iUrl + 1).setValue('');
+      DriveApp.getFileById(v.id).setTrashed(true);
+      var fila = porId[v.id];
+      if (fila && sh && iBor >= 0) {
+        sh.getRange(fila, iBor + 1).setValue(new Date());
+        sh.getRange(fila, iUrl + 1).setValue('');
+      } else {
+        huerfanas++;
+      }
       n++;
     } catch (e) {
-      sinBorrar.push({ fila: v.fila, por: String(e && e.message || e) });
+      sinBorrar.push({ archivo: v.nombre, por: String(e && e.message || e) });
     }
   });
 
   console.log('✓ %s foto(s) borradas. Las visitas se quedan; las imágenes no.', n);
+  if (huerfanas) {
+    console.log('  De ésas, %s no estaban en ninguna fila: lecturas que fallaron.', huerfanas);
+  }
   if (sinBorrar.length) {
     console.log('');
     console.log('✗ %s NO se pudieron borrar y siguen en Drive:', sinBorrar.length);
-    sinBorrar.forEach(function (x) { console.log('    fila %s — %s', x.fila, x.por); });
-    console.log('  Sus filas quedan SIN marcar, para que el próximo intento vuelva por ellas.');
+    sinBorrar.forEach(function (x) { console.log('    %s — %s', x.archivo, x.por); });
+    console.log('  El próximo intento vuelve por ellas.');
   }
   _reg('acceso.purga', { entidad: 'acceso', monto: n,
-    detalle: 'Borradas ' + n + ' fotos de cédula con más de ' + ACC_DIAS_FOTO + ' días (Ley 81)' +
-             (sinBorrar.length ? '. ' + sinBorrar.length + ' no se pudieron borrar y siguen en Drive.' : '.') });
-  return { ok: true, borradas: n, sinBorrar: sinBorrar.length };
+    detalle: 'Borradas ' + n + ' fotos de documento con más de ' + ACC_HORAS_FOTO + ' horas (Ley 81)' +
+             (huerfanas ? '. ' + huerfanas + ' eran lecturas fallidas sin fila.' : '') +
+             (sinBorrar.length ? ' ' + sinBorrar.length + ' no se pudieron borrar y siguen en Drive.' : '') });
+  return { ok: true, borradas: n, huerfanas: huerfanas, sinBorrar: sinBorrar.length };
 }
 
 /** El id de un archivo dentro de una URL de Drive, en cualquiera de sus formas. */
@@ -465,7 +502,7 @@ function instalarBorradoDeFotos() {
   });
   if (ya.length) { console.log('El borrado diario ya está instalado.'); return { ok: true, yaEstaba: true }; }
   ScriptApp.newTrigger('purgaDiariaDeFotos').timeBased().everyDays(1).atHour(3).create();
-  console.log('✓ Instalado. Cada madrugada se borran las fotos de más de %s días.', ACC_DIAS_FOTO);
+  console.log('✓ Instalado. Cada madrugada se borran las fotos dudosas de más de %s horas.', ACC_HORAS_FOTO);
   return { ok: true };
 }
 
@@ -858,7 +895,7 @@ function getAccesoData(clave) {
 
   return {
     unidad: _acUnidad(), unidadPlural: _acPlural(_acUnidad()),
-    maxContactos: ACC_MAX_CONTACTOS, diasFoto: ACC_DIAS_FOTO,
+    maxContactos: ACC_MAX_CONTACTOS, horasFoto: ACC_HORAS_FOTO,
     roles: ACC_ROLES, diasSemana: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
     contactos: contactos, garitas: garitas, autorizaciones: autorizaciones,
     visitas: visitas, unidades: unidades, sinContactos: sinContactos, avisos: avisos,
@@ -1457,6 +1494,13 @@ function _botGuardia(tel, garita, msg) {
       // URL que da WhatsApp caduca en minutos y sin esto el caso se pierde.
       fotoUrl = _accGuardarFoto(media.blob);
       datos = _accLeerCedulaFoto(media.blob, media.tipo);
+      // Leída y limpia: la imagen se va AHORA MISMO. Lo que queda es el texto, que el
+      // guardia va a confirmar con la cédula física en la mano. Sólo sobrevive lo que no
+      // es de fiar, y esas se borran solas a las ACC_HORAS_FOTO.
+      if (fotoUrl && !_accFotoSeQueda(datos)) {
+        _accBorrarFoto(fotoUrl);
+        fotoUrl = '';
+      }
     }
     if (!datos) {
       enviarWhatsAppTexto(tel,
@@ -1628,10 +1672,52 @@ var ACC_CARPETA_FOTOS = 'Documentos de visitantes';
  */
 var ACC_ULTIMA_FOTO_PROP = 'ACC_ULTIMA_FOTO';
 
-function _accGuardarFoto(blob) {
+/**
+ * La carpeta de las fotos. Con `crear` en false no la crea: la purga no tiene por qué
+ * fabricar una carpeta vacía en una copia donde nunca se guardó ninguna foto.
+ */
+function _accCarpetaFotos(crear) {
   try {
     var it = DriveApp.getFoldersByName(ACC_CARPETA_FOTOS);
-    var carpeta = it.hasNext() ? it.next() : DriveApp.createFolder(ACC_CARPETA_FOTOS);
+    if (it.hasNext()) return it.next();
+    return crear === false ? null : DriveApp.createFolder(ACC_CARPETA_FOTOS);
+  } catch (e) {
+    _accApunte('no se pudo abrir la carpeta de fotos — ' + (e && e.message || e));
+    return null;
+  }
+}
+
+/**
+ * ¿Hay que quedarse con esta foto?
+ *
+ * Sólo cuando el texto que sacamos NO es de fiar: lectura floja, los dos modelos que no
+ * coincidieron en el número, o nada legible. En esos casos la imagen es el único
+ * respaldo para saber después qué pasó de verdad.
+ *
+ * Si la lectura salió limpia, el texto ya dice todo lo que la imagen decía — y el
+ * guardia además lo confirma teniendo la cédula física delante. Guardarla sería
+ * quedarse con el documento de un tercero sin una razón que lo justifique.
+ */
+function _accFotoSeQueda(datos) {
+  if (!datos) return true;                  // no se pudo leer: la foto es lo único que hay
+  return !!(datos.floja || datos.discrepan);
+}
+
+/** Manda a la papelera el archivo de una URL de Drive. Silencioso si falla. */
+function _accBorrarFoto(url) {
+  var id = _accIdDeDrive(url);
+  if (!id) return false;
+  try { DriveApp.getFileById(id).setTrashed(true); return true; }
+  catch (e) {
+    _accApunte('no se pudo borrar la foto en el acto — ' + (e && e.message || e));
+    return false;
+  }
+}
+
+function _accGuardarFoto(blob) {
+  try {
+    var carpeta = _accCarpetaFotos(true);
+    if (!carpeta) return '';
     var f = carpeta.createFile(blob.setName('doc-' + new Date().getTime() + '.jpg'));
     try {
       var props = (typeof _waProps === 'function') ? _waProps() : PropertiesService.getScriptProperties();

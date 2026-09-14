@@ -6939,9 +6939,10 @@ function accVisitasHTML(){
     <div style="padding:12px 18px;border-bottom:1px solid var(--ac-border);font-size:.82rem;color:var(--ac-muted)">
       Las últimas ${vs.length} visitas, de la más reciente a la más vieja. La <b>salida</b> la
       anota el guardia desde la garita: escribe «adentro», le sale la lista de quién está, y
-      toca a quien acaba de salir. La <b>foto de la cédula</b> se borra sola a los
-      ${ACC_DATA.diasFoto} días (Ley 81): la fila se queda —saber quién entró es legítimo— pero
-      la imagen del documento de un tercero que nunca firmó nada, no.
+      toca a quien acaba de salir. La <b>foto del documento no se guarda</b>: se lee y se borra
+      en el acto (Ley 81). Queda el texto —nombre, documento, hora y quién lo confirmó—, que es
+      lo que da fe. Sólo sobreviven las lecturas dudosas, y esas se borran solas a las
+      ${ACC_DATA.horasFoto||72} horas.
     </div>
     <div style="overflow:auto"><table>
       <thead><tr><th>Fecha</th><th>Unidad</th><th>Visitante</th><th>Cédula</th><th>Motivo</th>

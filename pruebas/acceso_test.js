@@ -13,11 +13,17 @@ let mal = 0;
 const ok = (c, m) => { console.log((c ? '  ✓' : '  ✗ NO PASA') + ' ' + m); if (!c) mal++; };
 
 let HOJAS, PADRON, REGISTRO, DRIVE, TRIGGERS, SALIDA;
+// La carpeta de Drive de mentira. Hace falta de verdad porque la purga ya NO recorre
+// las filas: barre la carpeta, que es lo único que encuentra las fotos huérfanas —las
+// de una lectura que falló y nunca llegó a escribirse en ninguna visita.
+let ARCHIVOS, CARPETA_CREADA;
 
 function reiniciar() {
   HOJAS = {};
   REGISTRO = [];
   DRIVE = {};
+  ARCHIVOS = [];
+  CARPETA_CREADA = false;
   TRIGGERS = [];
   PADRON = [
     { clave: 'Q-9',  nombre: 'Ana Rosa Tejada', celular: '+50769812266' },
@@ -74,10 +80,40 @@ global.normalizarCelular = (raw) => {
   return { ok: true, e164: '+' + d };
 };
 
-global.DriveApp = { getFileById: id => {
-  if (!(id in DRIVE)) throw new Error('archivo no encontrado');
-  return { setTrashed: v => { DRIVE[id] = !v; } };
-} };
+/** Mete un archivo en la carpeta de mentira, con su fecha de creación. */
+function ponerArchivo(id, creado) {
+  DRIVE[id] = true;
+  ARCHIVOS.push({ id: id, nombre: 'doc-' + id + '.jpg', creado: creado });
+  CARPETA_CREADA = true;
+  return 'https://drive.google.com/file/d/' + id + '/view';
+}
+const CARPETA = {
+  createFile: b => {
+    // Un id del largo real. Con ids cortos, _accIdDeDrive no los reconoce y la prueba
+    // pasa por el camino equivocado: es la misma trampa anotada más abajo.
+    const id = 'FILE' + String(ARCHIVOS.length + 1).padStart(2, '0') +
+               'aBcDeFgHiJkLmNoPqRsTuVwXyZ0123'.slice(0, 29);
+    ponerArchivo(id, new Date());
+    return { getUrl: () => 'https://drive.google.com/file/d/' + id + '/view', getId: () => id };
+  },
+  // Sólo los vivos: un archivo en la papelera ya no sale del iterador, igual que en Drive.
+  getFiles: () => {
+    const vivos = ARCHIVOS.filter(a => DRIVE[a.id]);
+    let i = 0;
+    return { hasNext: () => i < vivos.length,
+             next: () => { const a = vivos[i++];
+               return { getId: () => a.id, getName: () => a.nombre,
+                        getDateCreated: () => a.creado }; } };
+  }
+};
+global.DriveApp = {
+  getFileById: id => {
+    if (!(id in DRIVE)) throw new Error('archivo no encontrado');
+    return { setTrashed: v => { DRIVE[id] = !v; } };
+  },
+  getFoldersByName: () => ({ hasNext: () => CARPETA_CREADA, next: () => CARPETA }),
+  createFolder: () => { CARPETA_CREADA = true; return CARPETA; }
+};
 global.ScriptApp = {
   getProjectTriggers: () => TRIGGERS.slice(),
   newTrigger: (fn) => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({
@@ -124,10 +160,6 @@ global.UrlFetchApp = { fetch: (url, opt) => {
   return { getResponseCode: () => 200,
            getContentText: () => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(r) }] }) };
 } };
-global.DriveApp = Object.assign(global.DriveApp || {}, {
-  getFoldersByName: () => ({ hasNext: () => false }),
-  createFolder: () => ({ createFile: b => ({ getUrl: () => 'https://drive/foto', getId: () => 'FILE1' }) })
-});
 
 let PROPS = {}, CACHE = {};
 global.PropertiesService = { getScriptProperties: () => ({
@@ -238,23 +270,29 @@ ok(esGuardia('6555-0101') === null,
 console.log('\n── LEY 81: LA FOTO DE LA CÉDULA NO SE QUEDA ──');
 reiniciar();
 _accHojas();
-const hace = d => { const f = new Date(); f.setDate(f.getDate() - d); return f; };
+const haceH = h => new Date(new Date().getTime() - h * 3600 * 1000);
 // Ids de Drive del largo real (33 caracteres). Con ids cortos la prueba pasaba
 // por el camino equivocado y no se veía que la foto seguía en Drive.
 const ID_VIEJA = '1F62Z1LPLqrz0Efkq1diNhWrPMGdP9QsO';
 const ID_NUEVA = '1n943waWOiseWJgKJbQLos5qv1hkTn5zJ';
-DRIVE[ID_VIEJA] = true; DRIVE[ID_NUEVA] = true;
-HOJAS.Visitas.push(['V1', hace(120), 'Q-9', '9', 'Luis Mendoza', '8-123-456', 'visita', '',
-  'Garita principal', 'autorizada', 'Ana Rosa', hace(120),
-  'https://drive.google.com/file/d/' + ID_VIEJA + '/view', '', '', '', hace(120)]);
-HOJAS.Visitas.push(['V2', hace(10), 'Q-9', '9', 'Marta Ruiz', '8-999-111', 'visita', '',
-  'Garita principal', 'autorizada', 'Ana Rosa', hace(10),
-  'https://drive.google.com/file/d/' + ID_NUEVA + '/view', '', '', '', hace(10)]);
+const ID_HUERF = '1zzQ8kLmNvRt4YpXs2WdEc7BaHgJfKu1L';
+const urlVieja = ponerArchivo(ID_VIEJA, haceH(100));
+const urlNueva = ponerArchivo(ID_NUEVA, haceH(10));
+// La huérfana: una lectura que falló. Se guardó antes de leerse y nunca llegó a
+// escribirse en ninguna fila. La purga vieja recorría las filas, así que ésta no la
+// encontraba NUNCA — justo la que más falta hacía borrar.
+ponerArchivo(ID_HUERF, haceH(100));
+
+HOJAS.Visitas.push(['V1', haceH(100), 'Q-9', '9', 'Luis Mendoza', '8-123-456', 'visita', '',
+  'Garita principal', 'autorizada', 'Ana Rosa', haceH(100), urlVieja, '', '', '', haceH(100)]);
+HOJAS.Visitas.push(['V2', haceH(10), 'Q-9', '9', 'Marta Ruiz', '8-999-111', 'visita', '',
+  'Garita principal', 'autorizada', 'Ana Rosa', haceH(10), urlNueva, '', '', '', haceH(10)]);
 
 capturar(); r = borrarFotosVencidas(); let txt = soltar();
-ok(r.seBorrarian === 1 && DRIVE[ID_VIEJA] === true,
-   'sin confirmar dice cuántas borraría y no borra ninguna');
+ok(r.seBorrarian === 2 && DRIVE[ID_VIEJA] === true,
+   'sin confirmar dice cuántas borraría y no borra ninguna: ' + r.seBorrarian);
 ok(/irreversible/.test(txt), 'y avisa de que no tiene vuelta atrás');
+ok(/72 horas/.test(txt), 'y dice el plazo en horas, no en meses: ' + (/Se guardan[^\n]*/.exec(txt) || [''])[0]);
 // Lo que se le ofrece tiene que poder ejecutarse. El botón «Ejecutar» del editor no
 // pasa argumentos —regla 1 de docs/apps-script-despliegue.md—, así que ofrecer
 // «borrarFotosVencidas(true)» dejaba la función convertida en un mirador.
@@ -264,23 +302,46 @@ ok(typeof borrarFotosVencidasDeVerdad === 'function' && borrarFotosVencidasDeVer
    'que existe y no pide nada');
 
 capturar(); r = borrarFotosVencidas(true); soltar();
-ok(r.borradas === 1, 'confirmando borra una');
-ok(DRIVE[ID_VIEJA] === false, 'la de 120 días se va a la papelera');
-ok(DRIVE[ID_NUEVA] === true, 'y la de 10 días se queda: el plazo son 90');
+ok(r.borradas === 2, 'confirmando borra las dos vencidas: ' + r.borradas);
+ok(DRIVE[ID_VIEJA] === false, 'la de 100 horas se va a la papelera');
+ok(DRIVE[ID_NUEVA] === true, 'y la de 10 horas se queda: el plazo son 72');
+ok(DRIVE[ID_HUERF] === false && r.huerfanas === 1,
+   'y la HUÉRFANA también, que es la que la purga por filas no encontraba nunca');
 ok(HOJAS.Visitas.length === 3, 'la VISITA no se borra: quién entró y cuándo es un registro legítimo');
 ok(String(HOJAS.Visitas[1][12]) === '' && HOJAS.Visitas[1][13] instanceof Date,
-   'se le quita la URL y queda anotada la fecha de borrado');
+   'a la que sí tenía fila se le quita la URL y queda anotada la fecha de borrado');
 capturar(); r = borrarFotosVencidas(true); soltar();
 ok(r.borradas === 0, 'volver a correrlo no intenta borrar lo ya borrado');
 
-// Lo que destapó esta prueba la primera vez: si el id no se puede leer de la URL,
-// el archivo NO se borra. Marcar la fila igual sería decir que la foto ya no está
-// cuando sigue en Drive, y nadie vuelve a mirar una fila que dice «borrada».
-HOJAS.Visitas.push(['V3', hace(200), 'Q-9', '9', 'Pedro Solís', '8-777-222', 'visita', '',
-  'Garita principal', 'autorizada', 'Ana Rosa', hace(200),
-  'https://algun-sitio.com/foto.jpg', '', '', '', hace(200)]);
+console.log('\n── UNA LECTURA LIMPIA NO DEJA FOTO QUE BORRAR ──');
+// El cambio de fondo: la imagen se lee y se borra en el acto. Lo que queda es el texto,
+// que el guardia confirma con la cédula física en la mano. La purga es sólo para lo
+// dudoso. Un competidor ataca por escrito a quien guarda la imagen del documento.
+ok(_accFotoSeQueda({ visitante: 'Luis Mendoza', cedula: '8-123-456' }) === false,
+   'una lectura buena no se queda');
+ok(_accFotoSeQueda({ visitante: 'Luis', cedula: '8-1', floja: true }) === true,
+   'una lectura floja sí: el texto no es de fiar y la imagen es el único respaldo');
+ok(_accFotoSeQueda({ visitante: 'Luis', cedula: '8-123-456', discrepan: true }) === true,
+   'y cuando los dos modelos no coincidieron en el número, también');
+ok(_accFotoSeQueda(null) === true, 'y si no se pudo leer nada, con más razón');
+
+console.log('\n── SI DRIVE FALLA, LA FILA NO MIENTE ──');
+// Marcar la fila sin haber borrado el archivo sería decir que la foto ya no está cuando
+// sigue en Drive. Es peor que no hacer nada: nadie vuelve a mirar una fila que dice
+// «borrada», y el dato del tercero se queda ahí para siempre.
+const ID_TERCA = '1QQw3eRt5YuI7oPaS9dFgH2jKlZxCvBnM';
+const urlTerca = ponerArchivo(ID_TERCA, haceH(100));
+HOJAS.Visitas.push(['V3', haceH(100), 'Q-9', '9', 'Pedro Solís', '8-777-222', 'visita', '',
+  'Garita principal', 'autorizada', 'Ana Rosa', haceH(100), urlTerca, '', '', '', haceH(100)]);
+const trashOriginal = global.DriveApp.getFileById;
+global.DriveApp.getFileById = id => {
+  if (id === ID_TERCA) return { setTrashed: () => { throw new Error('sin permiso'); } };
+  return trashOriginal(id);
+};
 capturar(); r = borrarFotosVencidas(true); txt = soltar();
-ok(r.borradas === 0 && r.sinBorrar === 1, 'una URL sin id de Drive no se cuenta como borrada');
+global.DriveApp.getFileById = trashOriginal;
+ok(r.borradas === 0 && r.sinBorrar === 1,
+   'un archivo que Drive no deja borrar no se cuenta como borrado');
 ok(String(HOJAS.Visitas[3][13]) === '' && String(HOJAS.Visitas[3][12]) !== '',
    'su fila queda SIN marcar y con la URL puesta, para que el próximo intento vuelva por ella');
 ok(/siguen en Drive/.test(txt), 'y lo dice en voz alta: ' + (/✗[^\n]*/.exec(txt) || [''])[0]);
@@ -719,16 +780,35 @@ ok(/Corregir los datos/.test(hablo().texto) && /tecl/i.test(hablo().texto),
 ok(_sheetRows('Visitas').length === 1 && /LECTURA DUDOSA/.test(_sheetRows('Visitas')[0].notas),
    'y la bitácora guarda que ese dato entró sin confirmar: ' + _sheetRows('Visitas')[0].notas);
 
-console.log('\n── LAS FOTOS DE DOCUMENTOS NO VIVEN CON LOS COMPROBANTES ──');
-// Un comprobante es de un propietario que sí firmó con la asociación. El documento de
-// un visitante es de un tercero que no firmó nada y que se borra a los 90 días.
+console.log('\n── UNA LECTURA BUENA NO DEJA LA IMAGEN EN NINGÚN LADO ──');
+// El cambio de fondo. La imagen se lee y se borra en el acto: lo que queda es el texto,
+// que el guardia confirma con la cédula física delante. Un competidor ataca por escrito
+// a quien guarda el documento de un tercero, y tenía razón.
 reiniciar();
 CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Joslyn Alonso Lopez Albelo',
            cedula: '8-743-456', confianza: 0.95 };
 foto();
-ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto', 'la foto se guarda');
+ok(_sheetRows('Visitas')[0].fotoUrl === '',
+   'la visita queda SIN foto: ' + JSON.stringify(_sheetRows('Visitas')[0].fotoUrl));
+ok(ARCHIVOS.length === 1 && DRIVE[ARCHIVOS[0].id] === false,
+   'y el archivo ya está en la papelera, sin esperar a ninguna purga');
+ok(_sheetRows('Visitas')[0].visitante === 'Joslyn Alonso Lopez Albelo' &&
+   _sheetRows('Visitas')[0].cedula === '8-743-456',
+   'el TEXTO sí queda, que es lo que da fe');
 ok(ACC_CARPETA_FOTOS !== '' && !/comprobante|voucher/i.test(ACC_CARPETA_FOTOS),
-   'en su propia carpeta, no en la de los comprobantes: ' + ACC_CARPETA_FOTOS);
+   'y lo poco que se guarda va en su propia carpeta, no en la de los comprobantes: ' + ACC_CARPETA_FOTOS);
+
+console.log('\n── UNA DUDOSA SÍ SE QUEDA, QUE ES PARA LO QUE SIRVE ──');
+reiniciar(); reiniciarWA();
+// Dos lectores que no coinciden en el número: el texto no es de fiar y la imagen es el
+// único respaldo para saber después qué decía de verdad el documento.
+CLAUDE = [{ esCedula: true, tipoDoc: 'cedula', visitante: 'Georgina Perla', cedula: '8-111-111', confianza: 0.4 },
+          { esCedula: true, tipoDoc: 'cedula', visitante: 'Georgina Perla', cedula: '8-222-222', confianza: 0.6 }];
+foto();
+ok(String(_sheetRows('Visitas')[0].fotoUrl || '') !== '',
+   'cuando la lectura es dudosa la foto se queda: es el único respaldo que hay');
+ok(ARCHIVOS.length === 1 && DRIVE[ARCHIVOS[0].id] === true,
+   'y sigue viva en Drive hasta que la purga la alcance');
 
 console.log('\n── UN FALLO AL LEER TIENE QUE DEJAR RASTRO ──');
 // El fallo de verdad en la garita no se pudo diagnosticar porque la lectura devolvía
@@ -766,10 +846,10 @@ PROPS = {}; reiniciarWA();
 CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Joslyn Alonso Lopez Albelo',
            cedula: '8-743-456', confianza: 0.95 };
 foto();
-ok(PROPS.ACC_ULTIMA_FOTO === 'FILE1',
+ok(String(PROPS.ACC_ULTIMA_FOTO || '') !== '',
    'la foto se apunta para poder reintentarla: la URL de WhatsApp caduca en minutos');
-ok(_sheetRows('Visitas')[0].fotoUrl === 'https://drive/foto',
-   'y se guarda antes de leerla, para que un fallo de lectura no se lleve también la imagen');
+ok(_sheetRows('Visitas')[0].fotoUrl === '',
+   'pero la lectura salió limpia, así que la imagen ya no está: sólo se apuntó por dónde estuvo');
 
 console.log('\n── CORREGIR UNA LECTURA MALA NO PUEDE DUPLICAR LA VISITA ──');
 // Decirle al guardia «tecléelo usted» sin esto era pedirle que rompiera la bitácora: su
