@@ -610,8 +610,10 @@ CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '' };
 anuncia('Luis Mendoza 8-123-456');
 ok(/COINCIDE EL NOMBRE, NO LA CÉDULA/.test(hablo().texto),
    'con permiso sólo por nombre, el sistema NO abre solo: ' + hablo().texto.split('\n')[0]);
-ok(hablo().botones && hablo().botones.length === 2,
-   'le deja la decisión al guardia, que tiene el documento en la mano');
+ok(hablo().botones && hablo().botones.length === 3 &&
+   hablo().botones.map(b => b.reply.title).some(x => /Corregir/.test(x)),
+   'le deja la decisión al guardia, que tiene el documento en la mano — y como el dato ' +
+   'lo tecleó él, puede corregirlo: ' + hablo().botones.map(b => b.reply.title).join(' | '));
 ok(_sheetRows('Visitas')[0].estado === 'pendiente',
    'y la visita NO se marca autorizada mientras él no conteste: ' + _sheetRows('Visitas')[0].estado);
 
@@ -1757,8 +1759,10 @@ _botGuardia('+50760000000', { nombre: 'Garita principal' },
   { type: 'interactive', interactive: { type: 'button_reply',
     button_reply: { id: ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id } } });
 ok(/NO S[ÉE] A QU[ÉE]/.test(hablo().texto), 'y el guardia lo sabe al confirmar');
-ok((hablo().botones || []).length === 2,
-   'con los botones de siempre para dejarlo anotado: nunca se queda sin salida');
+const botsSinDest = (hablo().botones || []).map(b => b.reply.title);
+ok(botsSinDest.length === 3 && botsSinDest.some(x => /Decir a qu[ée] casa/.test(x)),
+   'con el botón para decir el destino y los de siempre: nunca se queda sin salida → ' +
+   botsSinDest.join(' | '));
 
 console.log('\n── SE RESUELVE TAMBIÉN POR EL NOMBRE DE QUIEN VIVE AHÍ ──');
 // En un residencial de casas mucha gente no se sabe el número de lote.
@@ -1809,6 +1813,158 @@ _botGuardia('+50760000000', { nombre: 'Garita principal' },
 reiniciarWA();
 _botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'text', text: { body: 'pendientes' } });
 ok(/No hay nadie anunciado/.test(hablo().texto), 'y una vez confirmado, deja de estar pendiente');
+
+console.log('\n════════ LOS TRES ARREGLOS CHICOS ════════');
+
+console.log('\n── EL DESTINO SE ARREGLA SIN DUPLICAR LA VISITA ──');
+// Antes, cuando el anuncio venía sin destino, al guardia se le pedía que tecleara el
+// nombre y la cédula con el lote — y eso habría creado una visita NUEVA encima de la
+// que ya estaba. Es el mismo error de duplicar que ya costó caro una vez.
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+visEscribe(VIS, 'Voy de visita al lote: la casa del portón negro');
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza',
+           cedula: '8-123-456', confianza: 0.95 };
+mandaFoto(VIS);
+reiniciarWA();
+const tocaG = (id) => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id } } }); };
+const escribeG = (t) => { reiniciarWA(); return _botGuardia('+50760000000',
+  { nombre: 'Garita principal' }, { type: 'text', text: { body: t } }); };
+
+tocaG(ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id);
+ok(/NO S[ÉE] A QU[ÉE]/.test(hablo().texto), 'la visita nace sin destino y se dice');
+const bot0 = (hablo().botones || []).map(b => b.reply.title);
+ok(bot0.some(t => /Decir a qu[ée] casa/.test(t)),
+   'y se ofrece un BOTÓN, no un instructivo para teclear: ' + bot0.join(' | '));
+ok(!/mándeme el nombre y la cédula/i.test(hablo().texto),
+   'porque teclear nombre y cédula habría creado una visita nueva encima de ésta');
+
+const idVis = _sheetRows('Visitas')[0].id;
+tocaG(ACC_BOT_DEST + idVis);
+ok(/a qu[ée] lote va/i.test(hablo().texto) && /no se crea otra/.test(hablo().texto),
+   'el bot pide el destino, diciendo que arregla la de antes');
+escribeG('9');
+ok(_sheetRows('Visitas').length === 1,
+   'sigue habiendo UNA visita: ' + _sheetRows('Visitas').length);
+ok(_sheetRows('Visitas')[0].clave === 'Q-9', 'con su destino puesto');
+ok(PLANTILLAS.length === 1, 'y AHORA se le pregunta a la casa, que antes no se podía');
+
+console.log('\n  · un destino que no existe no se da por bueno');
+// Sin esto, la visita se quedaba con la unidad vacía y preguntarALaCasa no tenía a
+// quién preguntarle: el guardia creería que avisó y no avisó nadie.
+reiniciarWA();
+const clave0 = _sheetRows('Visitas')[0].clave;
+const plant0 = PLANTILLAS.length;
+tocaG(ACC_BOT_DEST + idVis);
+escribeG('lote 999');
+ok(/No encontr[ée] esa casa/.test(hablo().texto),
+   'se le vuelve a preguntar, en vez de anotar una unidad que no existe');
+ok(_sheetRows('Visitas')[0].clave === clave0 && PLANTILLAS.length === plant0,
+   'y no se toca la visita ni se avisa a nadie');
+_accEsperaDestino('+50760000000', null);
+
+console.log('\n  · y si esa casa tenía permiso, entra sin molestar a nadie');
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Pedro Jardinero', cedula: '8-700-100' });
+PADRON[0].lote = '9';
+visEscribe(VIS, 'Voy de visita al lote: no sé');
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Pedro Jardinero',
+           cedula: '8-700-100', confianza: 0.95 };
+mandaFoto(VIS);
+tocaG(ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id);
+tocaG(ACC_BOT_DEST + _sheetRows('Visitas')[0].id);
+escribeG('donde Ana');
+ok(/PUEDE PASAR/.test(hablo().texto), 'al poner el destino aparece el permiso: ' + hablo().texto.slice(0, 30));
+ok(PLANTILLAS.length === 0, 'y no se molestó a la casa');
+
+console.log('\n── QUIÉN AUTORIZÓ, CUANDO EL RESIDENTE LLAMA A LA GARITA ──');
+// El atajo más usado: el residente llama a la garita en vez de contestarle al bot. La
+// bitácora decía que lo decidió el guardia. No es falso, pero no es lo que pasó.
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '9' };
+escribeG('Luis Mendoza 8-123-456 va al lote 9');
+const vId = _sheetRows('Visitas')[0].id;
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'la visita queda esperando a la casa');
+
+tocaG(ACC_BOT_SI + vId);
+ok(/Lo autoriz[óo] alguien de la casa/i.test(hablo().texto),
+   'al dejarlo pasar sin que la casa contestara, se pregunta quién autorizó');
+ok((hablo().botones || []).some(b => /decisi[óo]n m[ií]a/i.test(b.reply.title)),
+   'con salida para el caso normal: si nadie llamó, un toque y listo');
+escribeG('Ana Rosa');
+ok(/llam[óo]/.test(_sheetRows('Visitas')[0].autorizadoPor) &&
+   /Ana Rosa/.test(_sheetRows('Visitas')[0].autorizadoPor),
+   'y la bitácora deja de decir que lo decidió el guardia: ' + _sheetRows('Visitas')[0].autorizadoPor);
+
+console.log('\n  · si fue decisión suya, no se le insiste');
+reiniciarWA(); CACHE = {};
+CLAUDE = { visitante: 'Marta Ruiz', cedula: '8-999-111', lote: '9' };
+escribeG('Marta Ruiz 8-999-111 va al lote 9');
+const vId2 = _sheetRows('Visitas')[1].id;
+tocaG(ACC_BOT_SI + vId2);
+tocaG(ACC_BOT_MIO + vId2);
+ok(/a su nombre/.test(hablo().texto), 'se cierra sin cambiar nada');
+ok(/Guardia/.test(_sheetRows('Visitas')[1].autorizadoPor),
+   'y queda a nombre del guardia, que es lo que pasó: ' + _sheetRows('Visitas')[1].autorizadoPor);
+
+console.log('\n  · y la pregunta no se traga al siguiente que llega');
+// El guardia tiene gente esperando. Con la pregunta abierta, lo siguiente que escriba
+// puede ser el anuncio del que acaba de llegar. Tragárselo como «quién autorizó» dejaba
+// a esa persona sin visita anotada y al guardia creyendo que sí. La pregunta es
+// opcional; el anuncio no.
+reiniciarWA(); CACHE = {};
+CLAUDE = { visitante: 'Carlos Ruiz', cedula: '8-321-654', lote: '9' };
+escribeG('Carlos Ruiz 8-321-654 va al lote 9');
+const antesN = _sheetRows('Visitas').length;
+tocaG(ACC_BOT_SI + _sheetRows('Visitas')[antesN - 1].id);
+CLAUDE = { visitante: 'María López', cedula: '8-555-222', lote: '9' };
+escribeG('María López 8-555-222 va al lote 9');
+ok(_sheetRows('Visitas').length === antesN + 1,
+   'el anuncio del siguiente SÍ crea su visita: ' + _sheetRows('Visitas').length);
+ok(_sheetRows('Visitas')[antesN].visitante === 'María López',
+   'y es la persona que llegó, no un nombre metido en la casilla de quién autorizó');
+
+console.log('\n  · y no se pregunta cuando la casa YA había contestado');
+reiniciarWA(); CACHE = {};
+CLAUDE = { visitante: 'Pedro Solís', cedula: '8-777-222', lote: '9' };
+escribeG('Pedro Solís 8-777-222 va al lote 9');
+const vId3 = _sheetRows('Visitas')[2].id;
+resolverVisitaPorResidente(vId3, 'autorizada', 'Ana Rosa');
+tocaG(ACC_BOT_SI + vId3);
+ok(!/alguien de la casa/i.test(hablo().texto),
+   'con el «Autorizo» del bot no hay nada que averiguar: ' + hablo().texto.slice(0, 40));
+
+console.log('\n── LO TECLEADO TAMBIÉN SE PUEDE CORREGIR ──');
+// Un nombre mal escrito se reconoce igual. Un dígito cambiado en la cédula no: en la
+// bitácora queda apuntando a una persona real que no estuvo ahí. Y lo tecleado de noche
+// no lo revisó ningún modelo.
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+CLAUDE = { visitante: 'Joce Peres', cedula: '8-123-457', lote: '9' };
+escribeG('Joce Peres 8-123-457 va al lote 9');
+const botT = (hablo().botones || []).map(b => b.reply.title);
+ok(botT.some(t => /Corregir/.test(t)),
+   'lo que tecleó el guardia se puede corregir: ' + botT.join(' | '));
+
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Joslyn Alonso Lopez Albelo',
+           cedula: '8-743-456', confianza: 0.95 };
+foto();
+const botF = (hablo().botones || []).map(b => b.reply.title);
+ok(!botF.some(t => /Corregir/.test(t)),
+   'pero una lectura limpia no: ofrecer corregir lo que está bien invita a tocarlo');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

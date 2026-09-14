@@ -1346,6 +1346,8 @@ function _accLeerCedulaFoto(blob, tipo) {
 var ACC_BOT_SI  = 'acc_si_';      // el guardia dejó pasar
 var ACC_BOT_NO  = 'acc_no_';      // el guardia no dejó pasar
 var ACC_BOT_FIX = 'acc_fix_';     // el guardia va a teclear los datos buenos
+var ACC_BOT_DEST = 'acc_dest_';   // el guardia va a decir a qué casa va
+var ACC_BOT_MIO  = 'acc_mio_';    // fue decisión del guardia, no le llamó nadie
 var ACC_BOT_SAL = 'acc_sal_';     // el guardia anota que alguien salió
 var ACC_BOT_MAS = 'acc_mas_';     // siguiente página de la lista de adentro
 var ACC_CORRIGE_MIN = 15;         // minutos que se espera a que teclee la corrección
@@ -1370,6 +1372,160 @@ function _accEsperaCorreccion(tel, visitaId) {
     if (visitaId) { c.put(k, String(visitaId), ACC_CORRIGE_MIN * 60); return String(visitaId); }
     return String(c.get(k) || '');
   } catch (e) { return ''; }
+}
+
+/**
+ * Lo mismo, pero esperando a QUÉ CASA va.
+ *
+ * Hace falta porque un anuncio puede llegar sin destino —el visitante dijo «la casa
+ * verde del portón»— o con el equivocado. Sin esto, la salida era pedirle al guardia
+ * que tecleara el nombre y la cédula con el lote, y eso habría creado una visita NUEVA
+ * en vez de arreglar la que ya estaba: el mismo error de duplicar que ya nos costó una
+ * vez con «teclee usted el nombre».
+ */
+function _accEsperaDestino(tel, visitaId) {
+  try {
+    var c = CacheService.getScriptCache();
+    var k = 'acc_destino_' + String(tel).replace(/\D/g, '');
+    if (visitaId === null) { c.remove(k); return ''; }
+    if (visitaId) { c.put(k, String(visitaId), ACC_CORRIGE_MIN * 60); return String(visitaId); }
+    return String(c.get(k) || '');
+  } catch (e) { return ''; }
+}
+
+/**
+ * Lo mismo, esperando el NOMBRE de quien autorizó por teléfono.
+ *
+ * El residente que llama a la garita en vez de contestarle al bot es el atajo más
+ * usado, y dejaba la bitácora diciendo que lo decidió el guardia. No es falso, pero no
+ * es lo que pasó — y a quien mire ese registro dentro de un año le importa la
+ * diferencia.
+ */
+function _accEsperaQuien(tel, visitaId) {
+  try {
+    var c = CacheService.getScriptCache();
+    var k = 'acc_quien_' + String(tel).replace(/\D/g, '');
+    if (visitaId === null) { c.remove(k); return ''; }
+    if (visitaId) { c.put(k, String(visitaId), ACC_CORRIGE_MIN * 60); return String(visitaId); }
+    return String(c.get(k) || '');
+  } catch (e) { return ''; }
+}
+
+/** Apunta que quien autorizó fue una persona de la casa, por teléfono. */
+function _accApuntarQuien(tel, garita, visitaId, texto) {
+  var nombre = String(texto || '').trim().slice(0, 60);
+  // Lo primero, y no es un detalle: el guardia tiene gente esperando. Mientras esta
+  // pregunta está abierta, lo siguiente que escriba puede ser perfectamente el anuncio
+  // del que acaba de llegar — «María López 8-555-222 va al lote 3». Tragárselo como
+  // nombre de quien autorizó dejaría a esa persona sin visita anotada y con el guardia
+  // creyendo que sí. La pregunta es opcional; el anuncio no.
+  var parece = (typeof _accLeerVisitaTexto === 'function') ? _accLeerVisitaTexto(nombre) : null;
+  if (parece && (String(parece.cedula || '').trim() || String(parece.lote || '').trim())) {
+    _accEsperaQuien(tel, null);
+    return { contesto: false, avisar: false };
+  }
+  _accEsperaQuien(tel, null);
+  if (!nombre) return { contesto: false, avisar: false };
+  var v = _accVisitaPorId(visitaId);
+  if (!v) {
+    enviarWhatsAppTexto(tel, 'Esa visita ya no está.');
+    return { contesto: true, avisar: true };
+  }
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][h.indexOf('id')]).trim() !== String(visitaId).trim()) continue;
+    sh.getRange(r + 1, h.indexOf('autorizadoPor') + 1)
+      .setValue(nombre + ' (llamó a la garita de ' + String(garita.nombre || '') + ')');
+    break;
+  }
+  _reg('visita.resuelve', { entidad: 'visita', clave: String(v.clave || ''),
+    propietario: String(v.visitante || ''),
+    detalle: 'Autorizó ' + nombre + ' por teléfono; lo anotó el guardia de ' +
+             String(garita.nombre || '') });
+  enviarWhatsAppTexto(tel, 'Anotado: lo autorizó ' + nombre + ', por teléfono.');
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * Le pone destino a una visita que no lo tenía, y ahí sí le pregunta a la casa.
+ *
+ * Es la MISMA visita: se le rellena la unidad y se sigue el camino de siempre. Si
+ * resulta que esa casa tenía permiso para esta persona, entra sin molestar a nadie.
+ */
+function _accPonerDestino(tel, garita, visitaId, texto) {
+  var clave = _accDestinoDe(texto);
+  if (!clave) {
+    enviarWhatsAppTexto(tel,
+      'No encontré esa casa. Mándeme el número de ' + _acUnidad() + ', o el nombre de ' +
+      'quien vive ahí.');
+    return { contesto: true, avisar: false };
+  }
+  var v = _accVisitaPorId(visitaId);
+  if (!v) {
+    _accEsperaDestino(tel, null);
+    enviarWhatsAppTexto(tel, 'Esa visita ya no está. Anótela de nuevo, por favor.');
+    return { contesto: true, avisar: true };
+  }
+  _accEsperaDestino(tel, null);
+
+  var sh = _accSheet(ACC_SH.VISITAS, ACC_COL_VISITAS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var lote = '';
+  try {
+    (getPropietarios() || []).forEach(function (p) { if (p.clave === clave) lote = String(p.lote || ''); });
+  } catch (e) {}
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][h.indexOf('id')]).trim() !== String(visitaId).trim()) continue;
+    sh.getRange(r + 1, h.indexOf('clave') + 1).setValue(clave);
+    sh.getRange(r + 1, h.indexOf('lote') + 1).setValue(lote);
+    break;
+  }
+  _reg('visita.edita', { entidad: 'visita', clave: clave,
+    propietario: String(v.visitante || ''),
+    detalle: 'El guardia de ' + String(garita.nombre || '') + ' dijo a qué ' + _acUnidad() +
+             ' va: ' + clave });
+
+  var datos = { visitante: v.visitante, cedula: v.cedula, lote: lote };
+  var hallado = autorizacionVigente(clave, datos, new Date());
+  var leido = String(v.visitante || 'Sin nombre') + (v.cedula ? '\n' + v.cedula : '');
+
+  if (hallado && hallado.firme) {
+    resolverVisita(visitaId, 'preautorizada', garita.nombre);
+    enviarWhatsAppTexto(tel,
+      '✅ PUEDE PASAR\n\n' + leido + '\n\nTiene permiso dejado por ' +
+      _accDeQuien(hallado.autorizacion.clave) + '.' + _accVigencia(hallado.autorizacion) +
+      _accCuentaAdentro());
+    return { contesto: true, avisar: false };
+  }
+
+  var botones = [_botBoton(ACC_BOT_SI + visitaId, 'Lo dejé pasar'),
+                 _botBoton(ACC_BOT_NO + visitaId, 'No lo dejé pasar')];
+  var pregunta = preguntarALaCasa(visitaId, clave, datos);
+  if (pregunta.ok) {
+    _waEnviarBotones(tel,
+      '📲 PREGUNTÁNDOLE A LA CASA\n\n' + leido + '\nVa a: ' + _accDeQuien(clave) +
+      '\n\nAvisé a ' + pregunta.avisados.join(', ') + '. Le digo en cuanto contesten.',
+      botones);
+    return { contesto: true, avisar: false };
+  }
+  _waEnviarBotones(tel,
+    '⛔ NO PUDE AVISAR\n\n' + leido + '\n\n' + (pregunta.error || '') +
+    ' Llame usted por el medio de siempre y déjelo anotado.', botones);
+  return { contesto: true, avisar: true };
+}
+
+/** Una visita por su id, o null. */
+function _accVisitaPorId(id) {
+  var buscado = String(id || '').trim();
+  if (!buscado) return null;
+  var todas = _sheetRows(ACC_SH.VISITAS);
+  for (var i = todas.length - 1; i >= 0; i--) {
+    if (String(todas[i].id || '').trim() === buscado) return todas[i];
+  }
+  return null;
 }
 
 /**
@@ -1436,7 +1592,16 @@ function _botGuardia(tel, garita, msg) {
       if (visitasAdentro(ACC_HORAS_ADENTRO).length) return _accListaAdentro(tel, 0, '');
       return { contesto: true, avisar: false };
     }
+    if (id.indexOf(ACC_BOT_DEST) === 0) {
+      _accEsperaCorreccion(tel, null);
+      _accEsperaDestino(tel, id.slice(ACC_BOT_DEST.length));
+      enviarWhatsAppTexto(tel,
+        'Dígame a qué ' + _acUnidad() + ' va: el número, o el nombre de quien vive ahí.' +
+        '\n\nArreglo la visita que acabo de anotar; no se crea otra.');
+      return { contesto: true, avisar: false };
+    }
     if (id.indexOf(ACC_BOT_FIX) === 0) {
+      _accEsperaDestino(tel, null);
       _accEsperaCorreccion(tel, id.slice(ACC_BOT_FIX.length));
       enviarWhatsAppTexto(tel,
         'Mándeme el nombre y el número tal como aparecen en el documento, por ejemplo:\n' +
@@ -1451,11 +1616,34 @@ function _botGuardia(tel, garita, msg) {
       _accEsperaCorreccion(tel, null);
       return _accGuardiaConfirma(tel, garita, id.slice(ACC_BOT_AQUI.length));
     }
+    // «Fue decisión mía»: cierra la pregunta de quién autorizó sin cambiar nada.
+    if (id.indexOf(ACC_BOT_MIO) === 0) {
+      _accEsperaQuien(tel, null);
+      enviarWhatsAppTexto(tel, 'Anotado a su nombre.');
+      return { contesto: true, avisar: false };
+    }
     if (id.indexOf(ACC_BOT_SI) === 0 || id.indexOf(ACC_BOT_NO) === 0) {
       var paso = id.indexOf(ACC_BOT_SI) === 0;
       var visitaId = id.slice(ACC_BOT_SI.length);
+      var antes = _accVisitaPorId(visitaId);
       resolverVisita(visitaId, paso ? 'autorizada' : 'rechazada', garita.nombre);
       _accEsperaCorreccion(tel, null);   // decidida: lo que escriba ya es otra cosa
+      _accEsperaDestino(tel, null);
+
+      // El hueco que este botón dejaba abierto: el residente llama a la garita en vez
+      // de contestarle al bot, el guardia lo deja pasar, y la bitácora dice que lo
+      // decidió el guardia. Es el atajo natural —y el más usado— así que conviene
+      // preguntarlo. Sólo cuando nadie de la casa había contestado ya: si el bot tiene
+      // su «Autorizo», no hay nada que averiguar.
+      var nadieContesto = paso && antes && String(antes.estado || '') === 'pendiente';
+      if (nadieContesto) {
+        _accEsperaQuien(tel, visitaId);
+        _waEnviarBotones(tel,
+          'Anotado: entró.\n\n¿Lo autorizó alguien de la casa? Si le llamaron, dígame ' +
+          'el nombre y lo pongo en la bitácora.',
+          [_botBoton(ACC_BOT_MIO + visitaId, 'Fue decisión mía')]);
+        return { contesto: true, avisar: false };
+      }
       enviarWhatsAppTexto(tel, paso
         ? 'Anotado: entró. Queda en la bitácora a su nombre.'
         : 'Anotado: no entró. Queda en la bitácora a su nombre.');
@@ -1482,6 +1670,23 @@ function _botGuardia(tel, garita, msg) {
         .test(String((msg.text && msg.text.body) || ''))) {
       _accEsperaCorreccion(tel, null);
       return _accListaPendientes(tel);
+    }
+  }
+
+  // 1a quáter) ¿Está diciendo quién autorizó por teléfono?
+  if (tipo === 'text') {
+    var esperaQuien = _accEsperaQuien(tel);
+    if (esperaQuien) {
+      var rq = _accApuntarQuien(tel, garita, esperaQuien, (msg.text && msg.text.body) || '');
+      if (rq.contesto) return rq;
+    }
+  }
+
+  // 1a ter) ¿Está diciendo a qué casa va una visita que quedó sin destino?
+  if (tipo === 'text') {
+    var esperaDest = _accEsperaDestino(tel);
+    if (esperaDest) {
+      return _accPonerDestino(tel, garita, esperaDest, (msg.text && msg.text.body) || '');
     }
   }
 
@@ -1603,11 +1808,21 @@ function _botGuardia(tel, garita, msg) {
     return { contesto: true, avisar: false };
   }
 
-  // Los botones. El de corregir sólo aparece cuando la lectura quedó en duda: si el dato
-  // es bueno, ofrecer «corregir» invita a tocar lo que ya está bien. WhatsApp admite tres.
+  // Los botones. El de corregir no sale con una lectura buena: ofrecerlo sobre un dato
+  // que está bien invita a tocarlo. Sí sale en los dos casos donde el dato no tiene
+  // ninguna garantía — la lectura que quedó en duda, y la que TECLEÓ el guardia.
+  //
+  // Lo tecleado lo merece tanto como lo dudoso, y por una razón concreta: un nombre mal
+  // escrito todavía se reconoce —«Joce Peres» sigue leyéndose como José Pérez—, pero un
+  // dígito cambiado en la cédula no se recupera. «8-123-457» no se parece a «8-123-456»
+  // para nadie. Operativamente es leve: el permiso no casa y se pregunta a la casa. En
+  // la bitácora es grave, porque queda apuntando a una persona real que no estuvo ahí.
+  // Y una cédula tecleada de noche no la revisó ningún modelo.
   var botones = [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
                  _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')];
-  if (datos.floja) botones.push(_botBoton(ACC_BOT_FIX + visita.id, 'Corregir los datos'));
+  if (datos.floja || !datos.deFoto) {
+    botones.push(_botBoton(ACC_BOT_FIX + visita.id, 'Corregir los datos'));
+  }
 
   if (hallado) {
     _waEnviarBotones(tel,
@@ -3252,12 +3467,14 @@ function _accGuardiaConfirma(tel, garita, anuncioId) {
                  _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')];
 
   if (!clave) {
+    // Un botón, no un instructivo. Antes aquí le pedía que tecleara nombre y cédula con
+    // el lote — y eso habría creado una visita NUEVA encima de ésta, que es justo el
+    // error de duplicar que ya nos costó una vez.
     _waEnviarBotones(tel,
       '⚠️ NO SÉ A QUÉ ' + String(_acUnidad()).toUpperCase() + ' VA\n\n' + leido +
-      '\n\nDijo «' + String(a.destino || '') + '» y no lo pude resolver. Pregúntele, y si ' +
-      'quiere que avise a la casa, mándeme el nombre y la cédula con ' + _acUnidad() +
-      ': «' + String(a.visitante || 'Nombre') + ' ' + String(a.cedula || '') + ' va ' +
-      _acEl() + ' ' + _acUnidad() + ' 14».', botones);
+      '\n\nDijo «' + String(a.destino || '') + '» y no lo pude resolver. Pregúntele y ' +
+      'dígamelo usted.',
+      [_botBoton(ACC_BOT_DEST + visita.id, 'Decir a qué casa va')].concat(botones.slice(0, 2)));
     return { contesto: true, avisar: true };
   }
 
