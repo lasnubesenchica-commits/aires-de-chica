@@ -134,14 +134,16 @@ global._acPlural = p => (/[aeiou]$/i.test(p) ? p + 's' : p + 'es');
 global.getPropietarios = () => PADRON.slice();
 
 // ── el WhatsApp de mentira: se guarda lo que se le habría mandado al guardia ──
-let ENVIADO, CLAUDE;
-const reiniciarWA = () => { ENVIADO = []; MODELOS = []; };
+let ENVIADO, CLAUDE, PLANTILLAS = [];
+const reiniciarWA = () => { ENVIADO = []; MODELOS = []; PLANTILLAS = []; };
 global.enviarWhatsAppTexto = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
 global._waEnviarBotones = (tel, texto, botones) => { ENVIADO.push({ tel, texto, botones }); return { ok: true }; };
 global._botBoton = (id, titulo) => ({ type: 'reply', reply: { id, title: titulo } });
 global._waBajarMedia = () => ({ ok: true, tipo: 'image/jpeg', blob: {
   getBytes: () => [1, 2, 3], getContentType: () => 'image/jpeg', setName() { return this; } } });
 global._acUn = () => 'un';
+global._acEl = () => 'el';
+global._acNingun = () => 'ningún';
 
 // Claude de mentira. CLAUDE es lo que se quiere que «devuelva» el modelo; poniéndolo a
 // null se prueba el camino sin clave de API, que es el que corre si Anthropic falla.
@@ -932,7 +934,6 @@ ok(_sheetRows('Visitas')[0].estado === 'autorizada',
  * Fase 4: preguntarle a la casa en vivo
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-let PLANTILLAS = [];
 global.enviarPlantillaWhatsApp = (tel, nombre, params, opts) => {
   PLANTILLAS.push({ tel, nombre, params, opts });
   return { ok: true, id: 'wamid.' + PLANTILLAS.length };
@@ -1277,6 +1278,8 @@ CONFIG.NEGOCIO = 'Aires de Chicá';
 CONFIG.DIRECCION = 'Entrando por la vía, después del puente, a mano derecha';
 CONFIG.MAPS_URL = 'https://maps.app.goo.gl/ejemplo';
 CONFIG.WAZE_URL = 'https://waze.com/ul/ejemplo';
+// Escrito como lo escribe una persona, con guion. wa.me no admite guiones.
+CONFIG.WA_NUMERO = '6981-2266';
 PADRON[0].lote = '9';
 toca('+50769812266', 'bot_acc_permiso');
 CLAUDE = { visitante: 'Juan Pérez', cedula: '8-123-456', lote: '' };
@@ -1295,6 +1298,13 @@ ok(/Presente su cédula en la garita/.test(reenv), 'y qué tiene que hacer al ll
 ok(/maps\.app\.goo\.gl/.test(reenv) && /waze\.com/.test(reenv),
    'con los dos enlaces: la gente usa uno u otro y no se convierten entre sí');
 ok(/después del puente/.test(reenv), 'y la dirección en palabras, que en Panamá hace más falta que el enlace');
+ok(/wa\.me\/50769812266\?text=/.test(reenv),
+   'y el enlace para que el visitante mande su cédula ÉL MISMO: así la imagen no pasa ' +
+   'por el teléfono del guardia → ' + (/https:\/\/wa[^\s]*/.exec(reenv) || [''])[0]);
+ok(!/wa\.me\/[^\s]*[-+ ]/.test(reenv),
+   'sin guiones ni signos: wa.me sólo entiende dígitos, y en la configuración está con guion');
+ok(/Voy%20de%20visita/.test(reenv),
+   'con el texto precargado, para que el primer mensaje traiga ya a qué casa va');
 
 ok(ENVIADO.every(e => e.tel === '+50769812266'),
    'TODO va al residente. Al visitante no se le escribe: no tenemos su número, no dio ' +
@@ -1627,6 +1637,178 @@ ok(_accModelo1() === 'claude-otro-modelo', 'sigue al que esté puesto en Comprob
 global.ANTHROPIC_MODEL = undefined;
 ok(_accModelo1() === 'claude-haiku-4-5', 'y sin él, cae en un respaldo que existe');
 global.ANTHROPIC_MODEL = _am;
+
+console.log('\n════════ EL VISITANTE SE ANUNCIA ÉL MISMO ════════');
+// El punto de todo esto: la imagen del documento no pasa por el teléfono del guardia.
+// Y las tres reglas que lo gobiernan — al visitante no se le cuenta nada de la
+// comunidad, anunciarse no autoriza, y a la casa se le pregunta sólo tras el toque del
+// guardia — son las que cuidan estas pruebas.
+reiniciar(); reiniciarWA(); CACHE = {}; PROPS = {};
+CONFIG.NEGOCIO = 'Aires de Chicá';
+CONFIG.WA_NUMERO = '6981-2266';
+PADRON[0].lote = '9'; PADRON[1].lote = '14';
+_accHojas();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+
+const VIS = '+50761234567';
+const visEscribe = (tel, t) => { reiniciarWA(); return _botVisitante(tel,
+  { type: 'text', text: { body: t } }); };
+const mandaFoto = (tel) => { reiniciarWA(); return _botVisitante(tel,
+  { type: 'image', image: { id: 'M1' } }); };
+const dice = (i) => (ENVIADO[i] || { texto: '', botones: null });
+
+console.log('\n── UN MENSAJE QUE NO ES UN ANUNCIO NO LO TOCA ──');
+ok(_botVisitante(VIS, { type: 'text', text: { body: 'hola buenas' } }) === null,
+   'devuelve null y el router sigue su curso: un desconocido cualquiera recibe lo de siempre');
+ok(_botVisitante(VIS, { type: 'image', image: { id: 'M1' } }) === null,
+   'y una foto suelta, sin conversación abierta, tampoco es suya');
+
+console.log('\n── PRIMER MENSAJE: EL DESTINO VIENE PRECARGADO ──');
+let rv = visEscribe(VIS, 'Voy de visita al lote: 9');
+ok(rv && rv.contesto === true, 'el bot sí le contesta, aunque no esté en el padrón');
+ok(/foto de su c[eé]dula/i.test(hablo().texto), 'y le pide la cédula: ' + hablo().texto.slice(0, 48));
+ok(/borra en el acto/.test(hablo().texto),
+   'diciéndole qué se hace con ella, que es lo mínimo que se le debe a un tercero');
+ok(_sheetRows('Anuncios').length === 0, 'todavía no hay anuncio: sólo dijo a dónde va');
+
+console.log('\n── LA FOTO: SE LEE, SE BORRA, Y LA FICHA VA A LA GARITA ──');
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza',
+           cedula: '8-123-456', confianza: 0.95 };
+mandaFoto(VIS);
+ok(ARCHIVOS.length === 1 && DRIVE[ARCHIVOS[0].id] === false,
+   'la imagen ya está en la papelera: es el motivo de existir de todo este flujo');
+const an = _sheetRows('Anuncios');
+ok(an.length === 1 && an[0].visitante === 'Luis Mendoza' && an[0].cedula === '8-123-456',
+   'el anuncio queda con el TEXTO, que es lo que sirve');
+ok(an[0].clave === 'Q-9', 'y con el destino resuelto a una unidad del padrón: ' + an[0].clave);
+ok(_sheetRows('Visitas').length === 0,
+   'pero NO hay visita: anunciarse no es haber estado en la garita');
+
+const alVisitante = ENVIADO.filter(e => e.tel === VIS);
+const aLaGarita = ENVIADO.filter(e => e.tel !== VIS);
+ok(alVisitante.length === 1 && /Qued[oó] anotado/i.test(alVisitante[0].texto),
+   'al visitante se le confirma');
+ok(!/Ana Rosa/.test(alVisitante[0].texto) && !/permiso/i.test(alVisitante[0].texto),
+   'y NADA de la comunidad: ni quién vive ahí, ni si hay permiso. Es un desconocido');
+ok(aLaGarita.length === 1 && /Luis Mendoza/.test(aLaGarita[0].texto),
+   'la ficha le llega a la garita, en el acto');
+ok(/8-123-456/.test(aLaGarita[0].texto) && /Ana Rosa/.test(aLaGarita[0].texto),
+   'con documento y a qué casa va, que es lo que el guardia va a comparar');
+ok((aLaGarita[0].botones || []).length === 1 &&
+   /Est[aá] aqu[ií]/.test(aLaGarita[0].botones[0].reply.title),
+   'y un solo botón: el que confirma que la persona está presente');
+ok(PLANTILLAS.length === 0,
+   'A LA CASA NO SE LE HA PREGUNTADO NADA: si bastara con escribirle al bot, cualquiera ' +
+   'haría sonar el teléfono de cualquier vecino escaneando el cartel');
+
+console.log('\n── EL TOQUE DEL GUARDIA ES LO QUE DISPARA TODO ──');
+reiniciarWA();
+const idAn = _sheetRows('Anuncios')[0].id;
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: ACC_BOT_AQUI + idAn } } });
+ok(_sheetRows('Visitas').length === 1, 'ahí sí nace la visita');
+ok(/documento él mismo/.test(_sheetRows('Visitas')[0].notas),
+   'y queda anotado cómo entró el dato: ' + _sheetRows('Visitas')[0].notas);
+ok(String(_sheetRows('Anuncios')[0].usado || '') !== '', 'el anuncio queda marcado como usado');
+ok(PLANTILLAS.length === 1 && /Luis Mendoza/.test((PLANTILLAS[0].params || []).join(' ')),
+   'AHORA sí se le pregunta a la casa, y con el nombre del visitante');
+
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: ACC_BOT_AQUI + idAn } } });
+ok(/ya lo confirm/i.test(hablo().texto) && _sheetRows('Visitas').length === 1,
+   'y tocarlo dos veces no anota dos visitas: ' + hablo().texto.slice(0, 40));
+
+console.log('\n── CON PERMISO VIGENTE NO SE MOLESTA A NADIE ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Pedro Jardinero', cedula: '8-700-100' });
+PADRON[0].lote = '9';
+visEscribe(VIS, 'Voy de visita al lote: 9');
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Pedro Jardinero',
+           cedula: '8-700-100', confianza: 0.95 };
+mandaFoto(VIS);
+ok(/Tiene permiso/.test(ENVIADO.filter(e => e.tel !== VIS)[0].texto),
+   'la ficha ya le dice al guardia que hay permiso, antes de que toque nada');
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply',
+    button_reply: { id: ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id } } });
+ok(/PUEDE PASAR/.test(hablo().texto), 'y al confirmar, pasa');
+ok(PLANTILLAS.length === 0,
+   'sin despertar a la dueña un domingo: el permiso se revisa ANTES de preguntar');
+
+console.log('\n── SI NO SE SABE A QUÉ CASA VA, LO RESUELVE EL GUARDIA ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+visEscribe(VIS, 'Voy de visita al lote: la casa verde del portón');
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza',
+           cedula: '8-123-456', confianza: 0.95 };
+mandaFoto(VIS);
+const fichaSin = ENVIADO.filter(e => e.tel !== VIS)[0].texto;
+ok(/no lo pude resolver/.test(fichaSin) && /casa verde/.test(fichaSin),
+   'la ficha llega igual, con lo que DIJO y avisando que no se resolvió: ' +
+   (/Va a:[^\n]*/.exec(fichaSin) || [''])[0]);
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply',
+    button_reply: { id: ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id } } });
+ok(/NO S[ÉE] A QU[ÉE]/.test(hablo().texto), 'y el guardia lo sabe al confirmar');
+ok((hablo().botones || []).length === 2,
+   'con los botones de siempre para dejarlo anotado: nunca se queda sin salida');
+
+console.log('\n── SE RESUELVE TAMBIÉN POR EL NOMBRE DE QUIEN VIVE AHÍ ──');
+// En un residencial de casas mucha gente no se sabe el número de lote.
+PADRON[0].lote = '9'; PADRON[1].lote = '14';
+ok(_accDestinoDe('donde Judith') === 'L-14',
+   '«donde Judith» llega a su unidad: ' + _accDestinoDe('donde Judith'));
+ok(_accDestinoDe('9') === 'Q-9', 'y el número también');
+ok(_accDestinoDe('donde el vecino') === '',
+   'pero sin un ganador claro no se adivina: avisarle a la casa equivocada es peor');
+
+console.log('\n── UNA BANDEJA ABIERTA SE ABUSA ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+for (let i = 0; i < ACC_MAX_ANUNCIOS; i++) {
+  visEscribe(VIS, 'Voy de visita al lote: 9');
+  CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Nombre ' + i,
+             cedula: '8-000-' + i, confianza: 0.95 };
+  mandaFoto(VIS);
+}
+reiniciarWA();
+visEscribe(VIS, 'Voy de visita al lote: 9');
+ok(/Pres[eé]ntese en la garita/i.test(hablo().texto),
+   'pasado el tope, el bot no se calla: lo manda a la garita, que es lo que hay que hacer');
+ok(_sheetRows('Anuncios').length === ACC_MAX_ANUNCIOS,
+   'y no se crea un anuncio más: ' + _sheetRows('Anuncios').length);
+
+console.log('\n── EL QUE NO VIO LA CONFIRMACIÓN Y MANDA OTRA VEZ ──');
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas(); guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+PADRON[0].lote = '9';
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza',
+           cedula: '8-123-456', confianza: 0.95 };
+visEscribe(VIS, 'Voy de visita al lote: 9'); mandaFoto(VIS);
+visEscribe(VIS, 'Voy de visita al lote: 9'); mandaFoto(VIS);
+ok(_sheetRows('Anuncios').length === 1,
+   'una sola ficha por cédula: dos es el guardia buscando cuál de las dos toca');
+
+console.log('\n── «PENDIENTES»: SIN ESO, EL GUARDIA VUELVE A FOTOGRAFIAR ──');
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'text', text: { body: 'pendientes' } });
+ok(/Luis Mendoza/.test(hablo().texto), 'le lista a quien está esperando');
+ok((hablo().botones || []).length === 1, 'con su botón, para no tener que buscar la ficha vieja');
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { type: 'button_reply',
+    button_reply: { id: ACC_BOT_AQUI + _sheetRows('Anuncios')[0].id } } });
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' }, { type: 'text', text: { body: 'pendientes' } });
+ok(/No hay nadie anunciado/.test(hablo().texto), 'y una vez confirmado, deja de estar pendiente');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);

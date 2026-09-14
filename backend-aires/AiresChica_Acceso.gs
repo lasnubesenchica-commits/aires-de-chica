@@ -46,7 +46,8 @@ var ACC_SH = {
   VISITAS:   'Visitas',
   AUTORIZ:   'Autorizaciones',
   GARITA:    'Garita',
-  CONTACTOS: 'Contactos'
+  CONTACTOS: 'Contactos',
+  ANUNCIOS:  'Anuncios'
 };
 
 var ACC_COL_VISITAS = ['id', 'fecha', 'clave', 'lote', 'visitante', 'cedula', 'motivo',
@@ -60,6 +61,18 @@ var ACC_COL_GARITA  = ['id', 'nombre', 'celular', 'turno', 'activo', 'notas', 'c
 
 var ACC_COL_CONTAC  = ['id', 'clave', 'nombre', 'celular', 'rol', 'autoriza', 'orden',
                        'activo', 'notas', 'creado'];
+
+/* Los anuncios viven APARTE de las visitas, y no es manía de orden.
+ *
+ * Una fila de Visitas significa «esta persona estuvo en la garita». Un anuncio es sólo
+ * alguien diciendo que va a venir: puede no aparecer nunca, y cualquiera que escanee el
+ * cartel puede crear uno. Meterlos en la misma hoja convertiría la bitácora —que es lo
+ * que la comunidad enseña cuando pasa algo— en una lista de intenciones.
+ *
+ * El anuncio se convierte en visita cuando el guardia confirma que la persona está ahí
+ * y que el documento calza. Hasta entonces no autoriza nada. */
+var ACC_COL_ANUNCIOS = ['id', 'creado', 'tel', 'destino', 'clave', 'visitante', 'cedula',
+                        'usado', 'visitaId'];
 
 var ACC_MAX_CONTACTOS = 5;      // cuántos pueden autorizar por unidad
 
@@ -116,7 +129,9 @@ function _accHojas() {
   _accSheet(ACC_SH.GARITA,    ACC_COL_GARITA);
   _accSheet(ACC_SH.AUTORIZ,   ACC_COL_AUTORIZ);
   _accSheet(ACC_SH.VISITAS,   ACC_COL_VISITAS);
-  return { ok: true, hojas: [ACC_SH.CONTACTOS, ACC_SH.GARITA, ACC_SH.AUTORIZ, ACC_SH.VISITAS] };
+  _accSheet(ACC_SH.ANUNCIOS,  ACC_COL_ANUNCIOS);
+  return { ok: true, hojas: [ACC_SH.CONTACTOS, ACC_SH.GARITA, ACC_SH.AUTORIZ,
+                             ACC_SH.VISITAS, ACC_SH.ANUNCIOS] };
 }
 
 function _accId(pre) {
@@ -470,8 +485,14 @@ function borrarFotosVencidas(confirmar) {
     sinBorrar.forEach(function (x) { console.log('    %s — %s', x.archivo, x.por); });
     console.log('  El próximo intento vuelve por ellas.');
   }
+  // De paso, los anuncios que nadie usó. Llevan el nombre y la cédula de un tercero que
+  // ni siquiera llegó a entrar: no hay ninguna razón para conservarlos.
+  var anuncios = _accBorrarAnunciosViejos();
+  if (anuncios) console.log('✓ %s anuncio(s) vencidos borrados.', anuncios);
+
   _reg('acceso.purga', { entidad: 'acceso', monto: n,
     detalle: 'Borradas ' + n + ' fotos de documento con más de ' + ACC_HORAS_FOTO + ' horas (Ley 81)' +
+             (anuncios ? '. ' + anuncios + ' anuncios vencidos.' : '') +
              (huerfanas ? '. ' + huerfanas + ' eran lecturas fallidas sin fila.' : '') +
              (sinBorrar.length ? ' ' + sinBorrar.length + ' no se pudieron borrar y siguen en Drive.' : '') });
   return { ok: true, borradas: n, huerfanas: huerfanas, sinBorrar: sinBorrar.length };
@@ -1422,6 +1443,14 @@ function _botGuardia(tel, garita, msg) {
         '«Georgina Martínez 1045031».\n\nCorrijo la visita que acabo de anotar; no se crea otra.');
       return { contesto: true, avisar: false };
     }
+    // El toque que convierte un anuncio en visita. Hace dos trabajos con un solo gesto:
+    // confirma que la persona está PRESENTE y que el documento que trae calza con lo que
+    // el bot leyó. Y es lo que autoriza preguntarle a la casa — sin esto, cualquiera que
+    // escanee el cartel podría hacer sonar el teléfono de un vecino a las once de la noche.
+    if (id.indexOf(ACC_BOT_AQUI) === 0) {
+      _accEsperaCorreccion(tel, null);
+      return _accGuardiaConfirma(tel, garita, id.slice(ACC_BOT_AQUI.length));
+    }
     if (id.indexOf(ACC_BOT_SI) === 0 || id.indexOf(ACC_BOT_NO) === 0) {
       var paso = id.indexOf(ACC_BOT_SI) === 0;
       var visitaId = id.slice(ACC_BOT_SI.length);
@@ -1445,6 +1474,14 @@ function _botGuardia(tel, garita, msg) {
     if (mAd) {
       _accEsperaCorreccion(tel, null);
       return _accListaAdentro(tel, 0, mAd[1]);
+    }
+    // Y quién se anunció y todavía no aparece. Hace falta porque WhatsApp es un chat
+    // lineal: una ficha de hace tres horas queda enterrada bajo otros mensajes, y el
+    // guardia que no la encuentra vuelve a fotografiar — y ahí se pierde todo.
+    if (/^\s*(?:pendientes?|anunciados?|esperando)\b[\s?¿]*$/i
+        .test(String((msg.text && msg.text.body) || ''))) {
+      _accEsperaCorreccion(tel, null);
+      return _accListaPendientes(tel);
     }
   }
 
@@ -2480,6 +2517,14 @@ function _accMensajeParaVisitante(nombre, clave, hasta) {
           'Válido hasta el ' + _fechaCorta(hasta) + '\n\n' +
           'Presente su cédula en la garita.';
 
+  // El atajo. Si el visitante manda su documento él mismo antes de llegar, el guardia
+  // no tiene que fotografiárselo — y la imagen no pasa por el teléfono de nadie más.
+  var enlace = _accEnlaceBot();
+  if (enlace) {
+    t += '\n\nPara no esperar en la garita, mándele antes una foto de su cédula a este ' +
+         'número:\n' + enlace;
+  }
+
   var dir  = (typeof CONFIG !== 'undefined' && CONFIG.DIRECCION) || '';
   var maps = (typeof CONFIG !== 'undefined' && CONFIG.MAPS_URL) || '';
   var waze = (typeof CONFIG !== 'undefined' && CONFIG.WAZE_URL) || '';
@@ -2490,6 +2535,38 @@ function _accMensajeParaVisitante(nombre, clave, hasta) {
     if (waze) t += '\nWaze: ' + waze;
   }
   return t;
+}
+
+/* ─────────────── el visitante se anuncia solo ───────────────
+ *
+ * El texto que va precargado en el enlace. Es lo que hace que el primer mensaje del
+ * visitante traiga YA el destino: toca el enlace, completa el hueco y envía. Sin esto
+ * haría falta un ida y vuelta sólo para preguntarle a qué casa va.
+ *
+ * Y es además lo que ENRUTA: un mensaje que empieza así se atiende como anuncio de
+ * visita aunque venga de un número del padrón. Manda el contenido, no el papel de quien
+ * escribe — si no, un propietario que escanea el cartel recibiría su menú de saldos.
+ */
+var ACC_PREFIJO_ANUNCIO = 'Voy de visita';
+
+/** El `wa.me` del bot, o vacío si la comunidad no configuró su número. */
+function _accEnlaceBot() {
+  var crudo = (typeof CONFIG !== 'undefined' && CONFIG.WA_NUMERO) || '';
+  // wa.me sólo acepta dígitos con código de país: ni +, ni guiones, ni espacios. En la
+  // configuración el número está escrito como lo escribe una persona («6000-0000»), así
+  // que se normaliza con lo mismo que usa el resto del módulo.
+  var e164 = _accTel(crudo);
+  var digitos = String(e164 || '').replace(/\D/g, '');
+  if (digitos.length < 8) return '';
+  var texto = encodeURIComponent(ACC_PREFIJO_ANUNCIO + ' al ' + _acUnidad() + ': ');
+  return 'https://wa.me/' + digitos + '?text=' + texto;
+}
+
+/** ¿Este texto es alguien anunciándose como visita? */
+function _accEsAnuncio(texto) {
+  var t = String(texto || '').trim().toLowerCase();
+  if (!t) return false;
+  return t.indexOf(ACC_PREFIJO_ANUNCIO.toLowerCase()) === 0;
 }
 
 /** Quitar: se enseña la lista y se quita de un toque. */
@@ -2868,4 +2945,394 @@ function _accBuscarVisita(id) {
   });
   if (!hallada) throw new Error('No se encontró la visita ' + id + '.');
   return hallada;
+}
+
+/* ═══════════════ el visitante se anuncia él mismo ═══════════════
+ *
+ * Toca el enlace del mensaje que le reenvió el residente —o escanea el cartel de la
+ * caseta— y le manda su cédula al bot. Así la imagen del documento no pasa por el
+ * teléfono del guardia, que es donde ninguna purga llega.
+ *
+ * Tres reglas que gobiernan todo lo de aquí abajo:
+ *
+ *   1. Al visitante NO se le dice nada de la comunidad. Ni si el lote existe, ni quién
+ *      vive ahí, ni si hay permiso. Sólo «quedó anotado, preséntese en la garita». Él
+ *      es un desconocido y su mensaje es entrada que no controlamos.
+ *
+ *   2. Anunciarse no autoriza. El anuncio es un borrador que vive aparte de las
+ *      visitas. Se convierte en visita cuando el GUARDIA confirma que la persona está
+ *      ahí y que el documento calza.
+ *
+ *   3. La casa se pregunta DESPUÉS de ese toque del guardia. Si el bot escribiera a la
+ *      casa con sólo recibir un mensaje, cualquiera podría hacer sonar el teléfono de
+ *      cualquier vecino escaneando el cartel y poniendo un número de lote.
+ */
+
+var ACC_HORAS_ANUNCIO   = 24;    // lo que vive un anuncio sin usarse
+var ACC_MAX_ANUNCIOS    = 4;     // por número y por día: una bandeja abierta se abusa
+var ACC_MIN_CHARLA_VIS  = 20;    // la conversación con el visitante, en minutos
+var ACC_BOT_AQUI = 'acc_aqui_';  // el guardia: «está aquí y coincide»
+
+/** La conversación en curso con un visitante. Vive poco: es de un rato, no del día. */
+function _accCharlaVis(tel, obj) {
+  var k = 'acc_vis_' + String(tel).replace(/\D/g, '');
+  try {
+    var c = CacheService.getScriptCache();
+    if (obj === null) { c.remove(k); return null; }
+    if (obj) { c.put(k, JSON.stringify(obj), ACC_MIN_CHARLA_VIS * 60); return obj; }
+    var v = c.get(k);
+    return v ? JSON.parse(v) : null;
+  } catch (e) { return null; }
+}
+
+/** A qué unidad va. Acepta el número o el nombre de quien vive ahí. */
+function _accDestinoDe(texto) {
+  var t = String(texto || '').trim();
+  if (!t) return '';
+  var directo = _accClavePorLote(t);
+  if (directo) return directo;
+  // «voy donde Ana», «la casa de Judith». En un residencial de casas mucha gente no se
+  // sabe el número, y mandarlos de vuelta a preguntarlo es mandarlos a la garita.
+  var palabras = t.toUpperCase().replace(/[^A-ZÑÁÉÍÓÚ ]/g, ' ').split(/\s+/)
+    .filter(function (w) { return w.length > 2; });
+  if (!palabras.length) return '';
+  var hallados = [];
+  try {
+    (getPropietarios() || []).forEach(function (p) {
+      var nom = String(p.nombre || '').toUpperCase();
+      var pega = palabras.filter(function (w) { return nom.indexOf(w) >= 0; }).length;
+      if (pega) hallados.push({ clave: p.clave, pega: pega });
+    });
+  } catch (e) {}
+  hallados.sort(function (a, b) { return b.pega - a.pega; });
+  // Sólo si hay un ganador claro. Con dos empatados, mejor que lo resuelva el guardia
+  // preguntándole que adivinar y avisarle a la casa equivocada.
+  if (hallados.length === 1) return hallados[0].clave;
+  if (hallados.length > 1 && hallados[0].pega > hallados[1].pega) return hallados[0].clave;
+  return '';
+}
+
+/** Cuántas veces se ha anunciado hoy este número. */
+function _accAnunciosHoy(tel) {
+  var buscado = _accTel(tel);
+  var desde = new Date(new Date().getTime() - 24 * 3600 * 1000);
+  var n = 0;
+  _sheetRows(ACC_SH.ANUNCIOS).forEach(function (a) {
+    if (_accTel(a.tel) !== buscado) return;
+    var f = (a.creado instanceof Date) ? a.creado : new Date(a.creado);
+    if (!isNaN(f.getTime()) && f.getTime() >= desde.getTime()) n++;
+  });
+  return n;
+}
+
+/** Guarda el anuncio y devuelve su fila. Si ya había uno de esa cédula, lo reemplaza. */
+function _accAnuncioGuardar(d) {
+  var sh = _accSheet(ACC_SH.ANUNCIOS, ACC_COL_ANUNCIOS);
+  // Quien no vio la confirmación manda la foto otra vez. Dos fichas para una persona
+  // es el guardia buscando cuál de las dos toca.
+  var ced = String(d.cedula || '').trim();
+  if (ced) {
+    var vals = sh.getDataRange().getValues();
+    var h = vals[0].map(function (x) { return String(x).trim(); });
+    var iCed = h.indexOf('cedula'), iUsado = h.indexOf('usado');
+    for (var r = vals.length - 1; r >= 1; r--) {
+      if (String(vals[r][iCed] || '').trim() !== ced) continue;
+      if (String(vals[r][iUsado] || '').trim()) continue;
+      sh.deleteRow(r + 1);
+    }
+  }
+  var id = _accId('AN');
+  sh.appendRow([id, new Date(), _accTel(d.tel), String(d.destino || ''),
+                String(d.clave || ''), String(d.visitante || ''), ced, '', '']);
+  return id;
+}
+
+function _accAnuncioPorId(id) {
+  var buscado = String(id || '').trim();
+  if (!buscado) return null;
+  var todos = _sheetRows(ACC_SH.ANUNCIOS);
+  for (var i = todos.length - 1; i >= 0; i--) {
+    if (String(todos[i].id || '').trim() === buscado) return todos[i];
+  }
+  return null;
+}
+
+/** Marca el anuncio como usado y lo amarra a la visita que nació de él. */
+function _accAnuncioUsar(id, visitaId) {
+  var sh = _accSheet(ACC_SH.ANUNCIOS, ACC_COL_ANUNCIOS);
+  var vals = sh.getDataRange().getValues();
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iId = h.indexOf('id'), iUsado = h.indexOf('usado'), iVis = h.indexOf('visitaId');
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][iId] || '').trim() !== String(id).trim()) continue;
+    sh.getRange(r + 1, iUsado + 1).setValue(new Date());
+    sh.getRange(r + 1, iVis + 1).setValue(String(visitaId || ''));
+    return true;
+  }
+  return false;
+}
+
+/** Los anuncios que todavía esperan a que alguien aparezca en la garita. */
+function _accAnunciosPendientes() {
+  var desde = new Date(new Date().getTime() - ACC_HORAS_ANUNCIO * 3600 * 1000);
+  return _sheetRows(ACC_SH.ANUNCIOS).filter(function (a) {
+    if (String(a.usado || '').trim()) return false;
+    var f = (a.creado instanceof Date) ? a.creado : new Date(a.creado);
+    return !isNaN(f.getTime()) && f.getTime() >= desde.getTime();
+  });
+}
+
+/** Cómo se lee una ficha, en la garita y en la lista de pendientes. */
+function _accFichaTexto(a) {
+  var t = String(a.visitante || 'Sin nombre');
+  if (a.cedula) t += '\n' + a.cedula;
+  // Cuando no se pudo resolver se enseña LO QUE DIJO, no un hueco: «la casa verde del
+  // portón» le sirve al guardia aunque al padrón no le sirva.
+  var dicho = String(a.destino || '').trim();
+  var destino = a.clave ? _accDeQuien(a.clave)
+              : (dicho ? '⚠️ dijo «' + dicho + '» — no lo pude resolver, pregúntele'
+                       : '⚠️ no lo dijo — pregúntele');
+  t += '\nVa a: ' + destino;
+  return t;
+}
+
+/**
+ * La ficha, a todas las garitas activas, en cuanto el anuncio queda leído.
+ *
+ * Va ANTES de preguntarle a la casa a propósito. Identificar termina en segundos;
+ * autorizar tarda lo que la casa tarde. Si la ficha esperara a la aprobación, el
+ * guardia estaría diez minutos con una persona enfrente sin saber quién es.
+ */
+function _accFichaAGarita(anuncioId, a) {
+  var garitas = getGarita().filter(function (g) { return g.activo && g.celular; });
+  if (!garitas.length) {
+    _accApunte('anuncio sin garita a quien mandárselo — ' + anuncioId);
+    return { ok: false, avisadas: 0 };
+  }
+  var permiso = a.clave ? autorizacionVigente(a.clave, { cedula: a.cedula, visitante: a.visitante }, new Date()) : null;
+  var pie = (permiso && permiso.firme)
+    ? '\n\n✅ Tiene permiso de ' + _accDeQuien(permiso.autorizacion.clave) + '.'
+    : '\n\nSin permiso dejado. Al confirmar se le pregunta a la casa.';
+  var n = 0;
+  garitas.forEach(function (g) {
+    var r = _waEnviarBotones(g.celular,
+      '🪪 SE ANUNCIÓ UN VISITANTE\n\n' + _accFichaTexto(a) + pie +
+      '\n\n_Compare con el documento que le presenten._',
+      [_botBoton(ACC_BOT_AQUI + anuncioId, 'Está aquí y coincide')]);
+    if (r && r.ok !== false) n++;
+  });
+  return { ok: !!n, avisadas: n };
+}
+
+/**
+ * Lo que el bot le contesta a un número que no es nadie del sistema.
+ *
+ * Devuelve null si el mensaje no es un anuncio de visita: así el router sigue su curso
+ * y un desconocido cualquiera recibe lo de siempre. Lo que enruta es el TEXTO, no el
+ * papel de quien escribe — un propietario que escanea el cartel viene a anunciar una
+ * visita, no a consultar su saldo.
+ */
+function _botVisitante(tel, msg) {
+  var tipo = String(msg.type || '');
+  var texto = (msg.text && msg.text.body) || '';
+  var charla = _accCharlaVis(tel);
+
+  if (!charla && !_accEsAnuncio(texto)) return null;
+
+  // Primer mensaje: trae el destino en el texto precargado.
+  if (!charla) {
+    if (_accAnunciosHoy(tel) >= ACC_MAX_ANUNCIOS) {
+      // Falla hacia el guardia, nunca hacia el silencio: quien está en la puerta tiene
+      // que saber qué hacer, y lo que hay que hacer siempre es ir a la garita.
+      enviarWhatsAppTexto(tel, 'Preséntese en la garita con su cédula, por favor.');
+      return { contesto: true, avisar: true };
+    }
+    var tras = texto.indexOf(':');
+    var dicho = tras >= 0 ? texto.slice(tras + 1).trim() : '';
+    _accCharlaVis(tel, { destino: dicho });
+    enviarWhatsAppTexto(tel,
+      'Gracias. Ahora mándeme una foto de su cédula, por favor.\n\n' +
+      '_Se lee para anotar su nombre y su número, y se borra en el acto._');
+    return { contesto: true, avisar: false };
+  }
+
+  // Segundo: la foto.
+  if (tipo !== 'image') {
+    // Puede venir el destino suelto, si el precargado se borró al escribir.
+    if (tipo === 'text' && !String(charla.destino || '').trim()) {
+      charla.destino = texto.trim();
+      _accCharlaVis(tel, charla);
+    }
+    enviarWhatsAppTexto(tel, 'Mándeme una foto de su cédula, por favor.');
+    return { contesto: true, avisar: false };
+  }
+
+  var media = _waBajarMedia((msg.image || {}).id);
+  if (!media.ok) {
+    _accApunte('no se pudo bajar la foto del visitante — ' + (media.error || ''));
+    enviarWhatsAppTexto(tel, 'No me llegó la foto. Preséntese en la garita con su cédula.');
+    _accCharlaVis(tel, null);
+    return { contesto: true, avisar: true };
+  }
+
+  var fotoUrl = _accGuardarFoto(media.blob);
+  var datos = _accLeerCedulaFoto(media.blob, media.tipo);
+  if (fotoUrl && !_accFotoSeQueda(datos)) { _accBorrarFoto(fotoUrl); fotoUrl = ''; }
+
+  if (!datos || (!String(datos.visitante || '').trim() && !String(datos.cedula || '').trim())) {
+    enviarWhatsAppTexto(tel,
+      'No pude leerla. No se preocupe: preséntese en la garita con su cédula y el ' +
+      'guardia lo anota.');
+    _accCharlaVis(tel, null);
+    return { contesto: true, avisar: true };
+  }
+
+  var clave = _accDestinoDe(charla.destino);
+  var id = _accAnuncioGuardar({ tel: tel, destino: charla.destino, clave: clave,
+                                visitante: datos.visitante, cedula: datos.cedula });
+  var fila = _accAnuncioPorId(id);
+  _accFichaAGarita(id, fila || { visitante: datos.visitante, cedula: datos.cedula,
+                                 clave: clave, destino: charla.destino });
+  _accCharlaVis(tel, null);
+
+  // Lo único que se le dice. Ni el nombre de a quién visita, ni si el lote existe, ni si
+  // hay permiso: es un desconocido y todo eso es de la comunidad, no suyo.
+  enviarWhatsAppTexto(tel,
+    'Listo' + (datos.visitante ? ', ' + String(datos.visitante).split(' ')[0] : '') +
+    '. Quedó anotado.\n\nPreséntese en la garita con su cédula.');
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * El guardia confirma: la persona está aquí y el documento coincide.
+ *
+ * Aquí es donde el anuncio deja de ser un borrador y nace la visita, con el mismo
+ * recorrido de siempre: si hay permiso vigente pasa, y si no, se le pregunta a la casa.
+ * Nada de esto ocurre antes de este toque, y ésa es la protección: el guardia es la
+ * barrera física que impide que un desconocido haga sonar el teléfono de un vecino.
+ */
+function _accGuardiaConfirma(tel, garita, anuncioId) {
+  var a = _accAnuncioPorId(anuncioId);
+  if (!a) {
+    enviarWhatsAppTexto(tel,
+      'Ese anuncio ya no está. Anote la visita como siempre: mándeme el nombre y la ' +
+      'cédula escritos.');
+    return { contesto: true, avisar: true };
+  }
+  if (String(a.usado || '').trim()) {
+    enviarWhatsAppTexto(tel, 'Ese anuncio ya lo confirmó. No anoté nada dos veces.');
+    return { contesto: true, avisar: false };
+  }
+
+  var datos = { visitante: a.visitante, cedula: a.cedula, lote: a.destino };
+  var clave = String(a.clave || '');
+  var hallado = clave ? autorizacionVigente(clave, datos, new Date()) : null;
+  var deQuien = hallado ? _accDeQuien(hallado.autorizacion.clave) : '';
+
+  var visita = registrarVisita({
+    clave: hallado ? hallado.autorizacion.clave : clave,
+    lote: a.destino, visitante: a.visitante, cedula: a.cedula,
+    guardia: garita.nombre,
+    estado: (hallado && hallado.firme) ? 'preautorizada' : 'pendiente',
+    autorizadoPor: (hallado && hallado.firme) ? ('Permiso de ' + deQuien) : '',
+    notas: 'El visitante mandó su documento él mismo; el guardia confirmó que coincide.'
+  });
+  _accAnuncioUsar(anuncioId, visita.id);
+
+  var leido = String(a.visitante || 'Sin nombre') + (a.cedula ? '\n' + a.cedula : '');
+
+  if (hallado && hallado.firme) {
+    enviarWhatsAppTexto(tel,
+      '✅ PUEDE PASAR\n\n' + leido + '\n\nTiene permiso dejado por ' + deQuien + '.' +
+      _accVigencia(hallado.autorizacion) + _accCuentaAdentro());
+    return { contesto: true, avisar: false };
+  }
+
+  var botones = [_botBoton(ACC_BOT_SI + visita.id, 'Lo dejé pasar'),
+                 _botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')];
+
+  if (!clave) {
+    _waEnviarBotones(tel,
+      '⚠️ NO SÉ A QUÉ ' + String(_acUnidad()).toUpperCase() + ' VA\n\n' + leido +
+      '\n\nDijo «' + String(a.destino || '') + '» y no lo pude resolver. Pregúntele, y si ' +
+      'quiere que avise a la casa, mándeme el nombre y la cédula con ' + _acUnidad() +
+      ': «' + String(a.visitante || 'Nombre') + ' ' + String(a.cedula || '') + ' va ' +
+      _acEl() + ' ' + _acUnidad() + ' 14».', botones);
+    return { contesto: true, avisar: true };
+  }
+
+  var pregunta = preguntarALaCasa(visita.id, clave, datos);
+  if (pregunta.ok) {
+    _waEnviarBotones(tel,
+      '📲 PREGUNTÁNDOLE A LA CASA\n\n' + leido + '\n\nAvisé a ' + pregunta.avisados.join(', ') +
+      '. Le digo en cuanto contesten.\nSi en ' + ACC_MINUTOS_RESPUESTA +
+      ' minutos nadie responde, no pasa.' +
+      (pregunta.deRespaldo ? '\n\n_Se avisó al número del padrón: este ' + _acUnidad() +
+        ' no tiene contactos de acceso cargados._' : ''), botones);
+    return { contesto: true, avisar: false };
+  }
+  _waEnviarBotones(tel,
+    '⛔ SIN PERMISO, Y NO PUDE AVISAR\n\n' + leido + '\n\n' + (pregunta.error || '') +
+    ' Llame usted por el medio de siempre y déjelo anotado.', botones);
+  return { contesto: true, avisar: true };
+}
+
+/** Los anuncios que esperan a que alguien aparezca. El guardia escribe «pendientes». */
+function _accListaPendientes(tel) {
+  var ps = _accAnunciosPendientes();
+  if (!ps.length) {
+    enviarWhatsAppTexto(tel, 'No hay nadie anunciado esperando.');
+    return { contesto: true, avisar: false };
+  }
+  // WhatsApp admite tres botones por mensaje, así que las fichas van de a una. Con más
+  // de tres esperando se manda un resumen y que toque la que corresponda en su ficha.
+  if (ps.length > 3) {
+    enviarWhatsAppTexto(tel,
+      'Hay ' + ps.length + ' anunciados esperando:\n\n' +
+      ps.map(function (a, i) {
+        return (i + 1) + '. ' + String(a.visitante || 'Sin nombre') +
+               (a.cedula ? ' · ' + a.cedula : '');
+      }).join('\n') +
+      '\n\nCada uno tiene su ficha más arriba en este chat, con su botón.');
+    return { contesto: true, avisar: false };
+  }
+  ps.forEach(function (a) {
+    _waEnviarBotones(tel, '🪪 ESPERANDO\n\n' + _accFichaTexto(a),
+      [_botBoton(ACC_BOT_AQUI + a.id, 'Está aquí y coincide')]);
+  });
+  return { contesto: true, avisar: false };
+}
+
+/**
+ * Los anuncios vencidos se van con la purga diaria.
+ *
+ * Un anuncio lleva el nombre y la cédula de alguien que dijo que iba a venir. Si nunca
+ * apareció, o ya se convirtió en visita, no hay razón para conservarlo: la visita tiene
+ * su propia fila y el que no llegó no tiene por qué quedar en ningún lado.
+ */
+function _accBorrarAnunciosViejos() {
+  var corte = new Date(new Date().getTime() - ACC_HORAS_ANUNCIO * 3600 * 1000);
+  var sh;
+  try { sh = _accSheet(ACC_SH.ANUNCIOS, ACC_COL_ANUNCIOS); } catch (e) { return 0; }
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return 0;
+  var h = vals[0].map(function (x) { return String(x).trim(); });
+  var iCreado = h.indexOf('creado'), iUsado = h.indexOf('usado');
+  var n = 0;
+  // De abajo hacia arriba: borrar filas mueve las de debajo.
+  for (var r = vals.length - 1; r >= 1; r--) {
+    var f = vals[r][iCreado];
+    var d = (f instanceof Date) ? f : new Date(f);
+    var usado = String(vals[r][iUsado] || '').trim();
+    if (!usado && !(isNaN(d.getTime()) || d.getTime() <= corte.getTime())) continue;
+    if (usado) {
+      // Uno usado se borra en cuanto su visita tiene edad: la fila de la visita ya
+      // guarda lo que hay que guardar.
+      var du = (usado instanceof Date) ? usado : new Date(usado);
+      if (!isNaN(du.getTime()) && du.getTime() > corte.getTime()) continue;
+    }
+    sh.deleteRow(r + 1);
+    n++;
+  }
+  return n;
 }

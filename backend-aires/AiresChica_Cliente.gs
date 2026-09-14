@@ -59,6 +59,11 @@ var AC_CLAVES_CLIENTE = [
   { k: 'DIRECCION',          req: false, desc: 'Dirección en palabras, para quien pregunta cómo llegar' },
   { k: 'MAPS_URL',           req: false, desc: 'Enlace de Google Maps a la entrada de la comunidad' },
   { k: 'WAZE_URL',           req: false, desc: 'Enlace de Waze a la entrada de la comunidad' },
+  // El número que la gente MARCA, no el phone_number_id de Meta. Con él se arma el
+  // enlace wa.me que el visitante toca para mandar su documento él mismo, en vez de que
+  // el guardia se lo fotografíe. Va en el panel porque un dedazo aquí sólo rompe un
+  // enlace y se nota a la primera.
+  { k: 'WA_NUMERO',          req: false, desc: 'Número de WhatsApp del bot, el que la gente marca' },
   { k: 'MODULOS',            req: false, desc: 'Módulos contratados, separados por coma; vacío = todos' }
 ];
 
@@ -93,7 +98,7 @@ function _acClaveProp(k) { return AC_PREFIJO + k; }
  */
 var AC_EDITABLES_PANEL = [
   'NEGOCIO', 'RAZON_SOCIAL', 'UNIDAD',
-  'DIRECCION', 'MAPS_URL', 'WAZE_URL',
+  'DIRECCION', 'MAPS_URL', 'WAZE_URL', 'WA_NUMERO',
   'LOGO_URL', 'LOGO_PNG_URL',
   'ADMIN_EMAIL', 'REPLY_TO', 'COMPROBANTES_EMAIL'
 ];

@@ -372,6 +372,19 @@ function _botAtender(info, msg) {
       var r = _botRespuestaDeAcceso(tel, msg);
       if (r) return r;
     }
+    // El visitante que se anuncia él mismo. Va AQUÍ, en el bloque de lo que tiene a
+    // alguien esperando en la entrada, por el mismo motivo que lo demás: más abajo, un
+    // número fuera del padrón se silencia seis horas — y ese silencio se tragaría la
+    // foto de su cédula con él parado frente a la garita.
+    //
+    // Devuelve null cuando el mensaje no es un anuncio, así que un desconocido
+    // cualquiera sigue recibiendo lo de siempre. Y lo que enruta es el TEXTO precargado
+    // del enlace, no el papel de quien escribe: un propietario que escanea el cartel de
+    // la caseta viene a anunciar una visita, no a consultar su saldo.
+    if (typeof _botVisitante === 'function') {
+      var vis = _botVisitante(tel, msg);
+      if (vis) return vis;
+    }
   }
 
   // Mientras una persona lleva la conversación, el bot no habla por encima. El aviso

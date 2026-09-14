@@ -568,17 +568,51 @@ CACHE = {};
 const rG = _botAtender({ telefono: '50760000000', clave: '', nota: '' }, texto('50760000000', 'hola'));
 ok(rG && rG.__guardia, 'va a su propio flujo y no toca nada del menú del residente');
 
+console.log('\n── EL ANUNCIO DE UN VISITANTE VA ANTES DEL SILENCIO ──');
+// El visitante es un desconocido, y a un desconocido el enrutador lo silencia seis
+// horas. Si su anuncio fuera después de eso, el silencio se tragaría la foto de su
+// cédula con él parado en la garita — el mismo fallo que ya costó caro con los
+// contactos de acceso. Y lo que enruta es el TEXTO, no el papel de quien escribe.
+CACHE = {};
+let _vistos = [];
+const _bv = global._botVisitante;
+global._botVisitante = (tel, msg) => {
+  const cuerpo = (msg.text && msg.text.body) || '';
+  if (!/^Voy de visita/i.test(cuerpo)) return null;
+  _vistos.push(tel);
+  return { contesto: true, avisar: false, __visitante: true };
+};
+
+const rV = _botAtender({ telefono: '50769999999', clave: '', nota: '' },
+                       texto('50769999999', 'Voy de visita al lote: 9'));
+ok(rV && rV.__visitante, 'un desconocido que se anuncia llega a la rama del visitante');
+ok(_vistos.length === 1, 'y se le atiende, en vez de silenciarlo por no estar en el padrón');
+
+CACHE = {}; CLAUDE = 'saldo'; _vistos = [];
+correr(texto('50769999998', 'cuanto debo'));
+ok(_vistos.length === 0 && /no aparece en el padrón/.test(cuerpos()),
+   'pero un desconocido que NO se anuncia sigue recibiendo lo de siempre');
+
+// Un propietario que escanea el cartel de la caseta viene a anunciar una visita, no a
+// consultar su saldo. Manda el contenido del mensaje, no quién lo manda.
+CACHE = {}; _vistos = [];
+const rP = _botAtender({ telefono: '50761112233', clave: 'Q-9', nota: '' },
+                       texto('50761112233', 'Voy de visita al lote: 14'));
+ok(rP && rP.__visitante && _vistos.length === 1,
+   'y un número DEL PADRÓN que escanea el cartel también: enruta el texto, no el papel');
+global._botVisitante = _bv;
+
 console.log('\n── UN MÓDULO QUE FALTA RESTA FUNCIONES, NO TUMBA EL BOT ──');
 // Los `typeof` del enrutador no son adorno: en una copia sin el archivo del módulo de
 // acceso, llamar a esGuardia() reventaba el bot ENTERO y el propietario se quedaba sin
 // su saldo. Ya pasó al reordenar el enrutador.
-const _esG = global.esGuardia, _gC = global.getContactos;
-delete global.esGuardia; delete global.getContactos;
+const _esG = global.esGuardia, _gC = global.getContactos, _bV2 = global._botVisitante;
+delete global.esGuardia; delete global.getContactos; delete global._botVisitante;
 CACHE = {}; CLAUDE = 'saldo';
 correr(texto('50761112233', 'cuanto debo'));
 ok(/B\/\. 245/.test(cuerpos()),
    'sin el módulo de acceso cargado, el propietario sigue recibiendo su saldo');
-global.esGuardia = _esG; global.getContactos = _gC;
+global.esGuardia = _esG; global.getContactos = _gC; global._botVisitante = _bV2;
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
