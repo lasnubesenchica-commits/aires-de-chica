@@ -1674,6 +1674,41 @@ ok(/borra en el acto/.test(hablo().texto),
    'diciéndole qué se hace con ella, que es lo mínimo que se le debe a un tercero');
 ok(_sheetRows('Anuncios').length === 0, 'todavía no hay anuncio: sólo dijo a dónde va');
 
+console.log('\n── TODO EN UN SOLO MENSAJE: FOTO CON PIE DE TEXTO ──');
+// En WhatsApp, si escribes y luego adjuntas, lo escrito se vuelve el pie de la foto.
+// Mucha gente manda destino y cédula juntos sin proponérselo. Sin esto, ese mensaje no
+// se reconocía como anuncio y el visitante caía en «no aparece en el padrón».
+CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Ana Gómez',
+           cedula: '8-400-900', confianza: 0.95 };
+// SIN conversación abierta: es un primer mensaje, que es justo lo que hay que probar.
+// Con una charla a medias el destino saldría de ahí y el pie nunca se miraría — la
+// prueba pasaría sin tocar el código nuevo.
+reiniciarWA(); CACHE = {};
+let rUno = _botVisitante(VIS, { type: 'image', image: { id: 'M1', caption: 'Voy de visita al lote: 9' } });
+ok(rUno && rUno.contesto === true, 'una foto con pie SÍ es un anuncio, y se atiende');
+ok(_sheetRows('Anuncios').length === 1 && _sheetRows('Anuncios')[0].clave === 'Q-9',
+   'en un solo mensaje quedan el documento y el destino: ' + _sheetRows('Anuncios')[0].clave);
+ok(ENVIADO.filter(e => e.tel !== VIS).length === 1,
+   'y la ficha sale a la garita sin ningún ida y vuelta de por medio');
+ok(!ENVIADO.some(e => e.tel === VIS && /foto de su c[eé]dula/i.test(e.texto)),
+   'nunca se le pidió la foto: ya venía');
+
+reiniciarWA(); CACHE = {};
+ok(_botVisitante(VIS, { type: 'image', image: { id: 'M1', caption: 'hola qué tal' } }) === null,
+   'pero un pie que no es un anuncio sigue sin ser nuestro');
+
+console.log('\n  · y el destino se lee sólo de la primera línea');
+ok(_accDestinoDicho('Voy de visita al lote: 9\n\n*Adjunta tu cédula aquí mismo*') === '9',
+   'lo que venga debajo es instrucción o cortesía, no el destino');
+ok(_accDestinoDicho('Voy de visita al lote: donde Ana') === 'donde Ana', 'y el nombre entero sí');
+
+reiniciar(); reiniciarWA(); CACHE = {};
+_accHojas();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarContacto({ clave: 'Q-9', nombre: 'Ana Rosa', celular: '6981-2266', autoriza: 'si' });
+PADRON[0].lote = '9'; PADRON[1].lote = '14';
+visEscribe(VIS, 'Voy de visita al lote: 9');
+
 console.log('\n── LA FOTO: SE LEE, SE BORRA, Y LA FICHA VA A LA GARITA ──');
 CLAUDE = { esCedula: true, tipoDoc: 'cedula', visitante: 'Luis Mendoza',
            cedula: '8-123-456', confianza: 0.95 };

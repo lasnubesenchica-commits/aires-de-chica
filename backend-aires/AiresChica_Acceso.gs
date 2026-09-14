@@ -3349,39 +3349,64 @@ function _accFichaAGarita(anuncioId, a) {
  */
 function _botVisitante(tel, msg) {
   var tipo = String(msg.type || '');
-  var texto = (msg.text && msg.text.body) || '';
+  // El pie de una foto cuenta como texto, y no es un caso raro: en WhatsApp, si escribes
+  // y luego adjuntas, lo escrito se convierte en el pie de la imagen. Mucha gente manda
+  // el destino y la cédula en un SOLO mensaje sin proponérselo. Sin esto, ese mensaje no
+  // se reconocía como anuncio y el visitante caía en «no aparece en el padrón».
+  var pie = (msg.image && msg.image.caption) || '';
+  var texto = (msg.text && msg.text.body) || pie;
   var charla = _accCharlaVis(tel);
 
   if (!charla && !_accEsAnuncio(texto)) return null;
 
-  // Primer mensaje: trae el destino en el texto precargado.
+  // El tope se mira al empezar, no al terminar: una bandeja abierta se abusa, y cada
+  // lectura cuesta. Falla hacia el guardia, nunca hacia el silencio — quien está en la
+  // puerta tiene que saber qué hacer, y lo que hay que hacer siempre es ir a la garita.
+  if (!charla && _accAnunciosHoy(tel) >= ACC_MAX_ANUNCIOS) {
+    enviarWhatsAppTexto(tel, 'Preséntese en la garita con su cédula, por favor.');
+    return { contesto: true, avisar: true };
+  }
+
+  // ── La foto, venga sola o con el destino en el pie ──
+  if (tipo === 'image') {
+    var destino = charla ? String(charla.destino || '') : '';
+    if (!destino && pie) destino = _accDestinoDicho(pie);
+    return _accVisitanteFoto(tel, msg, destino);
+  }
+
+  // ── Sólo texto ──
   if (!charla) {
-    if (_accAnunciosHoy(tel) >= ACC_MAX_ANUNCIOS) {
-      // Falla hacia el guardia, nunca hacia el silencio: quien está en la puerta tiene
-      // que saber qué hacer, y lo que hay que hacer siempre es ir a la garita.
-      enviarWhatsAppTexto(tel, 'Preséntese en la garita con su cédula, por favor.');
-      return { contesto: true, avisar: true };
-    }
-    var tras = texto.indexOf(':');
-    var dicho = tras >= 0 ? texto.slice(tras + 1).trim() : '';
-    _accCharlaVis(tel, { destino: dicho });
+    _accCharlaVis(tel, { destino: _accDestinoDicho(texto) });
     enviarWhatsAppTexto(tel,
       'Gracias. Ahora mándeme una foto de su cédula, por favor.\n\n' +
       '_Se lee para anotar su nombre y su número, y se borra en el acto._');
     return { contesto: true, avisar: false };
   }
-
-  // Segundo: la foto.
-  if (tipo !== 'image') {
-    // Puede venir el destino suelto, si el precargado se borró al escribir.
-    if (tipo === 'text' && !String(charla.destino || '').trim()) {
-      charla.destino = texto.trim();
-      _accCharlaVis(tel, charla);
-    }
-    enviarWhatsAppTexto(tel, 'Mándeme una foto de su cédula, por favor.');
-    return { contesto: true, avisar: false };
+  // Conversación abierta: puede venir el destino suelto, si el precargado se borró.
+  if (!String(charla.destino || '').trim()) {
+    charla.destino = String(texto || '').trim();
+    _accCharlaVis(tel, charla);
   }
+  enviarWhatsAppTexto(tel, 'Mándeme una foto de su cédula, por favor.');
+  return { contesto: true, avisar: false };
+}
 
+/**
+ * A qué casa dijo que va.
+ *
+ * Sólo la PRIMERA línea de lo que sigue a los dos puntos. Si el texto precargado llevara
+ * instrucciones debajo —o el visitante añadiera un «gracias»— eso no es el destino, y
+ * metérselo a la resolución sólo produce ruido.
+ */
+function _accDestinoDicho(texto) {
+  var t = String(texto || '');
+  var i = t.indexOf(':');
+  var resto = i >= 0 ? t.slice(i + 1) : '';
+  return String(resto.split('\n')[0] || '').trim();
+}
+
+/** Lee la foto del visitante, la borra, guarda el anuncio y manda la ficha a la garita. */
+function _accVisitanteFoto(tel, msg, destino) {
   var media = _waBajarMedia((msg.image || {}).id);
   if (!media.ok) {
     _accApunte('no se pudo bajar la foto del visitante — ' + (media.error || ''));
@@ -3402,12 +3427,12 @@ function _botVisitante(tel, msg) {
     return { contesto: true, avisar: true };
   }
 
-  var clave = _accDestinoDe(charla.destino);
-  var id = _accAnuncioGuardar({ tel: tel, destino: charla.destino, clave: clave,
+  var clave = _accDestinoDe(destino);
+  var id = _accAnuncioGuardar({ tel: tel, destino: destino, clave: clave,
                                 visitante: datos.visitante, cedula: datos.cedula });
   var fila = _accAnuncioPorId(id);
   _accFichaAGarita(id, fila || { visitante: datos.visitante, cedula: datos.cedula,
-                                 clave: clave, destino: charla.destino });
+                                 clave: clave, destino: destino });
   _accCharlaVis(tel, null);
 
   // Lo único que se le dice. Ni el nombre de a quién visita, ni si el lote existe, ni si
