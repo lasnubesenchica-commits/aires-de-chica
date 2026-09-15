@@ -2419,7 +2419,13 @@ function _botGestionAcceso(tel, msg, accion) {
   var mio = (accion === ACC_RES_QUIEN || accion === ACC_RES_PERMISO ||
              accion.indexOf(ACC_RES_QUITA) === 0 || accion === ACC_RES_SI ||
              accion === ACC_RES_NO || accion.indexOf(ACC_RES_UNIDAD) === 0);
-  if (!mio && !(charla && esTexto)) return null;
+  // Con un permiso a medias, una foto es la CÉDULA de quien va a venir. El residente
+  // acaba de leer «mándeme el nombre y la cédula» y reenvía la foto que le mandaron a
+  // él: es lo que hace la gente. Sin esta línea el mensaje se iba de aquí y lo recogía
+  // el clasificador general, que a TODA imagen le contesta «recibimos su comprobante».
+  var fotoDeCedula = (charla && charla.paso === 'espera-permiso' &&
+                      String(msg.type || '') === 'image');
+  if (!mio && !(charla && (esTexto || fotoDeCedula))) return null;
 
   // «menú» sale de aquí siempre: quedarse atrapado en un formulario es la peor forma
   // de usar un bot, y quien escribe eso está pidiendo salir.
@@ -2478,9 +2484,46 @@ function _botGestionAcceso(tel, msg, accion) {
   if (accion.indexOf(ACC_RES_QUITA) === 0) return _accQuitar(tel, accion.slice(ACC_RES_QUITA.length), puede);
   if (accion === ACC_RES_SI) return _accGuardarLoDicho(tel, charla, puede);
 
+  // La foto se lee DESPUÉS de comprobar que esta persona puede dejar permisos: no se
+  // gasta una lectura —ni se baja la imagen— por alguien que no tenía nada que hacer aquí.
+  if (fotoDeCedula) {
+    texto = _accPermisoDeFoto(msg);
+    if (!texto) {
+      enviarWhatsAppTexto(tel,
+        'No pude leer esa foto. Mándeme el nombre y la cédula escritos:\n' +
+        '«Juan Pérez 8-123-456»');
+      return { contesto: true, avisar: false };
+    }
+    esTexto = true;
+  }
+
   // Un texto suelto: o es el dato que se le pidió, o no hay conversación viva.
   if (charla && esTexto) return _accRecibirDato(tel, charla, texto, puede);
   return null;
+}
+
+/**
+ * La cédula que el residente reenvía cuando se le pide «nombre y cédula».
+ *
+ * La imagen se lee y se TIRA. No se guarda en ninguna parte, ni siquiera las lecturas
+ * dudosas: aquí no hay un guardia que vaya a contrastarla con el documento físico más
+ * tarde, y lo único que hace falta de ella son dos datos. Guardarla sería repetir en la
+ * carpeta del residente el problema que acabamos de cerrar en la del guardia.
+ *
+ * Devuelve el texto equivalente —«Juan Pérez 8-123-456»— para que siga exactamente el
+ * mismo camino que si lo hubiera tecleado, o '' si no se pudo leer.
+ */
+function _accPermisoDeFoto(msg) {
+  var media = _waBajarMedia((msg.image || {}).id);
+  if (!media.ok) {
+    _accApunte('no se pudo bajar la foto del permiso — ' + (media.error || ''));
+    return '';
+  }
+  // _accLeerCedulaFoto devuelve null también cuando no sacó ni nombre ni número, así
+  // que una lectura en blanco ya viene como null y no hay que volver a comprobarla.
+  var d = _accLeerCedulaFoto(media.blob, media.tipo);
+  if (!d) return '';
+  return (String(d.visitante || '').trim() + ' ' + String(d.cedula || '').trim()).trim();
 }
 
 /**

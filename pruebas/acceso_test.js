@@ -1174,6 +1174,71 @@ anuncia('Juan Pérez 8-123-456');
 ok(/PUEDE PASAR/.test(hablo().texto),
    'el visitante que el dueño autorizó por WhatsApp entra sin molestar a nadie');
 
+console.log('\n── LA CÉDULA QUE EL RESIDENTE REENVÍA ──');
+// Lo que hace la gente de verdad: se le pide «nombre y cédula» y reenvía la foto que le
+// mandaron a él. Esto no estaba cubierto, y no estarlo costó caro: la imagen se escapaba
+// del módulo y la recogía el clasificador general, que a TODA imagen le contesta
+// «recibimos su comprobante» y la archiva en la carpeta de PAGOS, con enlace público y
+// sin purga. La cédula de un tercero terminaba en la contabilidad.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+const antesDrive = ARCHIVOS.length;
+reiniciarWA();
+CLAUDE = { esCedula: true, visitante: 'Ana Gómez', cedula: '8-777-999', confianza: 0.95 };
+const rFoto = _botGestionAcceso('+50769812266', { type: 'image', image: { id: 'M1' } }, '');
+ok(rFoto !== null, 'la foto NO se le escapa al módulo de acceso');
+ok(/Ana Gómez/.test(hablo().texto) && /8-777-999/.test(hablo().texto),
+   'se leen de ella el nombre y la cédula: ' + hablo().texto.replace(/\n/g, ' ').slice(0, 58));
+ok(/permiso/i.test(hablo().texto) && (hablo().botones || []).length === 2,
+   'y se PROPONE el permiso con sus dos botones, no se guarda solo');
+ok(ARCHIVOS.length === antesDrive,
+   'y la imagen no se guardó en ninguna carpeta: ' + (ARCHIVOS.length - antesDrive) + ' archivos nuevos');
+toca('+50769812266', 'bot_acc_si');
+const permFoto = getAutorizaciones('Q-9')[0];
+ok(permFoto && permFoto.cedula === '8-777-999',
+   'el permiso queda con la cédula que salió de la foto');
+
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+reiniciarWA();
+CLAUDE = { esCedula: false };
+_botGestionAcceso('+50769812266', { type: 'image', image: { id: 'M1' } }, '');
+ok(/No pude leer esa foto/.test(hablo().texto),
+   'si no se deja leer, se pide escrita — no se inventa un permiso');
+ok(getAutorizaciones('Q-9').length === 0, 'y no queda ningún permiso a medio hacer');
+
+// Una lectura que devuelve el objeto pero sin nada dentro no puede acabar en un permiso
+// con el nombre en blanco: eso sería peor que no leerla.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_permiso');
+reiniciarWA();
+CLAUDE = { esCedula: true, visitante: '', cedula: '', confianza: 0.9 };
+_botGestionAcceso('+50769812266', { type: 'image', image: { id: 'M1' } }, '');
+ok(/No pude leer esa foto/.test(hablo().texto),
+   'una lectura vacía tampoco propone nada: ' + hablo().texto.replace(/\n/g, ' ').slice(0, 46));
+ok(getAutorizaciones('Q-9').length === 0, 'y sigue sin haber permiso');
+
+// Sólo cuenta como cédula cuando lo que se pidió ERA una cédula. Cargando un contacto
+// se pide un CELULAR, y ahí una foto no es un documento de nadie.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+toca('+50769812266', 'bot_acc_quien');
+reiniciarWA();
+CLAUDE = { esCedula: true, visitante: 'Ana Gómez', cedula: '8-777-999', confianza: 0.95 };
+ok(_botGestionAcceso('+50769812266', { type: 'image', image: { id: 'M1' } }, '') === null,
+   'cargando un contacto, una imagen no se lee como cédula: no era lo que se pidió');
+
+console.log('\n── PERO UNA FOTO SUELTA SIGUE SIENDO UN COMPROBANTE ──');
+// El caso común de una imagen de un propietario es el recibo de un pago. Sólo cambia
+// cuando hay un permiso a medias, que es cuando se le acaba de pedir una cédula.
+reiniciar(); reiniciarWA(); CACHE = {};
+PADRON[0].lote = '9';
+ok(_botGestionAcceso('+50769812266', { type: 'image', image: { id: 'M1' } }, '') === null,
+   'sin conversación viva la imagen sigue su camino: los pagos por foto no se rompen');
+
 console.log('\n── UN NÚMERO COMPARTIDO POR DOS DUEÑOS NO GESTIONA ──');
 // Para las cifras ya se le negaba —vería el saldo de otro—. Aquí sería peor: podría
 // nombrarse a sí mismo autorizante de una casa que no es suya.
