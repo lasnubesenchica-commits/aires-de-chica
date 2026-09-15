@@ -623,6 +623,71 @@ function _accNombre(v) {
     .replace(/\s+/g, ' ').trim();
 }
 
+/* ── Nombres que se parecen ──────────────────────────────────────────────────
+ *
+ * En Panamá la cédula trae cuatro nombres y nadie dice cuatro. «Iris Albelo» y
+ * «Iris Edilsa Albelo Hoo» son la misma persona, y compararlos con === decía que no.
+ *
+ * Esto NO abre puertas: lo que sale de aquí siempre es «decida usted», nunca un
+ * permiso. Por eso puede permitirse ser generoso — es mejor enseñarle al guardia dos
+ * permisos parecidos y que él compare con el documento en la mano, que contestarle
+ * «sin permiso previo» cuando sí lo había.
+ */
+
+/** Levenshtein, para que «Albelo» y «Alveo» no sean dos desconocidos. */
+function _accDistancia(a, b) {
+  if (a === b) return 0;
+  var m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  var fila = [];
+  for (var j = 0; j <= n; j++) fila[j] = j;
+  for (var i = 1; i <= m; i++) {
+    var ant = fila[0];
+    fila[0] = i;
+    for (var k = 1; k <= n; k++) {
+      var tmp = fila[k];
+      fila[k] = Math.min(fila[k] + 1, fila[k - 1] + 1,
+                         ant + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1));
+      ant = tmp;
+    }
+  }
+  return fila[n];
+}
+
+function _accParecidoPalabra(a, b) {
+  var max = Math.max(a.length, b.length);
+  return max ? 1 - (_accDistancia(a, b) / max) : 0;
+}
+
+/**
+ * Cuánto se parecen dos nombres, de 0 a 1.
+ *
+ * Cada palabra del nombre más corto busca su mejor pareja en el otro y se promedia.
+ * Así «Iris Albelo» contra «Iris Edilsa Albelo Hoo» da 1: las dos palabras están. Y
+ * contra «Iris Alveo» da 0.83, que es justo lo que hay que enseñarle al guardia.
+ *
+ * Con una sola palabra devuelve 0 a propósito: «Iris» no identifica a nadie, y un
+ * nombre de pila suelto sacaría media lista de permisos.
+ */
+function _accParecido(a, b) {
+  var pa = _accNombre(a).split(' ').filter(function (x) { return x; });
+  var pb = _accNombre(b).split(' ').filter(function (x) { return x; });
+  if (pa.length < 2 || pb.length < 2) return 0;
+  var corto = pa.length <= pb.length ? pa : pb;
+  var largo = pa.length <= pb.length ? pb : pa;
+  var suma = 0;
+  corto.forEach(function (p) {
+    var mejor = 0;
+    largo.forEach(function (q) { mejor = Math.max(mejor, _accParecidoPalabra(p, q)); });
+    suma += mejor;
+  });
+  return suma / corto.length;
+}
+
+var ACC_PARECIDO_MIN = 0.70;   // por debajo, no se le enseña al guardia
+var ACC_MAX_PARECIDOS = 5;     // caben en una lista de WhatsApp, con sitio para «ninguno»
+
 /**
  * Fecha al mediodía local, para que ningún desfase la mueva de día.
  *
@@ -787,20 +852,32 @@ function autorizacionVigente(clave, visita, cuando) {
     return true;
   });
 
-  // La cédula manda. Sólo si la autorización no la tiene se compara por nombre.
-  var porCedula = null, porNombre = null;
+  // La cédula manda, pero sólo cuando hay DOS cédulas que comparar.
+  //
+  // Antes bastaba con que el permiso tuviera una para dejar de mirar el nombre, y eso
+  // contestaba «sin permiso previo» a un visitante anunciado sólo por su nombre —
+  // cuando el permiso estaba ahí. Lo que de verdad hay que impedir es que un nombre
+  // pase por encima de una cédula DISTINTA: por ahí sí se colaría alguien.
+  var porCedula = null, parecidos = [];
   candidatas.forEach(function (a) {
     var suCed = _accCedula(a.cedula);
-    if (suCed) {
-      if (cedBuscada && suCed === cedBuscada && !porCedula) porCedula = a;
-      return;   // con cédula registrada, el nombre no basta
+    if (suCed && cedBuscada) {
+      if (suCed === cedBuscada && !porCedula) porCedula = a;
+      return;   // dos cédulas sobre la mesa: el nombre no tiene nada que añadir
     }
-    if (nomBuscado && _accNombre(a.visitante) === nomBuscado && !porNombre) porNombre = a;
+    var p = _accParecido(visita.visitante || visita.nombre, a.visitante);
+    if (p >= ACC_PARECIDO_MIN) parecidos.push({ autorizacion: a, parecido: p });
   });
 
   if (porCedula) return { autorizacion: porCedula, coincidencia: 'cedula', firme: true };
-  if (porNombre) return { autorizacion: porNombre, coincidencia: 'nombre', firme: false };
-  return null;
+  if (!parecidos.length) return null;
+
+  // Varios parecidos no se resuelven solos: se le enseñan al guardia, que tiene el
+  // documento delante. Del más parecido al menos.
+  parecidos.sort(function (x, y) { return y.parecido - x.parecido; });
+  parecidos = parecidos.slice(0, ACC_MAX_PARECIDOS);
+  return { autorizacion: parecidos[0].autorizacion, coincidencia: 'nombre', firme: false,
+           candidatos: parecidos.map(function (x) { return x.autorizacion; }) };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1347,6 +1424,8 @@ var ACC_BOT_SI  = 'acc_si_';      // el guardia dejó pasar
 var ACC_BOT_NO  = 'acc_no_';      // el guardia no dejó pasar
 var ACC_BOT_FIX = 'acc_fix_';     // el guardia va a teclear los datos buenos
 var ACC_BOT_DEST = 'acc_dest_';   // el guardia va a decir a qué casa va
+var ACC_BOT_PERM = 'acc_perm_';   // el guardia elige cuál de los permisos parecidos es
+                                  // payload: «idVisita|idAutorizacion»; vacío = ninguno
 var ACC_BOT_MIO  = 'acc_mio_';    // fue decisión del guardia, no le llamó nadie
 var ACC_BOT_SAL = 'acc_sal_';     // el guardia anota que alguien salió
 var ACC_BOT_MAS = 'acc_mas_';     // siguiente página de la lista de adentro
@@ -1600,6 +1679,56 @@ function _botGuardia(tel, garita, msg) {
         '\n\nArreglo la visita que acabo de anotar; no se crea otra.');
       return { contesto: true, avisar: false };
     }
+    // El guardia eligió cuál de los permisos parecidos es, con el documento delante.
+    // Eso NO lo convierte en «preautorizada»: preautorizada quiere decir que la cédula
+    // casó sola. Aquí quien identificó a la persona fue él, y así queda escrito.
+    if (id.indexOf(ACC_BOT_PERM) === 0) {
+      var trozos = id.slice(ACC_BOT_PERM.length).split('|');
+      var vId = trozos[0], aId = trozos[1] || '';
+      var vis = _accVisitaPorId(vId);
+      if (!vis) {
+        enviarWhatsAppTexto(tel, 'Esa visita ya no está. Anótela otra vez.');
+        return { contesto: true, avisar: true };
+      }
+      if (!aId) {
+        // «Ninguno de éstos»: se sigue por donde se habría seguido sin permiso.
+        var clv = String(vis.clave || '');
+        if (!clv) {
+          _waEnviarBotones(tel,
+            'Entendido, ninguno es. No sé a qué ' + _acUnidad() + ' va, así que no puedo ' +
+            'preguntarle a nadie.',
+            [_botBoton(ACC_BOT_DEST + vId, 'Decir a qué casa va'),
+             _botBoton(ACC_BOT_SI + vId, 'Lo dejé pasar'),
+             _botBoton(ACC_BOT_NO + vId, 'No lo dejé pasar')]);
+          return { contesto: true, avisar: true };
+        }
+        var pr = preguntarALaCasa(vId, clv,
+          { visitante: vis.visitante, cedula: vis.cedula, lote: vis.lote });
+        _waEnviarBotones(tel,
+          pr.ok
+            ? '📲 PREGUNTÁNDOLE A LA CASA\n\nAvisé a ' + pr.avisados.join(', ') +
+              '. Le digo en cuanto contesten.'
+            : '⛔ No pude avisarle a la casa. ' + (pr.error || '') +
+              ' Llame usted por el medio de siempre.',
+          [_botBoton(ACC_BOT_SI + vId, 'Lo dejé pasar'),
+           _botBoton(ACC_BOT_NO + vId, 'No lo dejé pasar')]);
+        return { contesto: true, avisar: !pr.ok };
+      }
+      var elegida = null;
+      getAutorizaciones('').forEach(function (a2) { if (String(a2.id) === aId) elegida = a2; });
+      if (!elegida) {
+        enviarWhatsAppTexto(tel, 'Ese permiso ya no está. Decida usted y déjelo anotado.');
+        return { contesto: true, avisar: true };
+      }
+      resolverVisita(vId, 'autorizada',
+        garita.nombre + ' · permiso de ' + _accDeQuien(elegida.clave));
+      enviarWhatsAppTexto(tel,
+        '✅ ANOTADO\n\n' + String(vis.visitante || '') +
+        '\n\nUsted lo identificó como *' + String(elegida.visitante || '') + '*, con permiso de ' +
+        _accDeQuien(elegida.clave) + '.' + _accVigencia(elegida) + _accCuentaAdentro() +
+        '\n\n_Queda escrito que lo decidió usted, no el sistema._');
+      return { contesto: true, avisar: false };
+    }
     if (id.indexOf(ACC_BOT_FIX) === 0) {
       _accEsperaDestino(tel, null);
       _accEsperaCorreccion(tel, id.slice(ACC_BOT_FIX.length));
@@ -1802,9 +1931,17 @@ function _botGuardia(tel, garita, msg) {
     // La CUENTA de quién hay dentro, no la lista. Una línea en un mensaje que ya se
     // manda, en vez de cincuenta listas al día enterrando lo que sí hay que leer.
     // Cuando la necesite de verdad, escribe «adentro» y la recibe fresca.
-    enviarWhatsAppTexto(tel,
+    //
+    // Y los botones TAMBIÉN aquí. Un permiso firme se da por entrado, y casi siempre
+    // acierta; pero el módulo se niega a poner en la lista de adentro una visita
+    // pendiente «porque nadie lo confirmó», y a ésta tampoco la confirmó nadie. Sin un
+    // botón, el guardia no tenía forma de desmentirla: el que da media vuelta, o al
+    // que se rechaza por algo que el permiso no cubre, quedaba dentro para siempre.
+    _waEnviarBotones(tel,
       '✅ PUEDE PASAR\n\n' + leido + '\n\nTiene permiso dejado por ' + deQuien + '.' +
-      _accVigencia(hallado.autorizacion) + _accCuentaAdentro());
+      _accVigencia(hallado.autorizacion) + _accCuentaAdentro() +
+      '\n\n_Queda anotado como que entró. Si al final no entró, dígamelo._',
+      [_botBoton(ACC_BOT_NO + visita.id, 'No lo dejé pasar')]);
     return { contesto: true, avisar: false };
   }
 
@@ -1825,10 +1962,38 @@ function _botGuardia(tel, garita, msg) {
   }
 
   if (hallado) {
+    var cands = hallado.candidatos || [hallado.autorizacion];
+
+    // Varios permisos con nombres parecidos —«Iris Albelo» y «Iris Alveo»— no los puede
+    // resolver el sistema: los dos encajan con lo que se escribió y sólo se distinguen
+    // por el documento, que lo tiene el guardia. Se le enseñan y elige.
+    if (cands.length > 1) {
+      var filas = cands.map(function (a2) {
+        return { id: ACC_BOT_PERM + visita.id + '|' + a2.id,
+                 title: String(a2.visitante || 'Sin nombre'),
+                 description: (a2.cedula ? a2.cedula + ' · ' : 'sin cédula · ') +
+                              _acUnidadCap() + ' ' + _accDeQuien(a2.clave) };
+      });
+      filas.push({ id: ACC_BOT_PERM + visita.id + '|', title: 'Ninguno de éstos',
+                   description: 'Le pregunto a la casa' });
+      _waEnviarLista(tel,
+        '⚠️ HAY ' + cands.length + ' PERMISOS PARECIDOS\n\n' + leido +
+        '\n\nCompare con el documento que tiene en la mano y toque cuál es.',
+        'Ver los permisos', [{ title: 'Permisos parecidos', rows: filas }]);
+      return { contesto: true, avisar: true };
+    }
+
+    // Uno solo. Lo que hay que decirle cambia según el permiso traiga cédula o no:
+    // con cédula, el guardia puede COMPARARLA y salir de dudas en un segundo; sin
+    // ella, no hay nada que comparar y la decisión es suya y ya.
+    var suCed = String(hallado.autorizacion.cedula || '').trim();
     _waEnviarBotones(tel,
-      '⚠️ COINCIDE EL NOMBRE, NO LA CÉDULA\n\n' + leido + '\n\n' + deQuien + ' dejó permiso para ' +
-      'alguien con ese nombre, pero sin cédula anotada, así que no puedo asegurar que sea la ' +
-      'misma persona. Usted tiene el documento: decida y déjelo anotado.', botones);
+      (suCed ? '⚠️ COMPARE LA CÉDULA\n\n' : '⚠️ COINCIDE EL NOMBRE, NO LA CÉDULA\n\n') + leido +
+      '\n\n' + deQuien + ' dejó permiso para *' + String(hallado.autorizacion.visitante || '') + '*' +
+      (suCed
+        ? ', cédula ' + suCed + '.\nMire el documento: si es esa cédula, es la misma persona.'
+        : ', sin cédula anotada, así que no puedo asegurar que sea la misma persona.') +
+      '\nUsted tiene el documento: decida y déjelo anotado.', botones);
     return { contesto: true, avisar: true };
   }
 

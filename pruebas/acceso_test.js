@@ -139,6 +139,9 @@ const reiniciarWA = () => { ENVIADO = []; MODELOS = []; PLANTILLAS = []; };
 global.enviarWhatsAppTexto = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
 global._waEnviarBotones = (tel, texto, botones) => { ENVIADO.push({ tel, texto, botones }); return { ok: true }; };
 global._botBoton = (id, titulo) => ({ type: 'reply', reply: { id, title: titulo } });
+global._waEnviarLista = (tel, texto, btn, secciones) => {
+  ENVIADO.push({ tel, texto, botones: null, lista: secciones }); return { ok: true };
+};
 global._waBajarMedia = () => ({ ok: true, tipo: 'image/jpeg', blob: {
   getBytes: () => [1, 2, 3], getContentType: () => 'image/jpeg', setName() { return this; } } });
 global._acUn = () => 'un';
@@ -394,9 +397,17 @@ ok(autorizacionVigente('Q-9', { cedula: '8 123 456' }).coincidencia === 'cedula'
    'escrita con espacios en vez de guiones es la misma cédula');
 ok(autorizacionVigente('Q-9', { cedula: '08-0123-0456' }) === null,
    'pero una cédula distinta no entra, aunque se parezca');
-// Lo importante: si la autorización TIENE cédula, el nombre solo no abre la puerta.
-ok(autorizacionVigente('Q-9', { visitante: 'Luis Mendoza' }) === null,
-   'un desconocido que dice llamarse Luis Mendoza NO entra: la autorización lleva cédula');
+// Lo importante no es que el nombre no encuentre nada, es que no ABRA. Antes esto
+// devolvía null y el guardia veía «sin permiso previo» aunque el permiso estuviera ahí:
+// una respuesta falsa. Ahora lo encuentra y se lo enseña, pero sin firmar nada.
+let soloNombre = autorizacionVigente('Q-9', { visitante: 'Luis Mendoza' });
+ok(soloNombre && soloNombre.coincidencia === 'nombre',
+   'el nombre solo SÍ encuentra el permiso: decirle al guardia que no hay ninguno era mentira');
+ok(soloNombre && soloNombre.firme === false,
+   'pero NO abre la puerta: firme=false, o sea «usted tiene el documento, decida»');
+// Y el caso que de verdad hay que impedir: otra cédula no se salva con el nombre.
+ok(autorizacionVigente('Q-9', { cedula: '8-999-999', visitante: 'Luis Mendoza' }) === null,
+   'con una cédula DISTINTA el nombre no vale: por ahí es por donde alguien se colaría');
 
 console.log('\n── CUANDO EL RESIDENTE SÓLO DEJÓ EL NOMBRE ──');
 // Es el caso normal: casi nadie sabe la cédula de quien va a visitarlo.
@@ -571,6 +582,7 @@ ok(getAccesoData('').avisos.some(a => /Ana Rosa Tejada/.test(a.texto)),
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 const hablo = () => ENVIADO[ENVIADO.length - 1] || { texto: '', botones: null };
+const lista = () => (hablo().lista || []).reduce((a, s) => a.concat(s.rows), []);
 const anuncia = (texto) => { reiniciarWA(); return _botGuardia('+50760000000',
   { nombre: 'Garita principal' }, { type: 'text', text: { body: texto } }); };
 
@@ -601,7 +613,17 @@ guardarAutorizacion({ clave: 'Q-9', visitante: 'Luis Mendoza', cedula: '8-123-45
 CLAUDE = { visitante: 'Luis Mendoza', cedula: '8-123-456', lote: '' };
 anuncia('Luis Mendoza 8-123-456');
 ok(/PUEDE PASAR/.test(hablo().texto), 'con la cédula anotada y coincidiendo, puede pasar');
-ok(hablo().botones === null, 'y no se le pregunta nada al guardia: no hay nada que decidir');
+// Un permiso firme no le pregunta nada: no hay nada que decidir. Pero SÍ le deja
+// desmentirlo. El módulo se niega a dar por dentro una visita pendiente «porque nadie
+// lo confirmó», y a ésta tampoco la confirmó nadie: se da por entrada porque casi
+// siempre acierta, no porque conste. Sin botón, el que daba media vuelta se quedaba
+// dentro para siempre.
+ok(hablo().botones && hablo().botones.length === 1,
+   'un solo botón, no tres: no hay que decidir, sólo poder desmentirlo');
+ok(/No lo dejé pasar/.test(hablo().botones[0].reply.title),
+   'y es el de desmentir: ' + hablo().botones[0].reply.title);
+ok(!/Corregir/.test(JSON.stringify(hablo().botones)),
+   'sin «Corregir los datos»: la cédula casó sola, el dato está bien');
 ok(_sheetRows('Visitas')[0].estado === 'preautorizada', 'la visita queda como preautorizada');
 
 reiniciar();
@@ -616,6 +638,69 @@ ok(hablo().botones && hablo().botones.length === 3 &&
    'lo tecleó él, puede corregirlo: ' + hablo().botones.map(b => b.reply.title).join(' | '));
 ok(_sheetRows('Visitas')[0].estado === 'pendiente',
    'y la visita NO se marca autorizada mientras él no conteste: ' + _sheetRows('Visitas')[0].estado);
+
+console.log('\n── EL NOMBRE CORTO ENCUENTRA EL PERMISO ──');
+// El caso real: el permiso se creó desde la foto de la cédula, así que quedó con el
+// nombre completo del documento. El guardia anunció «Iris Albelo» y el bot contestó
+// «SIN PERMISO PREVIO». Falso: el permiso estaba ahí. En Panamá la cédula trae cuatro
+// nombres y nadie dice cuatro.
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Edilsa Albelo Hoo', cedula: '8-517-1400' });
+CLAUDE = { visitante: 'Iris Albelo', cedula: '', lote: '' };
+anuncia('Iris Albelo');
+ok(!/SIN PERMISO PREVIO/.test(hablo().texto),
+   'ya no dice que no hay permiso cuando sí lo hay: ' + hablo().texto.split('\n')[0]);
+ok(/COMPARE LA CÉDULA/.test(hablo().texto),
+   'le pide comparar, que es lo único que falta para salir de dudas');
+ok(/8-517-1400/.test(hablo().texto),
+   'y le enseña la cédula del permiso, para que la coteje con el documento');
+ok(_sheetRows('Visitas')[0].estado === 'pendiente',
+   'pero NO abre sola: sigue decidiendo el guardia — ' + _sheetRows('Visitas')[0].estado);
+
+// El parecido tiene que SEPARAR, no sólo juntar. Si el umbral se abriera, cualquier
+// visitante arrastraría media lista de permisos y el guardia dejaría de mirarla.
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Edilsa Albelo Hoo', cedula: '8-517-1400' });
+ok(autorizacionVigente('Q-9', { visitante: 'Juan Pérez' }) === null,
+   'un nombre que no se parece en nada no saca ningún permiso');
+ok(autorizacionVigente('Q-9', { visitante: 'Iris' }) === null,
+   'y un nombre de pila suelto tampoco: «Iris» no identifica a nadie');
+ok(autorizacionVigente('Q-9', { visitante: 'Iris Albelo' }) !== null,
+   'pero dos palabras que sí encajan, sí');
+
+console.log('\n── DOS PERMISOS PARECIDOS SE LE ENSEÑAN AL GUARDIA ──');
+// «Iris Albelo» e «Iris Alveo» son dos personas distintas y las dos encajan con lo
+// escrito. El sistema no puede elegir; el guardia sí, que tiene el documento delante.
+reiniciar();
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Albelo Hoo', cedula: '8-517-1400' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Alveo Ruiz', cedula: '8-900-111' });
+CLAUDE = { visitante: 'Iris Albelo', cedula: '', lote: '' };
+anuncia('Iris Albelo');
+const filasPar = lista();
+ok(/HAY 2 PERMISOS PARECIDOS/.test(hablo().texto),
+   'se le dice que hay varios: ' + hablo().texto.split('\n')[0]);
+ok(filasPar.length === 3, 'salen los dos permisos y un «ninguno»: ' + filasPar.length);
+ok(filasPar.map(f => f.title).join(' | ').indexOf('Iris Albelo Hoo') >= 0 &&
+   filasPar.map(f => f.title).join(' | ').indexOf('Iris Alveo Ruiz') >= 0,
+   'los dos por su nombre: ' + filasPar.map(f => f.title).join(' | '));
+ok(filasPar.some(f => /8-517-1400/.test(f.description || '')),
+   'con su cédula, que es lo que el guardia va a comparar');
+ok(/Ninguno/.test(filasPar[2].title), 'y la salida de «ninguno es»: ' + filasPar[2].title);
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'nada se decide solo');
+
+// El guardia elige uno, con el documento delante.
+const idVisPar = _sheetRows('Visitas')[0].id;
+const idAutPar = getAutorizaciones('Q-9').filter(a => /Albelo/.test(a.visitante))[0].id;
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { list_reply: { id: ACC_BOT_PERM + idVisPar + '|' + idAutPar } } });
+ok(/ANOTADO/.test(hablo().texto), 'queda anotado al tocarlo: ' + hablo().texto.split('\n')[0]);
+const trasElegirPar = _sheetRows('Visitas')[0];
+ok(trasElegirPar.estado === 'autorizada',
+   'como AUTORIZADA, no preautorizada: preautorizada quiere decir que la cédula casó sola — ' +
+   trasElegirPar.estado);
+ok(/Garita principal/.test(String(trasElegirPar.autorizadoPor)),
+   'y consta que lo identificó el guardia: ' + trasElegirPar.autorizadoPor);
 
 console.log('\n── SIN PERMISO Y SIN SABER A QUÉ UNIDAD VA ──');
 // Con la plantilla aprobada, lo normal es preguntarle a la casa. Pero si el guardia no
@@ -955,6 +1040,23 @@ global.identificarPorCelular = tel => {
 };
 const reiniciarF4 = () => { PLANTILLAS = []; reiniciarWA(); };
 
+console.log('\n── «NINGUNO DE ÉSTOS» NO AUTORIZA NADA ──');
+// Y «ninguno de éstos» sigue por donde se habría seguido sin permiso.
+reiniciar();
+guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Albelo Hoo', cedula: '8-517-1400' });
+guardarAutorizacion({ clave: 'Q-9', visitante: 'Iris Alveo Ruiz', cedula: '8-900-111' });
+CLAUDE = { visitante: 'Iris Albelo', cedula: '', lote: '9' };
+anuncia('Iris Albelo va al 9');
+const idVisPar2 = _sheetRows('Visitas')[0].id;
+reiniciarWA();
+_botGuardia('+50760000000', { nombre: 'Garita principal' },
+  { type: 'interactive', interactive: { list_reply: { id: ACC_BOT_PERM + idVisPar2 + '|' } } });
+ok(!/ANOTADO/.test(hablo().texto),
+   '«ninguno es» no autoriza nada: ' + hablo().texto.split('\n')[0]);
+ok(_sheetRows('Visitas')[0].estado === 'pendiente', 'la visita sigue pendiente');
+
+
 console.log('\n── SIN PERMISO PREVIO, AHORA SE LE PREGUNTA A LA CASA ──');
 reiniciar(); reiniciarF4(); CACHE = {};
 guardarGarita({ nombre: 'Garita principal', celular: '6000-0000' });
@@ -1108,12 +1210,8 @@ ok(cerrarVisitasSinRespuesta().cerradas === 0,
  * Es lo PRIMERO que el bot escribe, y encima datos de seguridad. Las afirmaciones que
  * más importan aquí son las negativas.
  */
-global._waEnviarLista = (tel, texto, btn, secciones) => {
-  ENVIADO.push({ tel, texto, botones: null, lista: secciones }); return { ok: true };
-};
 global._botDice = (tel, texto) => { ENVIADO.push({ tel, texto, botones: null }); return { ok: true }; };
 
-const lista = () => (hablo().lista || []).reduce((a, s) => a.concat(s.rows), []);
 const toca = (tel, id) => { reiniciarWA(); return _botGestionAcceso(tel,
   { type: 'interactive', interactive: { button_reply: { id } } }, id); };
 const escribe = (tel, t) => { reiniciarWA(); return _botGestionAcceso(tel,
@@ -1495,8 +1593,8 @@ CLAUDE = { visitante: 'Uno Uno', cedula: '8-1-1', lote: '' };
 anuncia('Uno Uno 8-1-1');
 ok(/1 visita adentro ahora/.test(hablo().texto),
    'el mensaje de entrada trae la cuenta, contando al que acaba de entrar');
-ok(hablo().botones === null && !hablo().lista,
-   'y NO manda la lista: ni un mensaje extra ni una lista de más');
+ok(!hablo().lista,
+   'y NO manda la lista de quién hay dentro: ni un mensaje extra ni una lista de más');
 
 CLAUDE = { visitante: 'Dos Dos', cedula: '8-2-2', lote: '' };
 anuncia('Dos Dos 8-2-2');
