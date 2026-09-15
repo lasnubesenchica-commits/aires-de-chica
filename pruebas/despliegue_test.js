@@ -187,6 +187,16 @@ ok(!/GOOGLE_CLIENT_ID_BC/.test(D.explicar('unauthorized_client', {})),
 ok(/caducó|revocado/.test(D.explicar('invalid_grant', {})), 'invalid_grant es un token vencido');
 ok(/credencial/.test(D.explicar('Only users in the same domain as the script owner may deploy this script.', {})),
    'y el del dominio manda a clientes.json, no a compartir más el proyecto');
+// Pasó de verdad: el código subió, la versión no se pudo crear, y el resumen dejaba
+// pensar que no se había desplegado NADA. Lo que decide qué hacer es que el webhook
+// sigue en el código viejo, y que la limpieza sólo se puede hacer a mano.
+const lim = D.explicar('Cannot create more versions: Script has reached the limit of 200 versions.', {});
+ok(/ya se subió/.test(lim), 'dice que el código sí llegó al proyecto');
+ok(/versión anterior|código viejo/.test(lim), 'y que el webhook sigue corriendo el viejo');
+ok(/Historial del proyecto/.test(lim), 'y dónde se borran las versiones');
+ok(/no existe.*versions\.delete|versions\.delete/.test(lim),
+   'y que desde la API no se puede, para que nadie lo intente automatizar');
+
 ok(D.explicar('Requested entity was not found', {}) === 'Requested entity was not found',
    'lo que ya se entiende se deja tal cual');
 

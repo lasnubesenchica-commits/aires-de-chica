@@ -229,6 +229,18 @@ function explicar(mensaje, cliente) {
   if (/invalid_grant/i.test(m)) {
     return m + ` — el token caducó o fue revocado. Hay que volver a generar ${v.token}.`;
   }
+  // Google corta a las 200 versiones por proyecto, y este despliegue crea una en cada
+  // push: es cuestión de tiempo. El mensaje de Google dice qué pasa pero no que el
+  // código YA subió, que es lo que decide si hay que correr o no. Y la API no sabe
+  // borrar versiones —no existe versions.delete—, así que la limpieza es a mano.
+  if (/limit of 200 versions|Cannot create more versions/i.test(m)) {
+    return m + ` — el código ya se subió al proyecto, pero el despliegue en producción ` +
+      `sigue en la versión anterior: el webhook todavía corre el código viejo. ` +
+      `Abre el proyecto en el editor de Apps Script → Historial del proyecto, borra ` +
+      `versiones viejas (se pueden marcar varias; no deja borrar la que usa el despliegue ` +
+      `activo) y vuelve a lanzar la Action. Desde la API no se puede: no existe ` +
+      `versions.delete.`;
+  }
   if (/same domain as the script owner/i.test(m)) {
     return m + ` — compartir el proyecto como editor no basta para mover el despliegue. ` +
       `Este proyecto necesita una credencial de su propio dominio ` +
