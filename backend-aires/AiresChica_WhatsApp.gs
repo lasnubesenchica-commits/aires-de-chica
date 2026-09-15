@@ -261,10 +261,17 @@ function _waAvisarAdmin(info, atendido) {
     var comunidad = _waNombreComunidad();
     var unidadTxt = (typeof _acUnidadCap === 'function' ? _acUnidadCap() : 'Unidad') + ' ' + lote;
 
+    // POR QUÉ no se le contestó, si es que no se le contestó. Sin esto el aviso sólo
+    // decía QUIÉN escribió —«no-esta-en-el-padron»— y eso se lee como el motivo. Ya
+    // costó una vez: el bot estaba en modo prueba y callaba a la garita, y el aviso
+    // hacía pensar que la garita no estaba cargada.
+    var callo = (atendido && atendido.contesto === false && atendido.motivo)
+      ? '\n\nEl bot NO le contestó: ' + atendido.motivo + '.' : '';
+
     var r = enviarWhatsAppTexto(adm,
       'Consulta pendiente en el WhatsApp de ' + comunidad + '.\n\n' +
       unidadTxt + ' · ' + nombre + '\n' +
-      'Escribió: ' + texto + adjunto + '\n\n' +
+      'Escribió: ' + texto + adjunto + callo + '\n\n' +
       'Para contestarle directamente: ' + enlace);
 
     // 131047 es exactamente «se cerró la ventana de 24 horas». Ahí sí toca plantilla.

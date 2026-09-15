@@ -252,6 +252,26 @@ correr(texto('50769812266', 'probando'));
 ok(SALIDAS.length === 1 && SALIDAS[0].payload.to === '50765550000',
    'Josh escribe y sólo se entera la socia: sin esto el sistema se escribe a sí mismo');
 
+console.log('\n── EL AVISO DICE POR QUÉ EL BOT SE CALLÓ ──');
+// El aviso sólo decía QUIÉN escribió —«no-esta-en-el-padron»— y eso se lee como el
+// motivo. Costó un diagnóstico entero: el bot estaba en modo prueba y callaba a la
+// garita, y el aviso hacía pensar que la garita no estaba cargada en el sistema.
+PROPS.META_ADMIN_WHATSAPP = '6981-2266';
+CACHE = {}; SALIDAS = [];
+_waAvisarAdmin({ telefono: '50765441596', nota: 'no-esta-en-el-padron', texto: 'Hola' },
+               { contesto: false, avisar: true, motivo: 'bot apagado para este número' });
+const avTxt = SALIDAS[0].payload.text.body;
+ok(/NO le contestó/.test(avTxt), 'el aviso dice que el bot no contestó');
+ok(/bot apagado para este número/.test(avTxt),
+   'y con el motivo exacto, no con quién es: ' +
+   avTxt.split('\n').filter(x => /NO le/.test(x))[0]);
+
+CACHE = {}; SALIDAS = [];
+_waAvisarAdmin({ telefono: '50765441597', nota: 'no-esta-en-el-padron', texto: 'Hola' },
+               { contesto: true, avisar: true });
+ok(!/NO le contestó/.test(SALIDAS[0].payload.text.body),
+   'y cuando el bot SÍ contestó no se inventa un motivo');
+
 console.log('\n── SI SE CERRÓ LA VENTANA DE 24 H, EL AVISO VA POR PLANTILLA ──');
 CACHE = {}; PROPS.META_ADMIN_WHATSAPP = '6555-0000'; SALIDAS = [];
 let intento = 0;
