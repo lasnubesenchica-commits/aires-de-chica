@@ -330,3 +330,52 @@ function _listNotifTriggers() {
       return { funcion: h, ultima: ultimas[h] || null };
     });
 }
+
+/**
+ * Todas las propiedades del script, porque el editor ya no las enseña.
+ *
+ * Pasado de 50 propiedades, la pantalla de «Propiedades de la secuencia de comandos»
+ * muestra sólo las primeras 50 —por orden alfabético— y además se vuelve de SÓLO
+ * LECTURA. Con los AC_* ocupando ese cupo, META_BOT y compañía quedan invisibles y no
+ * hay forma de tocarlas desde la interfaz. El aviso de Google lo dice: hay que hacerlo
+ * por código.
+ *
+ * Los secretos salen tapados a propósito. Este registro se copia y se pega en un chat
+ * o en un correo, y un token pegado ahí es un token que hay que rotar.
+ */
+function verPropiedades(filtro) {
+  var p = PropertiesService.getScriptProperties().getProperties() || {};
+  var claves = Object.keys(p).sort();
+  var f = String(filtro || '').toUpperCase();
+  console.log('════ %s PROPIEDADES ════%s', claves.length, f ? ' (filtrando por «' + f + '»)' : '');
+  var vistas = 0;
+  claves.forEach(function (k) {
+    if (f && k.toUpperCase().indexOf(f) < 0) return;
+    vistas++;
+    var v = String(p[k] === undefined || p[k] === null ? '' : p[k]);
+    if (/TOKEN|KEY|SECRET|PASS|REFRESH/i.test(k)) v = '(puesta · ' + v.length + ' caracteres, oculta)';
+    else if (v.length > 70) v = v.slice(0, 70) + '…';
+    console.log('  %s = %s', k, v);
+  });
+  if (!vistas) console.log('  (ninguna coincide)');
+  return claves.length;
+}
+
+/**
+ * El interruptor del bot, sin pelearse con la interfaz.
+ *
+ *   activo  — le contesta a todo el mundo
+ *   prueba  — sólo a los números de META_ADMIN_WHATSAPP
+ *   apagado — a nadie: se anota y se avisa a la administración
+ */
+function ponerModoBot(modo) {
+  var m = String(modo || '').trim().toLowerCase();
+  if (m === 'apagado' || m === 'off') m = '';
+  if (m !== '' && m !== 'prueba' && m !== 'activo') {
+    throw new Error('Modo no válido: «' + modo + '». Son: activo, prueba o apagado.');
+  }
+  PropertiesService.getScriptProperties().setProperty('META_BOT', m);
+  console.log('META_BOT = %s', m || '(vacío — apagado)');
+  if (typeof diagnosticarBot === 'function') diagnosticarBot();
+  return { ok: true, modo: m };
+}
