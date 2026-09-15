@@ -17,6 +17,13 @@ catch (e) { console.log('  · sin playwright instalado: esta prueba se salta'); 
 
 const HTML = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
 
+/** Espera a que se cumpla una condición del lado de Node (lo que salió por la red). */
+async function esperar(cond, ms = 5000) {
+  const fin = Date.now() + ms;
+  while (Date.now() < fin && !cond()) await new Promise(r => setTimeout(r, 50));
+  return cond();
+}
+
 /**
  * La app de verdad, con la red interceptada.
  *
@@ -46,8 +53,14 @@ async function abrir(b, modulos) {
       let cuerpo = {};
       try { cuerpo = JSON.parse(req.postData() || '{}'); } catch (e) {}
       enviados.push(cuerpo);
+      // La descarga espera un PDF en base64; con el {ok:true} genérico reventaría el
+      // atob() y el fallo del andamio se leería como un fallo de la app.
+      const datos = cuerpo.action === 'descargarEstadoCuenta'
+        ? { base64: Buffer.from('%PDF-1.4 fingido').toString('base64'),
+            filename: 'EstadoCuenta_Q9_2026-09.pdf' }
+        : { ok: true };
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: { ok: true } }) });
+        body: JSON.stringify({ ok: true, data: datos }) });
     }
     const url = new URL(req.url());
     const accion = url.searchParams.get('action');
@@ -193,6 +206,31 @@ async function abrir(b, modulos) {
   ok(!!claim && claim.nombre === 'Josué',
      'se aparta con claimAutor, no sólo en el teléfono: si no, dos personas usarían el mismo nombre');
   ok(claim && claim.dispositivo === 'EQUIPO-1', 'a nombre de este equipo');
+
+  console.log('\n── BAJAR EL ESTADO DE CUENTA NO MANDA CORREO ──');
+  // El botón de bajar el PDF está pegado al de enviarlo. Confundirlos escribiría a un
+  // propietario sin que nadie lo pidiera, que es justo lo que el interruptor de envíos
+  // existe para impedir mientras se prueba el sistema.
+  const pg6 = await abrir(b, ['financiero']);
+  await pg6.pg.evaluate(() => openSheet('Q-9'));
+  await pg6.pg.waitForSelector('button[onclick^="bajarEstado"]', { timeout: 5000 });
+  await pg6.pg.click('button[onclick^="bajarEstado"]');
+  await esperar(() => pg6.enviados.some(x => x.action === 'descargarEstadoCuenta'));
+  const baj = pg6.enviados.filter(x => x.action === 'descargarEstadoCuenta')[0];
+  ok(!!baj && baj.clave === 'Q-9', 'pide el PDF de la cuenta abierta: ' + (baj && baj.clave));
+  ok(pg6.enviados.every(x => x.action !== 'enviarEstado'),
+     'y no manda ningún correo por el camino');
+  ok(!pg6.errores.length, 'sin reventar al rearmar el archivo: ' + (pg6.errores[0] || ''));
+
+  // Leer no es escribir: exigir el nombre para bajar un PDF sólo sería estorbo, y el
+  // servidor piensa igual (REG_SIN_AUTOR).
+  const pg7 = await abrir(b, ['financiero']);
+  await pg7.pg.evaluate(() => { AUTOR = ''; localStorage.removeItem('bc_autor'); openSheet('Q-9'); });
+  await pg7.pg.waitForSelector('button[onclick^="bajarEstado"]', { timeout: 5000 });
+  await pg7.pg.click('button[onclick^="bajarEstado"]');
+  await esperar(() => pg7.enviados.some(x => x.action === 'descargarEstadoCuenta'));
+  ok(pg7.enviados.some(x => x.action === 'descargarEstadoCuenta'),
+     'y sale aunque nadie se haya identificado todavía');
 
   console.log('\n── LA VISTA DE ACCESO SÓLO SI SE CONTRATÓ ──');
   const soloFin = (await abrir(b, ['financiero'])).pg;

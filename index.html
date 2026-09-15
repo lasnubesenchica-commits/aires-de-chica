@@ -1201,7 +1201,8 @@ async function moverAutorAqui(nombre, btn){
 // Acciones de arranque/mantenimiento que el servidor permite sin autor humano.
 // Se replica aquí sólo para no molestar con el prompt; quien manda es el servidor.
 const SIN_AUTOR=new Set(['ensureSheets','seedInicial','seedGastos2026','seedRecurrentes',
-  'actualizarJulio2026','rollbackJulio2026','descargarInformePL','enviarInformePL','capturarComprobantes',
+  'actualizarJulio2026','rollbackJulio2026','descargarInformePL','descargarEstadoCuenta',
+  'enviarInformePL','capturarComprobantes',
   'verifyPassword','setPassword','resetPassword','guardarContrato',
   // con éstas es justamente con las que uno se identifica: pedir autor sería circular
   'claimAutor','moverAutor','marcarAvisoVisto']);
@@ -2009,6 +2010,7 @@ function _renderEstado(e, opts){
     ${opts.sim?'':`<div class="modal-actions">
       ${(e.moraCargada>0.009||all)?`<button class="btn ghost ${all?'is-reactivar':'is-condonar'}" onclick="condonarMora('${e.clave}','ALL',${!all},event)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
       <button class="btn ghost" onclick="togglePagoManual('${e.clave}')">＋ Registrar pago</button>
+      <button class="btn ghost" onclick="bajarEstado('${e.clave}',this)" title="Baja el mismo PDF que se adjunta al correo. No envía nada.">⬇ Descargar PDF</button>
       <div class="mailGroup" title="Cambia el asunto y la frase de entrada. El PDF y el saldo son los mismos.">
         <select id="mailContexto" aria-label="Cómo se presenta el estado de cuenta">
           <option value="">Actualizado a hoy</option>
@@ -4308,14 +4310,29 @@ function paintGastos(){
                 : _gastosRegistro(d);
   body.innerHTML=header+banner+content;
 }
+/* El servidor manda los PDF en base64 porque la respuesta del router es JSON; aquí se
+ * rearma el archivo y se baja sin pasar por el servidor otra vez. */
+function bajarPDF(r){
+  const bin=atob(r.base64), arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+  const a=document.createElement('a'); a.href=url; a.download=r.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
 async function descargarInformePL(btn){
   btn.disabled=true; const t=btn.textContent; btn.textContent='Generando…';
   try{
-    const r=await post('descargarInformePL',{anio:GASTOS_ANIO, mesIni:FIN_MES_INI, mesFin:FIN_MES_FIN});
-    const bin=atob(r.base64), arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-    const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
-    const a=document.createElement('a'); a.href=url; a.download=r.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    bajarPDF(await post('descargarInformePL',{anio:GASTOS_ANIO, mesIni:FIN_MES_INI, mesFin:FIN_MES_FIN}));
     toast('Informe descargado');
+  }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
+/* El PDF que se baja es el MISMO que se adjunta al correo: lo genera la misma función
+ * en el servidor. Sirve para revisarlo antes de mandarlo, y para dárselo a un
+ * propietario que no tiene correo o que lo pide por WhatsApp. No envía nada. */
+async function bajarEstado(clave,btn){
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Generando…';
+  try{
+    bajarPDF(await post('descargarEstadoCuenta',{clave}));
+    toast('Estado de cuenta descargado');
   }catch(e){ if(!onAuthError(e)) alert('Error: '+e); }
   finally{ btn.disabled=false; btn.textContent=t; }
 }

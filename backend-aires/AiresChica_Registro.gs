@@ -30,6 +30,8 @@ var REG_SIN_AUTOR = {
   ensureSheets: 1, seedInicial: 1, seedGastos2026: 1, seedRecurrentes: 1,
   actualizarJulio2026: 1, rollbackJulio2026: 1,
   descargarInformePL: 1, enviarInformePL: 1,
+  // bajar un PDF no cambia nada: pedir firma para leer sería ruido
+  descargarEstadoCuenta: 1,
   capturarComprobantes: 1,
   // las consume el bot de WhatsApp, que no es una persona en el panel
   marcarEnvio: 1, previsualizarComunicado: 1

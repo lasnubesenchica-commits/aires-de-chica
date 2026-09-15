@@ -2,6 +2,7 @@
  * Estados de cuenta en PDF y correos a propietarios.
  *  - estadoCuentaHTML(est)  : plantilla profesional (usa la paleta de la marca)
  *  - estadoCuentaPDF(lote)  : Blob PDF
+ *  - descargarEstadoCuenta(lote)   : el mismo PDF en base64, para bajarlo del panel
  *  - enviarEstadoCuenta(lote)      : correo con el PDF adjunto + resumen en cuerpo
  *  - enviarRecordatorios(tipo)     : lote por correo (recordatorio mensual / aviso de mora)
  */
@@ -243,6 +244,21 @@ function estadoCuentaPDF(estOrClave) {
   var nombre = 'EstadoCuenta_' + String(est.clave).replace(/[^\w]/g, '') + '_' +
                Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy-MM') + '.pdf';
   return blob.setName(nombre);
+}
+
+/**
+ * El mismo PDF que se adjunta al correo, servido para bajarlo desde el panel.
+ *
+ * Pasa por estadoCuentaPDF() a propósito, sin ninguna variante «para pantalla»: si el
+ * panel construyera su propio PDF, revisarlo antes de mandarlo no probaría nada, porque
+ * lo revisado y lo enviado serían dos documentos distintos. Aquí son el mismo byte a
+ * byte, salvo la fecha de corte, que en los dos casos es el momento de generarlo.
+ *
+ * No manda correo ni toca datos: se puede llamar sin identificarse (REG_SIN_AUTOR).
+ */
+function descargarEstadoCuenta(clave) {
+  var blob = estadoCuentaPDF(clave);
+  return { base64: Utilities.base64Encode(blob.getBytes()), filename: blob.getName() };
 }
 
 /**

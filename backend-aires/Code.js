@@ -281,6 +281,7 @@ function doPost(e) {
     else if (action === 'actualizarJulio2026') out = { ok: true, data: actualizarJulio2026(!!data.force) };
     else if (action === 'rollbackJulio2026')   out = { ok: true, data: rollbackJulio2026() };
     else if (action === 'descargarInformePL') out = { ok: true, data: descargarInformePL(data.anio, data.mesIni, data.mesFin, data.nota) };
+    else if (action === 'descargarEstadoCuenta') out = { ok: true, data: descargarEstadoCuenta(data.clave) };
     else if (action === 'enviarInformePL')  out = { ok: true, data: enviarInformePL(data.anio, data.mesIni, data.mesFin, data.nota) };
     else if (action === 'conciliarBanco')   out = { ok: true, data: conciliarBanco(data.rows, data.filename) };
     else if (action === 'consolidarPagos')  out = { ok: true, data: consolidarPagos(data.pagos, !!data.enviarCorreos) };

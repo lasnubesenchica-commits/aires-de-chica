@@ -637,6 +637,7 @@ function pintarEstado(){
     <div style="color:var(--ac-muted);font-size:.7rem;margin-top:8px">Toca cualquier mes para ver cómo se calculó.</div>
     <div id="ctaErr" style="color:var(--ac-danger);font-size:.8rem;min-height:14px"></div>
     <button class="acb go" onclick="mail('${_esc(e.clave)}')" ${e.email?'':'disabled'}>Enviar estado de cuenta por correo</button>
+    <button class="acb" onclick="bajarEstado('${_esc(e.clave)}',this)">⬇ Descargar el PDF</button>
     <button class="acb" onclick="pgForm(this)">＋ Registrar pago</button>
     ${(e.moraCargada>0.009||all)?`<button class="acb" onclick="condonarMora(${!all},this)">${all?'↩ Reactivar mora':'Condonar mora'}</button>`:''}
     <div id="pgBox" style="display:none;margin-top:12px;border-top:1px dashed var(--ac-border);padding-top:12px">
@@ -705,6 +706,22 @@ function abrirHoja(titulo,sub,cuerpo){
   document.getElementById('sheet').scrollTop=0;
 }
 async function mail(clave){try{const r=await post('enviarEstado',{clave});alert(r.enviado?'Enviado':'No enviado');}catch(e){if(!authErr(e))alert('Error: '+e);}}
+/* El MISMO PDF que se adjunta al correo, generado por la misma función del servidor.
+ * Va por _enviar y no por post: bajar un archivo no escribe nada, así que pedir el
+ * nombre de quien lo hace sería estorbo. El servidor piensa igual (REG_SIN_AUTOR). */
+async function bajarEstado(clave,btn){
+  const t=btn.textContent; btn.disabled=true; btn.textContent='Generando…';
+  try{
+    const r=await _enviar('descargarEstadoCuenta',{clave});
+    const bin=atob(r.base64), arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+    const a=document.createElement('a'); a.href=url; a.download=r.filename; document.body.appendChild(a); a.click(); a.remove();
+    // En el móvil el archivo puede abrirse en otra pestaña en vez de bajarse; si se
+    // revoca en el acto, esa pestaña se queda sin nada que mostrar.
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){ if(!authErr(e)) alert('Error: '+e); }
+  finally{ btn.disabled=false; btn.textContent=t; }
+}
 
 /* ───────── comprobantes por email ─────────
  * La vista que más gana con estar en el teléfono: llega el aviso, se revisa el monto y
