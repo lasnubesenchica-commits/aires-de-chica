@@ -47,16 +47,84 @@ function _botContestaA(tel) {
   return false;
 }
 
-/* ─────────────── silencio tras pasar a un humano ─────────────── */
+/* ─────────────── silencio tras pasar a un humano ───────────────
+ *
+ * El silencio existe para que el bot no hable por encima de alguien de la
+ * administración que está atendiendo a mano. Es correcto, y dura seis horas.
+ *
+ * Lo que faltaba era poder VERLO y poder LEVANTARLO. Un número callado se comporta
+ * exactamente igual que un bot caído: no contesta y no dice por qué. La primera vez que
+ * pasó —una foto que se tomó por comprobante— costó un rato entender que el sistema
+ * estaba funcionando y callándose a propósito.
+ *
+ * Por eso, además de la clave en el caché, se apunta quién está callado y hasta cuándo.
+ * La lista es informativa: manda el caché, que es lo que de verdad decide.
+ */
+
+var BOT_MUDOS_PROP = 'BOT_MUDOS';
+
+function _botMudos(lista) {
+  var p = _waProps();
+  if (lista !== undefined) {
+    try { p.setProperty(BOT_MUDOS_PROP, JSON.stringify(lista)); } catch (e) {}
+    return lista;
+  }
+  var crudo = '';
+  try { crudo = String(p.getProperty(BOT_MUDOS_PROP) || ''); } catch (e) {}
+  var arr = [];
+  try { arr = JSON.parse(crudo) || []; } catch (e) { arr = []; }
+  var ahora = Date.now();
+  return arr.filter(function (x) { return x && x.tel && Number(x.hasta) > ahora; });
+}
 
 function _botSilenciar(tel) {
-  try { CacheService.getScriptCache().put('bot_mudo_' + String(tel).replace(/\D/g, ''), '1', BOT_SILENCIO); }
+  var d = String(tel).replace(/\D/g, '');
+  try { CacheService.getScriptCache().put('bot_mudo_' + d, '1', BOT_SILENCIO); }
   catch (e) {}
+  var l = _botMudos().filter(function (x) { return x.tel !== d; });
+  l.push({ tel: d, hasta: Date.now() + BOT_SILENCIO * 1000 });
+  _botMudos(l);
 }
 
 function _botSilenciado(tel) {
   try { return !!CacheService.getScriptCache().get('bot_mudo_' + String(tel).replace(/\D/g, '')); }
   catch (e) { return false; }
+}
+
+/**
+ * Le devuelve la voz al bot para un número. Sin argumento, para todos.
+ *
+ * Se usa cuando la administración terminó de atender a mano y no hay razón para seguir
+ * callado, o cuando el silencio se activó por error.
+ */
+function despertarAlBot(tel) {
+  var c = CacheService.getScriptCache();
+  var l = _botMudos(), n = 0;
+  var uno = String(tel || '').replace(/\D/g, '');
+  l.forEach(function (x) {
+    if (uno && x.tel !== uno) return;
+    try { c.remove('bot_mudo_' + x.tel); n++; } catch (e) {}
+  });
+  // También el que se pidió aunque no estuviera en la lista: la lista es un apunte y el
+  // caché puede tener claves de antes de que existiera.
+  if (uno) { try { c.remove('bot_mudo_' + uno); } catch (e) {} }
+  _botMudos(l.filter(function (x) { return uno && x.tel !== uno; }));
+  console.log(uno ? '✓ El bot vuelve a contestarle a +%s.' : '✓ Despertado el bot para %s número(s).',
+              uno || n);
+  return { ok: true, despertados: uno ? 1 : n };
+}
+
+/** Quién está callado ahora mismo, y hasta cuándo. Para el botón Run del editor. */
+function verSilenciados() {
+  var l = _botMudos();
+  console.log('════ NÚMEROS A LOS QUE EL BOT NO LE CONTESTA ════');
+  if (!l.length) { console.log('Ninguno. Si aun así no contesta, el problema es otro.'); return []; }
+  l.forEach(function (x) {
+    var min = Math.round((Number(x.hasta) - Date.now()) / 60000);
+    console.log('· +%s — calla %s minuto(s) más', x.tel, min);
+  });
+  console.log('\nPara devolverle la voz: despertarAlBot("+507 6000-0000"), o despertarAlBot() para todos.');
+  return l;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

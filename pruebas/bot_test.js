@@ -16,7 +16,8 @@ global.PropertiesService = { getScriptProperties: () => ({
   getProperties: () => JSON.parse(JSON.stringify(PROPS)),
   setProperty: (k, v) => { PROPS[k] = v; } }) };
 global.CacheService = { getScriptCache: () => ({
-  get: k => CACHE[k] || null, put: (k, v) => { CACHE[k] = v; } }) };
+  get: k => CACHE[k] || null, put: (k, v) => { CACHE[k] = v; },
+  remove: k => { delete CACHE[k]; } }) };
 global.ContentService = { MimeType: { JSON: 'json' },
   createTextOutput: t => ({ __texto: String(t), setMimeType() { return this; } }) };
 global.Logger = { log: () => {} };
@@ -613,6 +614,36 @@ correr(texto('50761112233', 'cuanto debo'));
 ok(/B\/\. 245/.test(cuerpos()),
    'sin el módulo de acceso cargado, el propietario sigue recibiendo su saldo');
 global.esGuardia = _esG; global.getContactos = _gC; global._botVisitante = _bV2;
+
+console.log('\n── UN NÚMERO CALLADO SE PUEDE VER Y SE PUEDE DESPERTAR ──');
+// Un número silenciado se comporta igual que un bot caído: no contesta y no dice por
+// qué. La primera vez costó un rato entender que el sistema estaba funcionando y
+// callándose a propósito, y no había forma de levantarlo antes de las seis horas.
+CACHE = {}; PROPS = {};
+_botSilenciar('+507 6981-2266');
+ok(_botSilenciado('+50769812266'), 'el silencio se pone');
+let mudos = verSilenciados();
+ok(mudos.length === 1 && mudos[0].tel === '50769812266',
+   'y ahora se puede VER quién está callado: ' + JSON.stringify(mudos.map(x => x.tel)));
+
+_botSilenciar('+507 6000-0000');
+ok(verSilenciados().length === 2, 'se apuntan varios');
+despertarAlBot('+507 6981-2266');
+ok(!_botSilenciado('+50769812266'), 'y se le devuelve la voz a uno');
+ok(_botSilenciado('+50760000000'), 'sin tocar a los demás');
+ok(verSilenciados().length === 1, 'la lista queda al día: ' + verSilenciados().length);
+
+despertarAlBot();
+ok(!_botSilenciado('+50760000000'), 'sin número, despierta a todos');
+ok(verSilenciados().length === 0, 'y no queda nadie apuntado');
+
+// El apunte es informativo; quien manda es el caché. Si la lista se pierde, el silencio
+// tiene que seguir funcionando igual.
+CACHE = {}; PROPS = {};
+_botSilenciar('+50761112233');
+PROPS.BOT_MUDOS = '';
+ok(_botSilenciado('+50761112233'),
+   'sin la lista, el silencio sigue en pie: manda el caché, no el apunte');
 
 console.log('\n' + (mal ? '✗ ' + mal + ' fallas' : '✓ todo bien'));
 process.exit(mal ? 1 : 0);
