@@ -34,9 +34,9 @@
  *
  * ── Ley 81 de 2019 ───────────────────────────────────────────────────────────
  * Una foto de cédula es un dato personal de un TERCERO que no es cliente de la
- * asociación y que nunca firmó nada. Se guarda 90 días y se borra sola. La fila
- * de la visita se queda —el registro de quién entró es legítimo y la comunidad lo
- * necesita— pero la imagen del documento no.
+ * asociación y que nunca firmó nada. Se lee y se borra en el acto; sólo las lecturas
+ * dudosas se guardan ACC_HORAS_FOTO. La fila de la visita se queda —el registro de
+ * quién entró es legítimo y la comunidad lo necesita— pero la imagen del documento no.
  *
  * Las hojas se crean sólo cuando el módulo está activo. Un PH que contrató nada
  * más lo financiero no tiene por qué encontrarse cuatro hojas vacías.
@@ -1913,7 +1913,7 @@ var ACC_CARPETA_FOTOS = 'Documentos de visitantes';
  *
  * En SU PROPIA carpeta, no en la de los comprobantes. Un comprobante es de un
  * propietario que sí firmó con la asociación; la foto del documento de un visitante es
- * de un tercero que no firmó nada y que además se borra a los 90 días. Mezclarlas
+ * de un tercero que no firmó nada y que además se borra enseguida. Mezclarlas
  * significa que quien tenga acceso a la contabilidad ve los documentos de identidad de
  * todo el que pasó por la garita, y que el borrado automático tenga que ir a buscar
  * entre archivos que no debe tocar.
