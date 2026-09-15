@@ -267,10 +267,12 @@ ok(/bot apagado para este número/.test(avTxt),
    avTxt.split('\n').filter(x => /NO le/.test(x))[0]);
 
 CACHE = {}; SALIDAS = [];
+// Con un motivo presente Y contesto true: es lo que separa «no le contesté, y por
+// esto» de una nota interna sobre un mensaje que sí se atendió.
 _waAvisarAdmin({ telefono: '50765441597', nota: 'no-esta-en-el-padron', texto: 'Hola' },
-               { contesto: true, avisar: true });
+               { contesto: true, avisar: true, motivo: 'comprobante recibido' });
 ok(!/NO le contestó/.test(SALIDAS[0].payload.text.body),
-   'y cuando el bot SÍ contestó no se inventa un motivo');
+   'y cuando el bot SÍ contestó no se le cuelga un «no le contestó» aunque haya motivo');
 
 console.log('\n── SI SE CERRÓ LA VENTANA DE 24 H, EL AVISO VA POR PLANTILLA ──');
 CACHE = {}; PROPS.META_ADMIN_WHATSAPP = '6555-0000'; SALIDAS = [];
